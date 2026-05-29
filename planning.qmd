@@ -1,0 +1,31 @@
+---
+title: "argo bias"
+subtitle: "project planning"
+format:
+  html:
+    theme: darkly
+    toc: true
+    toc-title: "contents"
+    toc-depth: 3
+    toc-location: right
+    number-sections: false
+execute:
+  echo: true
+  warning: false
+  message: false
+  prompt: true
+  fig-align: center
+  fig-width: 7.5
+  fig-height: 4
+knitr:
+  opts_chunk:
+    prompt: false
+    collapse: false
+editor_options:
+  chunk_output_type: console
+---
+
+# eda
+
+- calc. radius of drift (by region)
+- discuss distance metrics to calc. velocity
