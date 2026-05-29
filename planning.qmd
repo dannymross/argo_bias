@@ -29,5 +29,5 @@ editor_options:
 
 - calc. radius of drift (by region)
 - do floats replace eachother in the same area? eg does a float move out of an initial radius but a different float moves into that initial radius?
-  - within a fixed region how much area is covered by the floats over time? do they begin to cluster or do they circle and replace eachother such that the same area is covered?
+  - within a fixed region (basins) how much area is covered by the floats over time? do they begin to cluster or do they circle and replace eachother such that the same area is covered?
 - discuss distance metrics to calc. velocity
