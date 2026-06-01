@@ -17,7 +17,7 @@ execute:
   prompt: true
   fig-align: center
   fig-width: 7.5
-  fig-height: 4
+  fig-height: 6
 knitr:
   opts_chunk:
     prompt: false
@@ -54,7 +54,7 @@ A <- argo[(float_r)]
 
 float_n <- A[,.N,float_id]
 summary(float_n$N)
-hist(float_n$N, breaks = seq(0,44,2))
+hist(float_n$N, breaks = seq(0,44,1), main = "obs per float", xlab = "n")
 ```
 
 ### surfacing/observation frequency
@@ -63,62 +63,56 @@ A[, dt_day := dt_s / (60^2 * 24)]
 summary(A$dt_day)
 B <- A[!is.na(dt_day), .N, dt_day]
 
-b <- c(0,1,2,5,9,11,18,19,21,335,375,seq(500,2500,500))
-B[, cat := cut(dt_day, breaks = b, dig.lab = 5)]
+par(mfrow = c(2,2))
+hist(A$dt_day, breaks = seq(0,2500,1), main = "obs freq", xlab = NULL)
+hist(A[dt_day < 50, dt_day], breaks = seq(0,50,.5), main = "0-50 days", xlab = NULL)
+hist(A[between(dt_day,300,400), dt_day], breaks = seq(300,400,1), main = "300-400 days", xlab = NULL)
+hist(A[between(dt_day,680,780), dt_day], breaks = seq(680,780,1), main = "680-780 days", xlab = NULL)
 
+b <- c(0,9,11,300,400,1000,2500)
+B[, cat := cut(dt_day, breaks = b, dig.lab = 5)]
 B[,.(obs = sum(N)),keyby = cat][,prop := obs / sum(obs)][, c_prop := cumsum(prop)][]
 ```
 
 ### add ocean region data
 
+`mregions2` downloads shapefiles from <https://www.marineregions.org/sources.php#goas>
 ```{r}
-#| fig-width: 10
-#| fig-height: 6
 library(sf)
 sf_use_s2(FALSE)
-library(rnaturalearth)
+library(mregions2)
+
+goas_file <- paste0(root,"/data/goas.rds")
+
+if (file.exists(goas_file)) {
+  goas <- readRDS(goas_file)
+} else {
+  goas <- mrp_get("goas")
+  saveRDS(goas, goas_file)
+}
 
 float_loc <- A[,.(float_id, float_i, lon_degrees, lat_degrees)]
 float_loc_sf <- st_as_sf(float_loc, coords = c("lon_degrees", "lat_degrees"), crs = 4326) # WGS84 globe
 
-oceans_50 <- ne_download(
-  scale = 50,
-  type = "geography_marine_polys",
-  category = "physical",
-  returnclass = "sf"
-)
-oceans_110 <- ne_download(
-  scale = 110,
-  type = "geography_marine_polys",
-  category = "physical",
-  returnclass = "sf"
-)
-
-float_loc_j <- st_join(float_loc_sf, oceans_50["name"])
-float_loc_j <- st_join(float_loc_j, oceans_110["name"])
+float_loc_j <- st_join(float_loc_sf, goas["name"])
 float_loc_j <- as.data.table(float_loc_j)[, geometry := NULL]
-cols <- c("region_s", "region_l")
-setnames(float_loc_j, c("name.x","name.y"), cols) 
-float_loc_j[, (cols) := lapply(.SD, tolower), .SDcols = cols]
+setnames(float_loc_j, c("name"), c("ocean")) 
+float_loc_j[, ocean := tolower(ocean)] 
 
 setkey(float_loc_j, float_id, float_i)
 setkey(float_loc, float_id, float_i)
 
 float_loc <- float_loc[float_loc_j]
 
-float_loc[region_s=="great barrier reef", region_s := "coral sea"]
-float_loc <- unique(float_loc)
-
-
 float_loc[,.(
   .N,
   lat_range = paste0(round(range(lat_degrees),2), collapse = ","),
   lon_range = paste0(round(range(lon_degrees),2), collapse = ",")),
-.(region_s)][order(-N)]
+.(ocean)][order(-N)]
 
-sample_locs <- float_loc[, .SD[sample(.N, min(1000, .N))], by = region_s]
+sample_locs <- float_loc[, .SD[sample(.N, min(1000, .N))], by = ocean]
 
-map_pts <- function(df, x = "lon_degrees", y = "lat_degrees", color = "region_s", legend.rows = 1){
+map_pts <- function(df, x = "lon_degrees", y = "lat_degrees", color = "ocean", legend.rows = 1){
   ggplot() +
   borders("world", fill = "gray80", colour = "gray80") +
   geom_point(data = df,
@@ -128,11 +122,10 @@ map_pts <- function(df, x = "lon_degrees", y = "lat_degrees", color = "region_s"
   coord_sf() +
   theme_minimal() +
   theme(legend.position = "bottom") +
-        #legend.title = element_blank()) +
-  guides(colour = guide_legend(nrow = legend.rows))
+  guides(colour = guide_legend(ncol = legend.rows))
 }
 
-map_pts(sample_locs, color = "region_s", legend.rows = 5)
+map_pts(sample_locs, color = "ocean", legend.rows = 3)
 ```
 
 ```{r}
@@ -144,7 +137,7 @@ A <- A[float_loc]
 
 ### explore speed/velocity within north atlantic ocean
 ```{r}
-NAO <- A[region_s %in% c("north atlantic ocean", "sargasso sea")]
+NAO <- A[ocean %in% c("north atlantic ocean")]
 NAO[, has10 := any(between(dt_day,9,11)), float_id]
 NAO <- NAO[(has10),]
 map_pts(NAO, color = "speed_ms") + 
