@@ -1,6 +1,8 @@
+root <- getwd()
 library(tidyverse)
 library(data.table)
+library(pbapply)
+library(geosphere)
 library(GpGp)
 
-data(argo2016)
-A <- data.table(argo2016)
+load(paste0(root, "/data/argo_velo_data_january.RData"))

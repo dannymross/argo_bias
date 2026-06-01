@@ -20,6 +20,41 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
@@ -31,10 +66,13 @@ ul.task-list li input[type="checkbox"] {
 <script src="planning_files/libs/quarto-html/tippy.umd.min.js"></script>
 <script src="planning_files/libs/quarto-html/anchor.min.js"></script>
 <link href="planning_files/libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="planning_files/libs/quarto-html/quarto-syntax-highlighting-dark-4d9afe2b8d18ee9fa5d0d57b5ed4214d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<link href="planning_files/libs/quarto-html/quarto-syntax-highlighting-ed96de9b727972fe78a7b5d16c58bf87.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="planning_files/libs/bootstrap/bootstrap.min.js"></script>
 <link href="planning_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="planning_files/libs/bootstrap/bootstrap-fcc3bc6eb91de46a6ea40c6d96a0da9b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="dark">
+<link href="planning_files/libs/bootstrap/bootstrap-d6a003b94517c951b2d65075d42fb01b.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script src="planning_files/libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="planning_files/libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="planning_files/libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
 
 
 </head>
@@ -47,7 +85,19 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">contents</h2>
    
   <ul>
-  <li><a href="#eda" id="toc-eda" class="nav-link active" data-scroll-target="#eda">eda</a></li>
+  <li><a href="#eda" id="toc-eda" class="nav-link active" data-scroll-target="#eda"><span class="header-section-number">1</span> eda</a>
+  <ul>
+  <li><a href="#velocity" id="toc-velocity" class="nav-link" data-scroll-target="#velocity"><span class="header-section-number">1.1</span> velocity</a>
+  <ul class="collapse">
+  <li><a href="#number-of-floats-in-data" id="toc-number-of-floats-in-data" class="nav-link" data-scroll-target="#number-of-floats-in-data"><span class="header-section-number">1.1.1</span> number of floats in data</a></li>
+  <li><a href="#surfacingobservation-frequency" id="toc-surfacingobservation-frequency" class="nav-link" data-scroll-target="#surfacingobservation-frequency"><span class="header-section-number">1.1.2</span> surfacing/observation frequency</a></li>
+  <li><a href="#add-ocean-region-data" id="toc-add-ocean-region-data" class="nav-link" data-scroll-target="#add-ocean-region-data"><span class="header-section-number">1.1.3</span> add ocean region data</a></li>
+  <li><a href="#explore-speedvelocity-within-north-atlantic-ocean" id="toc-explore-speedvelocity-within-north-atlantic-ocean" class="nav-link" data-scroll-target="#explore-speedvelocity-within-north-atlantic-ocean"><span class="header-section-number">1.1.4</span> explore speed/velocity within north atlantic ocean</a>
+  <ul class="collapse">
+  <li><a href="#correlation-between-speedvelocity-at-ohc" id="toc-correlation-between-speedvelocity-at-ohc" class="nav-link" data-scroll-target="#correlation-between-speedvelocity-at-ohc"><span class="header-section-number">1.1.4.1</span> correlation between speed/velocity at ohc</a></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
   </ul>
 </nav>
 </div>
@@ -73,16 +123,296 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
-<section id="eda" class="level1">
-<h1>eda</h1>
-<ul>
-<li>calc. radius of drift (by region)</li>
-<li>do floats replace eachother in the same area? eg does a float move out of an initial radius but a different float moves into that initial radius?
-<ul>
-<li>within a fixed region how much area is covered by the floats over time? do they begin to cluster or do they circle and replace eachother such that the same area is covered?</li>
-</ul></li>
-<li>discuss distance metrics to calc. velocity</li>
-</ul>
+<section id="eda" class="level1" data-number="1">
+<h1 data-number="1"><span class="header-section-number">1</span> eda</h1>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">options</span>(<span class="at">digits =</span> <span class="dv">4</span>, <span class="at">scipen =</span> <span class="dv">999</span>)</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>root <span class="ot">&lt;-</span> <span class="fu">getwd</span>()</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidyverse)</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(data.table)</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(pbapply)</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(geosphere)</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(GpGp)</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="fu">load</span>(<span class="fu">paste0</span>(root, <span class="st">"/data/argo_velo_data_january.RData"</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<section id="velocity" class="level2" data-number="1.1">
+<h2 data-number="1.1" class="anchored" data-anchor-id="velocity"><span class="header-section-number">1.1</span> velocity</h2>
+<section id="number-of-floats-in-data" class="level3" data-number="1.1.1">
+<h3 data-number="1.1.1" class="anchored" data-anchor-id="number-of-floats-in-data"><span class="header-section-number">1.1.1</span> number of floats in data</h3>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>argo[,.(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">n_floats =</span> <span class="fu">uniqueN</span>(float_id),</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">dates_floats =</span> <span class="fu">paste0</span>(<span class="fu">range</span>(isodatetime), <span class="at">collapse =</span> <span class="st">"-"</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>), float_r]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>   float_r n_floats                                 dates_floats
+    &lt;lgcl&gt;    &lt;int&gt;                                       &lt;char&gt;
+1:   FALSE      365      2007-01-02 00:43:41-2016-01-31 22:47:03
+2:    TRUE     5510 2007-01-01 00:13:35-2016-01-31 23:53:43.0025</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>A <span class="ot">&lt;-</span> argo[(float_r)]</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>float_n <span class="ot">&lt;-</span> A[,.N,float_id]</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="fu">summary</span>(float_n<span class="sc">$</span>N)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+   2.00    4.00    7.00    8.56   12.00   43.00 </code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">hist</span>(float_n<span class="sc">$</span>N, <span class="at">breaks =</span> <span class="fu">seq</span>(<span class="dv">0</span>,<span class="dv">44</span>,<span class="dv">2</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><a href="planning_files/figure-html/unnamed-chunk-2-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1"><img src="planning_files/figure-html/unnamed-chunk-2-1.png" class="img-fluid figure-img" width="720"></a></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="surfacingobservation-frequency" class="level3" data-number="1.1.2">
+<h3 data-number="1.1.2" class="anchored" data-anchor-id="surfacingobservation-frequency"><span class="header-section-number">1.1.2</span> surfacing/observation frequency</h3>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>A[, dt_day <span class="sc">:</span><span class="er">=</span> dt_s <span class="sc">/</span> (<span class="dv">60</span><span class="sc">^</span><span class="dv">2</span> <span class="sc">*</span> <span class="dv">24</span>)]</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="fu">summary</span>(A<span class="sc">$</span>dt_day)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's 
+   0.00    9.98   10.14  111.39  339.99 2195.99    5510 </code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>B <span class="ot">&lt;-</span> A[<span class="sc">!</span><span class="fu">is.na</span>(dt_day), .N, dt_day]</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>b <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">0</span>,<span class="dv">1</span>,<span class="dv">2</span>,<span class="dv">5</span>,<span class="dv">9</span>,<span class="dv">11</span>,<span class="dv">18</span>,<span class="dv">19</span>,<span class="dv">21</span>,<span class="dv">335</span>,<span class="dv">375</span>,<span class="fu">seq</span>(<span class="dv">500</span>,<span class="dv">2500</span>,<span class="dv">500</span>))</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>B[, cat <span class="sc">:</span><span class="er">=</span> <span class="fu">cut</span>(dt_day, <span class="at">breaks =</span> b, <span class="at">dig.lab =</span> <span class="dv">5</span>)]</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>B[,.(<span class="at">obs =</span> <span class="fu">sum</span>(N)),keyby <span class="ot">=</span> cat][,prop <span class="sc">:</span><span class="er">=</span> obs <span class="sc">/</span> <span class="fu">sum</span>(obs)][, c_prop <span class="sc">:</span><span class="er">=</span> <span class="fu">cumsum</span>(prop)][]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Key: &lt;cat&gt;
+            cat   obs       prop   c_prop
+         &lt;fctr&gt; &lt;int&gt;      &lt;num&gt;    &lt;num&gt;
+ 1:       (0,1]   228 0.00547577 0.005476
+ 2:       (1,2]   189 0.00453912 0.010015
+ 3:       (2,5]  1576 0.03785004 0.047865
+ 4:       (5,9]  2609 0.06265911 0.110524
+ 5:      (9,11] 23736 0.57005620 0.680580
+ 6:     (11,18]   346 0.00830972 0.688890
+ 7:     (19,21]  1095 0.02629809 0.715188
+ 8:    (21,335]    83 0.00199337 0.717181
+ 9:   (335,375] 10883 0.26137182 0.978553
+10:   (375,500]   368 0.00883808 0.987391
+11:  (500,1000]   424 0.01018301 0.997574
+12: (1000,1500]    93 0.00223354 0.999808
+13: (1500,2000]     6 0.00014410 0.999952
+14: (2000,2500]     2 0.00004803 1.000000</code></pre>
+</div>
+</div>
+</section>
+<section id="add-ocean-region-data" class="level3" data-number="1.1.3">
+<h3 data-number="1.1.3" class="anchored" data-anchor-id="add-ocean-region-data"><span class="header-section-number">1.1.3</span> add ocean region data</h3>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(sf)</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="fu">sf_use_s2</span>(<span class="cn">FALSE</span>)</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(rnaturalearth)</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>float_loc <span class="ot">&lt;-</span> A[,.(float_id, float_i, lon_degrees, lat_degrees)]</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>float_loc_sf <span class="ot">&lt;-</span> <span class="fu">st_as_sf</span>(float_loc, <span class="at">coords =</span> <span class="fu">c</span>(<span class="st">"lon_degrees"</span>, <span class="st">"lat_degrees"</span>), <span class="at">crs =</span> <span class="dv">4326</span>) <span class="co"># WGS84 globe</span></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>oceans_50 <span class="ot">&lt;-</span> <span class="fu">ne_download</span>(</span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">scale =</span> <span class="dv">50</span>,</span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">type =</span> <span class="st">"geography_marine_polys"</span>,</span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">category =</span> <span class="st">"physical"</span>,</span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">returnclass =</span> <span class="st">"sf"</span></span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a>oceans_110 <span class="ot">&lt;-</span> <span class="fu">ne_download</span>(</span>
+<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a>  <span class="at">scale =</span> <span class="dv">110</span>,</span>
+<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a>  <span class="at">type =</span> <span class="st">"geography_marine_polys"</span>,</span>
+<span id="cb11-17"><a href="#cb11-17" aria-hidden="true" tabindex="-1"></a>  <span class="at">category =</span> <span class="st">"physical"</span>,</span>
+<span id="cb11-18"><a href="#cb11-18" aria-hidden="true" tabindex="-1"></a>  <span class="at">returnclass =</span> <span class="st">"sf"</span></span>
+<span id="cb11-19"><a href="#cb11-19" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb11-20"><a href="#cb11-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-21"><a href="#cb11-21" aria-hidden="true" tabindex="-1"></a>float_loc_j <span class="ot">&lt;-</span> <span class="fu">st_join</span>(float_loc_sf, oceans_50[<span class="st">"name"</span>])</span>
+<span id="cb11-22"><a href="#cb11-22" aria-hidden="true" tabindex="-1"></a>float_loc_j <span class="ot">&lt;-</span> <span class="fu">st_join</span>(float_loc_j, oceans_110[<span class="st">"name"</span>])</span>
+<span id="cb11-23"><a href="#cb11-23" aria-hidden="true" tabindex="-1"></a>float_loc_j <span class="ot">&lt;-</span> <span class="fu">as.data.table</span>(float_loc_j)[, geometry <span class="sc">:</span><span class="er">=</span> <span class="cn">NULL</span>]</span>
+<span id="cb11-24"><a href="#cb11-24" aria-hidden="true" tabindex="-1"></a>cols <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"region_s"</span>, <span class="st">"region_l"</span>)</span>
+<span id="cb11-25"><a href="#cb11-25" aria-hidden="true" tabindex="-1"></a><span class="fu">setnames</span>(float_loc_j, <span class="fu">c</span>(<span class="st">"name.x"</span>,<span class="st">"name.y"</span>), cols) </span>
+<span id="cb11-26"><a href="#cb11-26" aria-hidden="true" tabindex="-1"></a>float_loc_j[, (cols) <span class="sc">:</span><span class="er">=</span> <span class="fu">lapply</span>(.SD, tolower), .SDcols <span class="ot">=</span> cols]</span>
+<span id="cb11-27"><a href="#cb11-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-28"><a href="#cb11-28" aria-hidden="true" tabindex="-1"></a><span class="fu">setkey</span>(float_loc_j, float_id, float_i)</span>
+<span id="cb11-29"><a href="#cb11-29" aria-hidden="true" tabindex="-1"></a><span class="fu">setkey</span>(float_loc, float_id, float_i)</span>
+<span id="cb11-30"><a href="#cb11-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-31"><a href="#cb11-31" aria-hidden="true" tabindex="-1"></a>float_loc <span class="ot">&lt;-</span> float_loc[float_loc_j]</span>
+<span id="cb11-32"><a href="#cb11-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-33"><a href="#cb11-33" aria-hidden="true" tabindex="-1"></a>float_loc[region_s<span class="sc">==</span><span class="st">"great barrier reef"</span>, region_s <span class="sc">:</span><span class="er">=</span> <span class="st">"coral sea"</span>]</span>
+<span id="cb11-34"><a href="#cb11-34" aria-hidden="true" tabindex="-1"></a>float_loc <span class="ot">&lt;-</span> <span class="fu">unique</span>(float_loc)</span>
+<span id="cb11-35"><a href="#cb11-35" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-36"><a href="#cb11-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-37"><a href="#cb11-37" aria-hidden="true" tabindex="-1"></a>float_loc[,.(</span>
+<span id="cb11-38"><a href="#cb11-38" aria-hidden="true" tabindex="-1"></a>  .N,</span>
+<span id="cb11-39"><a href="#cb11-39" aria-hidden="true" tabindex="-1"></a>  <span class="at">lat_range =</span> <span class="fu">paste0</span>(<span class="fu">round</span>(<span class="fu">range</span>(lat_degrees),<span class="dv">2</span>), <span class="at">collapse =</span> <span class="st">","</span>),</span>
+<span id="cb11-40"><a href="#cb11-40" aria-hidden="true" tabindex="-1"></a>  <span class="at">lon_range =</span> <span class="fu">paste0</span>(<span class="fu">round</span>(<span class="fu">range</span>(lon_degrees),<span class="dv">2</span>), <span class="at">collapse =</span> <span class="st">","</span>)),</span>
+<span id="cb11-41"><a href="#cb11-41" aria-hidden="true" tabindex="-1"></a>.(region_s)][<span class="fu">order</span>(<span class="sc">-</span>N)]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>                  region_s     N     lat_range       lon_range
+                    &lt;char&gt; &lt;int&gt;        &lt;char&gt;          &lt;char&gt;
+ 1:    north pacific ocean 11062   -0.05,57.88     -179.99,180
+ 2:    south pacific ocean 10117   -60.53,2.42     -179.98,180
+ 3:           indian ocean  8967   -60.52,9.47    19.63,166.01
+ 4:   north atlantic ocean  5059    0.03,64.83     -77.31,5.91
+ 5:   south atlantic ocean  4676   -60.53,0.03    -67.87,19.58
+ 6:         philippine sea  1959    3.04,33.91   121.57,146.27
+ 7:         southern ocean  1270 -64.99,-60.54   -179.61,179.9
+ 8:          bay of bengal   733    6.02,19.09     80.52,93.87
+ 9:            arabian sea   643    0.04,24.24      52.33,72.8
+10:             tasman sea   562 -50.44,-29.88   148.71,168.52
+11:              coral sea   560  -29.86,-9.84   144.17,169.11
+12:           labrador sea   304   52.06,60.26   -59.36,-45.53
+13:             bering sea   273    51.2,61.09     -180,179.96
+14:           sargasso sea   272   20.05,35.02      -70,-50.25
+15: great australian bight   206 -42.46,-34.11   120.29,143.96
+16:         gulf of guinea    93     0.59,5.42       -6.6,8.29
+17:     mozambique channel    71   -25.7,-11.4     36.35,47.43
+18:          bay of biscay    66   44.03,47.03      -7.54,-2.4
+19:            solomon sea    66  -11.55,-5.65   148.61,159.36
+20:                   &lt;NA&gt;    51  -64.95,34.56         1.8,180
+21:           davis strait    50   60.28,63.29   -60.16,-49.41
+22:         gulf of alaska    34      56,59.37 -152.83,-138.91
+23:          laccadive sea    32    -0.26,9.93     72.89,77.97
+24:           bismarck sea     7     -4.1,-1.6   143.03,147.01
+25:           gulf of oman     6   23.36,24.12      59.28,59.8
+26:         east china sea     5   23.88,25.23    123.47,126.9
+27:        south china sea     2   20.24,21.23   121.22,122.06
+28:          caribbean sea     2   12.06,12.25   -60.66,-60.05
+                  region_s     N     lat_range       lon_range</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>sample_locs <span class="ot">&lt;-</span> float_loc[, .SD[<span class="fu">sample</span>(.N, <span class="fu">min</span>(<span class="dv">1000</span>, .N))], by <span class="ot">=</span> region_s]</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>map_pts <span class="ot">&lt;-</span> <span class="cf">function</span>(df, <span class="at">x =</span> <span class="st">"lon_degrees"</span>, <span class="at">y =</span> <span class="st">"lat_degrees"</span>, <span class="at">color =</span> <span class="st">"region_s"</span>, <span class="at">legend.rows =</span> <span class="dv">1</span>){</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>() <span class="sc">+</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">borders</span>(<span class="st">"world"</span>, <span class="at">fill =</span> <span class="st">"gray80"</span>, <span class="at">colour =</span> <span class="st">"gray80"</span>) <span class="sc">+</span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>(<span class="at">data =</span> df,</span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>    <span class="fu">aes</span>(<span class="at">x =</span> .data[[x]],</span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>        <span class="at">y =</span> .data[[y]],</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>        <span class="at">color =</span> .data[[color]]), <span class="at">size =</span> .<span class="dv">5</span>) <span class="sc">+</span></span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">coord_sf</span>() <span class="sc">+</span></span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>() <span class="sc">+</span></span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">legend.position =</span> <span class="st">"bottom"</span>) <span class="sc">+</span></span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a>        <span class="co">#legend.title = element_blank()) +</span></span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">guides</span>(<span class="at">colour =</span> <span class="fu">guide_legend</span>(<span class="at">nrow =</span> legend.rows))</span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a><span class="fu">map_pts</span>(sample_locs, <span class="at">color =</span> <span class="st">"region_s"</span>, <span class="at">legend.rows =</span> <span class="dv">5</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><a href="planning_files/figure-html/unnamed-chunk-4-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2"><img src="planning_files/figure-html/unnamed-chunk-4-1.png" class="img-fluid figure-img" width="960"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="fu">setkey</span>(A, float_id, float_i, lon_degrees, lat_degrees)</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="fu">setkey</span>(float_loc, float_id, float_i, lon_degrees, lat_degrees)</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>A <span class="ot">&lt;-</span> A[float_loc]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="explore-speedvelocity-within-north-atlantic-ocean" class="level3" data-number="1.1.4">
+<h3 data-number="1.1.4" class="anchored" data-anchor-id="explore-speedvelocity-within-north-atlantic-ocean"><span class="header-section-number">1.1.4</span> explore speed/velocity within north atlantic ocean</h3>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>NAO <span class="ot">&lt;-</span> A[region_s <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">"north atlantic ocean"</span>, <span class="st">"sargasso sea"</span>)]</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>NAO[, has10 <span class="sc">:</span><span class="er">=</span> <span class="fu">any</span>(<span class="fu">between</span>(dt_day,<span class="dv">9</span>,<span class="dv">11</span>)), float_id]</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>NAO <span class="ot">&lt;-</span> NAO[(has10),]</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="fu">map_pts</span>(NAO, <span class="at">color =</span> <span class="st">"speed_ms"</span>) <span class="sc">+</span> </span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">coord_sf</span>(<span class="at">xlim =</span> <span class="fu">c</span>(<span class="sc">-</span><span class="dv">80</span>,<span class="dv">5</span>), <span class="at">ylim =</span> <span class="fu">c</span>(<span class="dv">0</span>,<span class="dv">65</span>)) <span class="sc">+</span></span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_color_viridis_c</span>(<span class="at">option =</span> <span class="st">"plasma"</span>, <span class="at">na.value =</span> <span class="st">"grey80"</span>) <span class="sc">+</span></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">guides</span>(<span class="at">color =</span> <span class="fu">guide_colorbar</span>())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><a href="planning_files/figure-html/unnamed-chunk-6-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3"><img src="planning_files/figure-html/unnamed-chunk-6-1.png" class="img-fluid figure-img" width="720"></a></p>
+</figure>
+</div>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>fid <span class="ot">&lt;-</span> NAO[<span class="fu">which.max</span>(float_i), float_id]</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>X <span class="ot">&lt;-</span> NAO[float_id <span class="sc">==</span> fid]</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="fu">map_pts</span>(X, <span class="at">color =</span> <span class="st">"speed_ms"</span>) <span class="sc">+</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">coord_sf</span>(<span class="at">xlim =</span> <span class="fu">c</span>(<span class="sc">-</span><span class="dv">80</span>,<span class="dv">5</span>), <span class="at">ylim =</span> <span class="fu">c</span>(<span class="dv">0</span>,<span class="dv">65</span>)) <span class="sc">+</span></span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_color_viridis_c</span>(<span class="at">option =</span> <span class="st">"plasma"</span>, <span class="at">na.value =</span> <span class="st">"grey80"</span>) <span class="sc">+</span></span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">guides</span>(<span class="at">color =</span> <span class="fu">guide_colorbar</span>())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><a href="planning_files/figure-html/unnamed-chunk-6-2.png" class="lightbox" data-gallery="quarto-lightbox-gallery-4"><img src="planning_files/figure-html/unnamed-chunk-6-2.png" class="img-fluid figure-img" width="720"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<section id="correlation-between-speedvelocity-at-ohc" class="level4" data-number="1.1.4.1">
+<h4 data-number="1.1.4.1" class="anchored" data-anchor-id="correlation-between-speedvelocity-at-ohc"><span class="header-section-number">1.1.4.1</span> correlation between speed/velocity at ohc</h4>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>X <span class="ot">&lt;-</span> NAO[<span class="sc">!</span><span class="fu">is.na</span>(speed_ms),.(speed_ms, u_ms, v_ms, z)]</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cor</span>(X)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>         speed_ms     u_ms     v_ms        z
+speed_ms  1.00000  0.84119  0.77879 -0.05363
+u_ms      0.84119  1.00000  0.34311 -0.05087
+v_ms      0.77879  0.34311  1.00000 -0.04276
+z        -0.05363 -0.05087 -0.04276  1.00000</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cor.test</span>(X<span class="sc">$</span>speed_ms, X<span class="sc">$</span>z)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+    Pearson's product-moment correlation
+
+data:  X$speed_ms and X$z
+t = -3.3, df = 3826, p-value = 0.0009
+alternative hypothesis: true correlation is not equal to 0
+95 percent confidence interval:
+ -0.08517 -0.02199
+sample estimates:
+     cor 
+-0.05363 </code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cor.test</span>(X<span class="sc">$</span>u_ms, X<span class="sc">$</span>z)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+    Pearson's product-moment correlation
+
+data:  X$u_ms and X$z
+t = -3.2, df = 3826, p-value = 0.002
+alternative hypothesis: true correlation is not equal to 0
+95 percent confidence interval:
+ -0.08241 -0.01922
+sample estimates:
+     cor 
+-0.05087 </code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cor.test</span>(X<span class="sc">$</span>v_ms, X<span class="sc">$</span>z)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+    Pearson's product-moment correlation
+
+data:  X$v_ms and X$z
+t = -2.6, df = 3826, p-value = 0.008
+alternative hypothesis: true correlation is not equal to 0
+95 percent confidence interval:
+ -0.07434 -0.01109
+sample estimates:
+     cor 
+-0.04276 </code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="co">#S &lt;- NAO[1:2, .(float_id, max_depth, obs_pressures, obs_temps, )]</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<!--
+- calc. radius of drift (by region)
+- do floats replace eachother in the same area? eg does a float move out of an initial radius but a different float moves into that initial radius?
+  - within a fixed region (basins) how much area is covered by the floats over time? do they begin to cluster or do they circle and replace eachother such that the same area is covered?
+- discuss distance metrics to calc. velocity
+-->
+</section>
+</section>
+</section>
 </section>
 
 </main>
@@ -488,6 +818,38 @@ ul.task-list li input[type="checkbox"] {
   });
   </script>
 </div> <!-- /content -->
+<script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","descPosition":"bottom","loop":false,"openEffect":"zoom","selector":".lightbox"});
+(function() {
+  let previousOnload = window.onload;
+  window.onload = () => {
+    if (previousOnload) {
+      previousOnload();
+    }
+    lightboxQuarto.on('slide_before_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      const href = trigger.getAttribute('href');
+      if (href !== null) {
+        const imgEl = window.document.querySelector(`a[href="${href}"] img`);
+        if (imgEl !== null) {
+          const srcAttr = imgEl.getAttribute("src");
+          if (srcAttr && srcAttr.startsWith("data:")) {
+            slideConfig.href = srcAttr;
+          }
+        }
+      } 
+    });
+  
+    lightboxQuarto.on('slide_after_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(slideNode);
+      }
+    });
+  
+  };
+  
+})();
+          </script>
 
 
 
