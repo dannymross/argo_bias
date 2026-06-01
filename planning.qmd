@@ -153,7 +153,7 @@ map_pts(X, color = "speed_ms") +
   guides(color = guide_colorbar())
 ```
 
-#### correlation between speed/velocity at ohc
+#### correlation between speed/velocity and ohc
 ```{r}
 X <- NAO[!is.na(speed_ms),.(speed_ms, u_ms, v_ms, z)]
 cor(X)
