@@ -104,23 +104,62 @@ argo[, float_r := float_n > 1]
 
 argo[(float_r), dt_s := as.numeric(difftime(isodatetime, lag(isodatetime), units = "secs")), float_id]
 
-argo[(float_r), dlat_m := geosphere::distVincentyEllipsoid(
-  p1 = cbind(lag(lon_degrees), lag(lat_degrees)),
-  p2 = cbind(lag(lon_degrees), lat_degrees)
-), float_id]
-argo[(float_r), dlon_m := geosphere::distVincentyEllipsoid(
-  p1 = cbind(lag(lon_degrees), lag(lat_degrees)),
-  p2 = cbind(lon_degrees, lag(lat_degrees))
-), float_id]
+vincenty_dx <- function(lon1, lat1, lon2, lat2) {
+  geosphere::distVincentyEllipsoid(
+    p1 = cbind(lon1, lat1),
+    p2 = cbind(lon2, lat2)
+  )
+}
+
+argo[(float_r), dx_m := vincenty_dx(lag(lon_degrees), lag(lat_degrees), lon_degrees, lat_degrees), float_id]
+argo[(float_r), dlat_m := vincenty_dx(lag(lon_degrees), lag(lat_degrees), lag(lon_degrees), lat_degrees), float_id]
+argo[(float_r), dlon_m := vincenty_dx(lag(lon_degrees), lag(lat_degrees), lon_degrees, lag(lat_degrees)), float_id]
 
 argo[, u_ms := dlon_m / dt_s] # eastward velocity m/s
 argo[, v_ms := dlat_m / dt_s] # northward velocity m/s
-argo[, speed_ms := sqrt(u_ms^2 + v_ms^2)]
+argo[, speed_ms := dx_m / dt_s]
 argo[, theta := atan2(u_ms, v_ms)] # bearing radians (N,E,S,W) = (0,pi/2,pi,-pi/2)
 
 cols <- c("float_id", "float_r", "float_n", "float_i", "isodatetime")
 setcolorder(argo, cols)
 
+
+## add ocean region
+# mregions2 downloads shapefiles from <https://www.marineregions.org/sources.php#goas>
+library(mregions2)
+library(sf)
+sf_use_s2(FALSE)
+
+goas_file <- paste0(root, "/data/goas.rds")
+
+if (file.exists(goas_file)) {
+  goas <- readRDS(goas_file)
+} else {
+  goas <- mrp_get("goas")
+  saveRDS(goas, goas_file)
+}
+
+latlon <- c("lon_degrees", "lat_degrees")
+float_loc <- argo[, .(float_id, float_i, lon_degrees, lat_degrees)]
+float_loc_sf <- st_as_sf(float_loc, coords = latlon, crs = 4326) # WGS84 globe
+
+float_loc_j <- st_join(float_loc_sf, goas["name"])
+float_loc_j <- as.data.table(float_loc_j)[, geometry := NULL]
+setnames(float_loc_j, c("name"), c("ocean"))
+float_loc_j[, ocean := tolower(ocean)]
+
+setkey(float_loc_j, float_id, float_i)
+setkey(float_loc, float_id, float_i)
+
+float_loc <- float_loc[float_loc_j]
+float_loc[, (latlon) := NULL]
+
+setkey(argo, float_id, float_i)
+setkey(float_loc, float_id, float_i)
+
+argo <- argo[float_loc]
+
+# save preprocessed data
 if (!test_mode) {
   save(argo, file = paste0(root, "/data/argo_velo_data_january.RData"))
 }
