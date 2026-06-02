@@ -65,8 +65,8 @@ calculate_vhc <- function(ii) {
   )
   return(data.frame(
     "vhc_obs" = vhc_obs,
-    "obs_pressures" = I(list(obs_pressures_endpoints)),
-    "obs_temps" = I(list(obs_temps_endpoints))
+    "obs_pressures" = I(list(obs_pressures_clean)),
+    "obs_temps" = I(list(obs_temps))
   ))
 }
 
@@ -100,10 +100,11 @@ setkey(argo, float_id, isodatetime)
 
 argo[, float_n := .N, float_id]
 argo[, float_i := 1:.N, float_id]
-argo[, float_r := float_n > 1]
+argo[, float_r := float_n > 1] # dummy for floats with multiple obs
 
 argo[(float_r), dt_s := as.numeric(difftime(isodatetime, lag(isodatetime), units = "secs")), float_id]
 
+## distance, velocity, bearing, speed
 vincenty_dx <- function(lon1, lat1, lon2, lat2) {
   geosphere::distVincentyEllipsoid(
     p1 = cbind(lon1, lat1),
@@ -111,18 +112,47 @@ vincenty_dx <- function(lon1, lat1, lon2, lat2) {
   )
 }
 
-argo[(float_r), dx_m := vincenty_dx(lag(lon_degrees), lag(lat_degrees), lon_degrees, lat_degrees), float_id]
-argo[(float_r), dlat_m := vincenty_dx(lag(lon_degrees), lag(lat_degrees), lag(lon_degrees), lat_degrees), float_id]
-argo[(float_r), dlon_m := vincenty_dx(lag(lon_degrees), lag(lat_degrees), lon_degrees, lag(lat_degrees)), float_id]
+argo[(float_r), dlat_degrees := c(NA, diff(lat_degrees)), float_id]
+argo[(float_r), dlon_degrees := c(NA, diff(lon_degrees)), float_id]
 
+argo[(float_r), dx_m := vincenty_dx(lag(lon_degrees), lag(lat_degrees), lon_degrees, lat_degrees), float_id]
+argo[(float_r), dlat_m := sign(dlat_degrees) * vincenty_dx(lag(lon_degrees), lag(lat_degrees), lag(lon_degrees), lat_degrees), float_id]
+argo[(float_r), dlon_m := sign(dlon_degrees) * vincenty_dx(lag(lon_degrees), lag(lat_degrees), lon_degrees, lag(lat_degrees)), float_id]
+
+argo[, speed_ms := dx_m / dt_s] # speed m/s
 argo[, u_ms := dlon_m / dt_s] # eastward velocity m/s
 argo[, v_ms := dlat_m / dt_s] # northward velocity m/s
-argo[, speed_ms := dx_m / dt_s]
-argo[, theta := atan2(u_ms, v_ms)] # bearing radians (N,E,S,W) = (0,pi/2,pi,-pi/2)
+argo[, theta := atan2(u_ms, v_ms)] # bearing radians (N,E,S,W) = (0,pi/2,+/-pi,-pi/2)
 
-cols <- c("float_id", "float_r", "float_n", "float_i", "isodatetime")
-setcolorder(argo, cols)
+## change in temp and ohc
+add_temp_cols <- function(df, depths) {
+  for (depth in depths) {
+    df[, c(
+      paste0("idx_", depth),
+      paste0("pressure_", depth),
+      paste0("temp_", depth)
+    ) := {
+      i <- mapply(function(p) which.min(abs(p - depth)), obs_pressures)
+      list(
+        i,
+        mapply(function(p, j) p[j], obs_pressures, i),
+        mapply(function(t, j) t[j], obs_temps, i)
+      )
+    }]
+  }
+}
 
+add_dtemp_cols <- function(df, depths) {
+  for (depth in depths) {
+    df[, paste0("dtemp_", depth) := c(NA, diff(get(paste0("temp_", depth)))), float_id]
+  }
+}
+
+depths <- c(0, 100, 500, 1000, 2000)
+add_temp_cols(argo, depths)
+add_dtemp_cols(argo, depths)
+
+argo[, dvhc_obs := c(NA, diff(vhc_obs)), float_id]
 
 ## add ocean region
 # mregions2 downloads shapefiles from <https://www.marineregions.org/sources.php#goas>
@@ -159,7 +189,12 @@ setkey(float_loc, float_id, float_i)
 
 argo <- argo[float_loc]
 
-# save preprocessed data
+
+## order cols
+cols <- c("float_id", "float_r", "float_n", "float_i", "isodatetime")
+setcolorder(argo, cols)
+
+## save preprocessed data
 if (!test_mode) {
   save(argo, file = paste0(root, "/data/argo_velo_data_january.RData"))
 }

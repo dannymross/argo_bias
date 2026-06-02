@@ -18,8 +18,8 @@ execute:
   message: false
   prompt: true
   fig-align: center
-  fig-width: 7.5
-  fig-height: 6
+  fig-width: 11
+  fig-height: 8.5
 knitr:
   opts_chunk:
     prompt: false
@@ -49,7 +49,7 @@ library(GpGp)
 load(paste0(root, "/data/argo_velo_data_january.RData"))
 ```
 
-## number of floats in data
+## floats
 ```{r}
 argo[,.(
   n_floats = uniqueN(float_id),
@@ -57,13 +57,16 @@ argo[,.(
 ), float_r]
 
 A <- argo[(float_r)]
+```
 
+## obs per float
+```{r}
 float_n <- A[,.N,float_id]
 summary(float_n$N)
 hist(float_n$N, breaks = seq(0,44,1), main = "obs per float", xlab = "n")
 ```
 
-## surfacing/observation frequency
+## surfacing/obs frequency
 ```{r}
 A[, dt_day := dt_s / (60^2 * 24)]
 summary(A$dt_day)
@@ -81,7 +84,6 @@ B[,.(obs = sum(N)),keyby = cat][,prop := obs / sum(obs)][, c_prop := cumsum(prop
 ```
 
 ## ocean region 
-
 ```{r}
 float_loc <- A[,.(float_id, float_i, lon_degrees, lat_degrees, ocean)]
 
@@ -89,13 +91,14 @@ float_loc[,.N,ocean][order(-N)]
 
 sample_locs <- float_loc[, .SD[sample(.N, min(1000, .N))], by = ocean]
 
-map_pts <- function(df, x = "lon_degrees", y = "lat_degrees", color = "ocean", legend.rows = 1){
+map_pts <- function(df, x = "lon_degrees", y = "lat_degrees", color = "ocean", size = .5, legend.rows = 1){
   ggplot() +
   borders("world", fill = "gray80", colour = "gray80") +
   geom_point(data = df,
     aes(x = .data[[x]],
         y = .data[[y]],
-        color = .data[[color]]), size = .5) +
+        color = .data[[color]]),
+        size = size) +
   coord_sf() +
   theme_minimal() +
   theme(legend.position = "bottom") +
@@ -105,31 +108,119 @@ map_pts <- function(df, x = "lon_degrees", y = "lat_degrees", color = "ocean", l
 map_pts(sample_locs, color = "ocean", legend.rows = 3)
 ```
 
-## explore speed/velocity within north atlantic ocean
+## speed/velocity
 ```{r}
-NAO <- A[ocean %in% c("north atlantic ocean")]
-NAO[, has10 := any(between(dt_day,9,11)), float_id]
-NAO <- NAO[(has10),]
-map_pts(NAO, color = "speed_ms") + 
-  coord_sf(xlim = c(-80,5), ylim = c(0,65)) +
-  scale_color_viridis_c(option = "plasma", na.value = "grey80") +
-  guides(color = guide_colorbar())
+#| fig-height: 6
+B <- A[!is.na(speed_ms)]
 
-fid <- NAO[which.max(float_i), float_id]
-X <- NAO[float_id == fid]
-map_pts(X, color = "speed_ms") +
-  coord_sf(xlim = c(-80,5), ylim = c(0,65)) +
-  scale_color_viridis_c(option = "plasma", na.value = "grey80") +
+X <- A[!is.na(speed_ms) & speed_ms < 0.5,]
+par(mfrow = c(1,3))
+hist(X[,speed_ms], breaks = seq(0,.5,.01), main = "float speed", xlab = "speed (m/s)")
+hist(X[,u_ms], breaks = seq(-.5,.5,.01), main = "float eastward velocity", xlab = "u (m/s)")
+hist(X[,v_ms], breaks = seq(-.5,.5,.01), main = "float northward velocity", xlab = "v (m/s)")
+```
+
+### outliers
+```{r}
+b <- c(seq(0,.1,.01),seq(.2,.5,.1),1,10,20,50,100,500,1000)
+B[, speed_g := cut(speed_ms, breaks = b, dig.lab = 5)]
+B[,.(obs = .N),keyby = speed_g][,prop := obs / sum(obs)][, c_prop := cumsum(prop)][]
+```
+
+### region
+
+```{r}
+oceans <- sort(unique(B$ocean))
+oceans <- oceans[oceans!="south china and easter archipelagic seas"]
+par(mfrow = c(2,4))
+for (o in oceans) {
+  hist(
+    X[ocean == o, speed_ms],
+    breaks = seq(0, 0.5, 0.01),
+    main = o,
+    xlab = "speed (m/s)"
+  )
+}
+```
+
+```{r}
+par(mfrow = c(2,4))
+for (o in oceans) {
+  hist(
+    X[ocean == o,u_ms],
+    breaks = seq(-0.5, 0.5, 0.01),
+    main = o,
+    xlab = "u (m/s)"
+  )
+}
+```
+
+```{r}
+par(mfrow = c(2,4))
+for (o in oceans) {
+  hist(
+    X[ocean == o,v_ms],
+    breaks = seq(-0.5, 0.5, 0.01),
+    main = o,
+    xlab = "v (m/s)"
+  )
+}
+```
+
+```{r}
+map_pts(X, color = "speed_ms") + 
+  labs(title = "speed (m/s)") + 
+  scale_color_gradient2(midpoint = 0,low = "red",mid = "grey100",high = "blue") + 
   guides(color = guide_colorbar())
+```
+
+```{r}
+map_pts(X, color = "u_ms") +
+  labs(title = "u (m/s) eastward velocity") +
+  scale_color_gradient2(midpoint = 0,low = "red",mid = "grey100",high = "blue") + 
+  guides(color = guide_colorbar())
+```
+
+```{r}
+map_pts(X, color = "v_ms") +
+  labs(title = "v (m/s) northward velocity") +
+  scale_color_gradient2(midpoint = 0,low = "red",mid = "grey100",high = "blue") + 
+  guides(color = guide_colorbar())
+```
+
+
+## $\Delta$OHC vs speed/velocity
+```{r}
+X
+```
+
+
+
+#### north atlantic ocean
+```{r}
+#NAO <- A[ocean %in% c("north atlantic ocean")]
+#NAO[, has10 := any(between(dt_day,9,11)), float_id]
+#NAO <- NAO[(has10),]
+#map_pts(NAO, color = "speed_ms") + 
+#  coord_sf(xlim = c(-80,5), ylim = c(0,65)) +
+#  scale_color_viridis_c(option = "plasma", na.value = "grey80") +
+#  guides(color = guide_colorbar())
+#
+#fid <- NAO[which.max(float_i), float_id]
+#X <- NAO[float_id == fid]
+#map_pts(X, color = "speed_ms") +
+#  coord_sf(xlim = c(-80,5), ylim = c(0,65)) +
+#  scale_color_viridis_c(option = "plasma", na.value = "grey80") +
+#  guides(color = guide_colorbar())
 ```
 
 ## correlation between speed/velocity and ohc
 ```{r}
-X <- NAO[!is.na(speed_ms),.(speed_ms, u_ms, v_ms, z)]
-cor(X)
-cor.test(X$speed_ms, X$z)
-cor.test(X$u_ms, X$z)
-cor.test(X$v_ms, X$z)
+#X <- NAO[!is.na(speed_ms),.(speed_ms, u_ms, v_ms, z)]
+#cor(X)
+#cor.test(X$speed_ms, X$z)
+#cor.test(X$u_ms, X$z)
+#cor.test(X$v_ms, X$z)
 ```
 
 ```{r}
@@ -138,16 +229,16 @@ cor.test(X$v_ms, X$z)
 
 ## correlation between speed/velocity and ohc
 ```{r}
-fid <- A[which.max(float_i), float_id]
-X <- A[float_id == fid]
-map_pts(X, color = "speed_ms") +
-  scale_color_viridis_c(option = "plasma", na.value = "grey80") +
-  guides(color = guide_colorbar())
-X <- A[!is.na(speed_ms),.(speed_ms, u_ms, v_ms, z)]
-cor(X)
-ct <- cor.test(X$speed_ms, X$z)
-cor.test(X$u_ms, X$z)
-cor.test(X$v_ms, X$z)
+#fid <- A[which.max(float_i), float_id]
+#X <- A[float_id == fid]
+#map_pts(X, color = "speed_ms") +
+#  scale_color_viridis_c(option = "plasma", na.value = "grey80") +
+#  guides(color = guide_colorbar())
+#X <- A[!is.na(speed_ms),.(speed_ms, u_ms, v_ms, z)]
+#cor(X)
+#ct <- cor.test(X$speed_ms, X$z)
+#cor.test(X$u_ms, X$z)
+#cor.test(X$v_ms, X$z)
 ```
 <!--
 - calc. radius of drift (by region)
