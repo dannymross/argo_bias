@@ -189,6 +189,11 @@ setkey(float_loc, float_id, float_i)
 
 argo <- argo[float_loc]
 
+## add centered temp within ocean and depth
+center <- function(x) (x - mean(x, na.rm = T))
+for (depth in depths) {
+  argo[, paste0("temp_", depth, "_c") := center(get(paste0("temp_", depth))), ocean]
+}
 
 ## order cols
 cols <- c("float_id", "float_r", "float_n", "float_i", "isodatetime")

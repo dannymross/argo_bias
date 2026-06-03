@@ -1,6 +1,7 @@
 ---
 title: "argo bias"
-subtitle: "analysis report"
+subtitle: "analysis notebook"
+author : daniel ross
 date-modified: last-modified
 date-format: "YYYY-MM-DD HH:mm"
 format:
@@ -13,7 +14,7 @@ format:
     number-sections: true
 lightbox: true
 execute:
-  echo: true
+  echo: false
   warning: false
   message: false
   prompt: true
@@ -33,6 +34,11 @@ editor_options:
 - [K. Lebedev, H. Yoshinari, N. A. Maximenko, and P. W. Hacker. YoMaHa'07: Velocity data assessed from trajectories of Argo floats at parking level and at the sea surface, IPRC Technical Note No. 4(2), June 12, 2007, 16p.](https://apdrc.soest.hawaii.edu/projects/yomaha/)
   - derive Argo drift speed at park depth to quantify ocean circulation at 1,000 m depth
   - See also, [Katsumata, K., Yoshinari, H. Uncertainties in global mapping of Argo drift data at the parking level. J Oceanogr 66, 553–569 (2010). https://doi.org/10.1007/s10872-010-0046-4](https://link.springer.com/article/10.1007/s10872-010-0046-4)
+  - Estimate parking level (1000m) zonal (eastward $u$) and meridional (northward $v$) velocity components using the coordinates ($[X,Y]$) of floats before it dives and after it re-arrives at the sea surface
+    \begin{gather}
+      (U_\text{deep}^n, V_\text{deep}^n) = ([X,Y]^n_\text{first} - [X,Y]^{n-1}_\text{last}) / (T^n_\text{first} - T^{n-1}_\text{last})
+    \end{gather}
+  - Use a regression to estimate surface velocity and errors for deep/surface velocities
 
 # eda
 
@@ -49,7 +55,9 @@ library(GpGp)
 load(paste0(root, "/data/argo_velo_data_january.RData"))
 ```
 
-## floats
+## float preliminaries
+
+*drop observations for floats with only one observation*
 ```{r}
 argo[,.(
   n_floats = uniqueN(float_id),
@@ -59,14 +67,18 @@ argo[,.(
 A <- argo[(float_r)]
 ```
 
-## obs per float
+### obs per float
 ```{r}
 float_n <- A[,.N,float_id]
 summary(float_n$N)
 hist(float_n$N, breaks = seq(0,44,1), main = "obs per float", xlab = "n")
 ```
 
-## surfacing/obs frequency
+### surfacing/obs frequency
+
+*most floats do share data every 10 days, however there are groups of floats that have one or two years gaps between profile records*
+
+
 ```{r}
 A[, dt_day := dt_s / (60^2 * 24)]
 summary(A$dt_day)
@@ -83,7 +95,13 @@ B[, cat := cut(dt_day, breaks = b, dig.lab = 5)]
 B[,.(obs = sum(N)),keyby = cat][,prop := obs / sum(obs)][, c_prop := cumsum(prop)][]
 ```
 
-## ocean region 
+### ocean region 
+
+*for this analysis I used the global ocean regions*
+*floats lat/lon reverse geocoded using shapefile available at <https://www.marineregions.org/sources.php#goas> and downloaded using the package `mregions2`*
+*dropped the 3 observations in the south china sea for regional analyses*
+
+
 ```{r}
 float_loc <- A[,.(float_id, float_i, lon_degrees, lat_degrees, ocean)]
 
@@ -104,16 +122,35 @@ map_pts <- function(df, x = "lon_degrees", y = "lat_degrees", color = "ocean", s
   theme(legend.position = "bottom") +
   guides(colour = guide_legend(ncol = legend.rows))
 }
+map_sum_pts <- function(df, x = "lon_degrees", y = "lat_degrees", z = "u_ms", size = .5, legend.rows = 1){
+  ggplot(df, aes(x = .data[[x]],y = .data[[y]],z = .data[[z]])) +
+  borders("world", fill = "gray80", colour = "gray80") +
+  stat_summary_2d(fun = mean, binwidth = c(1,1)) + 
+  scale_fill_gradient2(midpoint = 0,low = "red",mid = "grey100",high = "blue") + 
+  coord_sf() +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  guides(color = guide_colorbar())
+}
 
 map_pts(sample_locs, color = "ocean", legend.rows = 3)
 ```
 
-## speed/velocity
+## velocity
+*velocity components u/v are calculated by finding the change in longitude/latitude and dividing by change in time. [`geosphere::distVincentyEllipsoid`](https://cran.r-project.org/web/packages/geosphere/refman/geosphere.html#distVincentyEllipsoid>) is used to calculate the change in distance.*
+
+*also calculated the magnitude of the velocity (speed) and the bearing of the velocity vectors in radians*
+
+
+### overall histograms
+*histograms of float velocity over entire ocean omitting extreme outliers corresponding to speeds >0.5m/s.*
+*outliers are dropped for the remainder of this analysis.*
 ```{r}
 #| fig-height: 6
 B <- A[!is.na(speed_ms)]
 
-X <- A[!is.na(speed_ms) & speed_ms < 0.5,]
+X <- A[!is.na(speed_ms) & speed_ms <= 0.5,]
+X <- X[ocean != "south china and easter archipelagic seas"]
 par(mfrow = c(1,3))
 hist(X[,speed_ms], breaks = seq(0,.5,.01), main = "float speed", xlab = "speed (m/s)")
 hist(X[,u_ms], breaks = seq(-.5,.5,.01), main = "float eastward velocity", xlab = "u (m/s)")
@@ -121,17 +158,70 @@ hist(X[,v_ms], breaks = seq(-.5,.5,.01), main = "float northward velocity", xlab
 ```
 
 ### outliers
+*for preliminary analyses simply dropped outliers and did not analyze the region or reliability of these observations*
 ```{r}
-b <- c(seq(0,.1,.01),seq(.2,.5,.1),1,10,20,50,100,500,1000)
+#b <- c(seq(0,.1,.01),seq(.2,.5,.1),1,10,20,50,100,500,1000)
+b <- c(0,.5,1,10,20,50,100,500,B[,max(speed_ms)])
 B[, speed_g := cut(speed_ms, breaks = b, dig.lab = 5)]
 B[,.(obs = .N),keyby = speed_g][,prop := obs / sum(obs)][, c_prop := cumsum(prop)][]
 ```
 
-### region
+### velocity maps
+
+*averaged speed/velocity within 1 deg by 1 deg cells*
+
+```{r}
+map_sum_pts(X, z = "speed_ms") + 
+  labs(title = "speed (m/s)")
+```
+
+```{r}
+map_sum_pts(X, z = "u_ms") +
+  labs(title = "u (m/s) eastward velocity")
+```
+
+```{r}
+map_sum_pts(X, z = "v_ms") +
+  labs(title = "v (m/s) northward velocity")
+```
+
+
+
+### regional distributions
 
 ```{r}
 oceans <- sort(unique(B$ocean))
 oceans <- oceans[oceans!="south china and easter archipelagic seas"]
+```
+
+#### mean velocity
+```{r}
+X[, lapply(.SD, mean), .SDcols = c("u_ms","v_ms","speed_ms"), keyby = ocean]
+```
+
+#### sd velocity
+```{r}
+X[, lapply(.SD, sd), .SDcols = c("u_ms","v_ms","speed_ms"), keyby = ocean]
+```
+
+#### joint dist of velocity components
+```{r}
+ggplot(X, aes(x = u_ms, y = v_ms)) +
+  stat_bin_2d(aes(fill = after_stat(density)), binwidth = 0.01) +
+  facet_wrap(~ ocean, axes = "all") +
+  scale_fill_viridis_c(option = "C") +
+  labs(
+    x = "u (m/s)",
+    y = "v (m/s)",
+    fill = "density"
+  ) +
+  theme_minimal() +
+  coord_fixed()
+```
+
+
+<!--
+```{r}
 par(mfrow = c(2,4))
 for (o in oceans) {
   hist(
@@ -166,37 +256,232 @@ for (o in oceans) {
   )
 }
 ```
+-->
+
+## temperature
+
+*histograms of centered temperature by profile pressure (~depth in m).*
+*0m and 2000m correspond to the min/max observed pressure for each float.*
+*for other depths, found the temperature associated with the pressure obs closest to the target depth. e.g., the most common pressure (8.4% of floats) for the '1000m' observations is in fact 988m, while 7.7% of floats have an obs at exactly 1000.0m*
+
+<!-- X[,.N,pressure_1000][,prop := N / sum(N)][order(-N)]-->
+
+::: {.panel-tabset}
+### 0m
+```{r}
+par(mfrow = c(2,4))
+for (o in oceans) {
+  hist(
+    X[ocean == o, temp_0_c],
+    #freq = FALSE,
+    breaks = 30,
+    main = o,
+    xlab = "centered temp 0m"
+  )
+}
+```
+### 100m
+```{r}
+par(mfrow = c(2,4))
+for (o in oceans) {
+  hist(
+    X[ocean == o, temp_100_c],
+    #freq = FALSE,
+    breaks = 30,
+    main = o,
+    xlab = "centered temp 100m"
+  )
+}
+```
+### 500m
+```{r}
+par(mfrow = c(2,4))
+for (o in oceans) {
+  hist(
+    X[ocean == o, temp_500_c],
+   # freq = FALSE,
+    breaks = 30,
+    main = o,
+    xlab = "centered temp 500m"
+  )
+}
+```
+### 1000m
+```{r}
+par(mfrow = c(2,4))
+for (o in oceans) {
+  hist(
+    X[ocean == o, temp_1000_c],
+   # freq = FALSE,
+    breaks = 30,
+    main = o,
+    xlab = "centered temp 1000m"
+  )
+}
+```
+### 2000m
+```{r}
+par(mfrow = c(2,4))
+for (o in oceans) {
+  hist(
+    X[ocean == o, temp_2000_c],
+    #freq = FALSE,
+    breaks = 30,
+    main = o,
+    xlab = "centered temp 2000m"
+  )
+}
+```
+:::
+
+## correlation between temperature and velocity
+
+*correlation between temperatures and velocities for floats with multiple observations*
+*dtemp_ variables are the change in temperature for consecutive float observations at the given depth*
+*
 
 ```{r}
-map_pts(X, color = "speed_ms") + 
-  labs(title = "speed (m/s)") + 
-  scale_color_gradient2(midpoint = 0,low = "red",mid = "grey100",high = "blue") + 
-  guides(color = guide_colorbar())
+#| echo: false
+velo_temp_cor <- function(df, digits = 4){
+  cols <- c("u_ms", "v_ms", "speed_ms",paste0("temp_",c(0,500,1000,2000)),"vhc_obs",paste0("dtemp_",c(0,500,1000,2000)),"dvhc_obs")
+  V <- df[,..cols]
+  return(round(cor(V)[,1:3],digits))
+}
+```
+
+### excluding outlier velocities
+```{r}
+#| results: asis
+#| echo: false
+cat("::: {.panel-tabset}\n\n")
+
+cat("## overall", "\n\n")
+tab <- knitr::kable(velo_temp_cor(X))
+cat(tab, sep = "\n")
+cat("N:", X[,.N], sep = "\n")
+cat("\n")
+
+for (o in oceans) {
+  cat("##", o, "\n\n")
+  tab <- knitr::kable(velo_temp_cor(X[ocean == o,]))
+  cat(tab, sep = "\n")
+  cat("N:", X[ocean == o,.N], sep = "\n")
+  cat("\n")
+  cat("\n\n")
+}
+
+cat(":::\n")
+```
+
+### including outlier velocities
+```{r}
+#| results: asis
+#| echo: false
+cat("::: {.panel-tabset}\n\n")
+
+cat("## overall", "\n\n")
+tab <- knitr::kable(velo_temp_cor(A[float_i>1,]))
+cat(tab, sep = "\n")
+cat("N:", A[float_i>1,.N], sep = "\n")
+cat("\n")
+
+for (o in oceans) {
+  cat("##", o, "\n\n")
+  tab <- knitr::kable(velo_temp_cor(A[float_i>1 & ocean == o,]))
+  cat(tab, sep = "\n")
+  cat("N:", A[float_i>1 & ocean == o,.N], sep = "\n")
+  cat("\n")
+  cat("\n\n")
+}
+
+cat(":::\n")
+```
+
+### heatmaps
+*centered temperatures averaged within 0.01m/s cells of (u, v).*
+*positive eastward velocity appears to be correlated with negative temperatures*
+
+```{r}
+plot_velocity_heatmap <- function(df,z,title = z,binwidth = 0.01, midpoint = 0, ocean = T) {
+
+  p <- ggplot(df, aes(x = u_ms, y = v_ms, z = .data[[z]])) +
+    stat_summary_2d(fun = mean, binwidth = binwidth) +
+    scale_fill_gradient2(low = "blue", mid = "white", high = "red",
+      midpoint = midpoint, name = "temp") +
+    labs(x = "u (m/s)",y = "v (m/s)",title = title) +
+    theme_minimal() +
+    theme(legend.position = "bottom") +
+    coord_equal()
+
+  if(ocean){
+    p <- p + facet_wrap(~ocean)
+  }
+  p
+}
+```
+
+::: {.panel-tabset}
+## 0m
+```{r}
+plot_velocity_heatmap(X, "temp_0_c", "centered ocean temp at 0m")
+```
+## 100m
+```{r}
+#plot_velocity_heatmap(X, "temp_100", "ocean temp at 100m", ocean=F)
+```
+```{r}
+plot_velocity_heatmap(X, "temp_100_c", "centered ocean temp at 100m")
+```
+## 500m
+```{r}
+plot_velocity_heatmap(X, "temp_500_c", "centered ocean temp at 500m")
+```
+## 1000m
+```{r}
+plot_velocity_heatmap(X, "temp_1000_c", "centered ocean temp at 1000m")
+```
+## 2000m
+```{r}
+plot_velocity_heatmap(X, "temp_2000_c", "centered ocean temp at 2000m")
+```
+:::
+
+<!--
+```{r}
+scatter <- function(df, x, y, main = NULL, line = TRUE){
+  main <- ifelse(is.null(main), paste(x, "vs", y), main)
+  plot(df[[x]], df[[y]],
+     pch = 1, 
+     xlab = x, 
+     ylab = y,
+     main = main
+  )
+  lines(lowess(df[[x]], df[[y]]), col = "red", lwd = 1)
+}
 ```
 
 ```{r}
-map_pts(X, color = "u_ms") +
-  labs(title = "u (m/s) eastward velocity") +
-  scale_color_gradient2(midpoint = 0,low = "red",mid = "grey100",high = "blue") + 
-  guides(color = guide_colorbar())
+scatter(X, "u_ms", "dtemp_1000")
 ```
 
 ```{r}
-map_pts(X, color = "v_ms") +
-  labs(title = "v (m/s) northward velocity") +
-  scale_color_gradient2(midpoint = 0,low = "red",mid = "grey100",high = "blue") + 
-  guides(color = guide_colorbar())
+scatter(X, "u_ms", "temp_1000")
 ```
 
-
-## $\Delta$OHC vs speed/velocity
 ```{r}
-X
+par(mfrow = c(2,4))
+for(o in oceans){
+  scatter(X[ocean==o], "u_ms", "dtemp_1000", main = o)
+}
 ```
 
+```{r}
+par(mfrow = c(2,4))
+for(o in oceans){
+  scatter(X[ocean==o], "u_ms", "temp_1000", main = o)
+}
+```
 
-
-#### north atlantic ocean
 ```{r}
 #NAO <- A[ocean %in% c("north atlantic ocean")]
 #NAO[, has10 := any(between(dt_day,9,11)), float_id]
@@ -214,7 +499,6 @@ X
 #  guides(color = guide_colorbar())
 ```
 
-## correlation between speed/velocity and ohc
 ```{r}
 #X <- NAO[!is.na(speed_ms),.(speed_ms, u_ms, v_ms, z)]
 #cor(X)
@@ -227,7 +511,6 @@ X
 #S <- NAO[1:2, .(float_id, max_depth, obs_pressures, obs_temps, )]
 ```
 
-## correlation between speed/velocity and ohc
 ```{r}
 #fid <- A[which.max(float_i), float_id]
 #X <- A[float_id == fid]
@@ -240,6 +523,8 @@ X
 #cor.test(X$u_ms, X$z)
 #cor.test(X$v_ms, X$z)
 ```
+-->
+
 <!--
 - calc. radius of drift (by region)
 - do floats replace eachother in the same area? eg does a float move out of an initial radius but a different float moves into that initial radius?
