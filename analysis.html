@@ -113,10 +113,15 @@ window.Quarto = {
   <li><a href="#overall-1" id="toc-overall-1" class="nav-link" data-scroll-target="#overall-1"><span class="header-section-number">2.4.1.1</span> overall</a></li>
   <li><a href="#by-year" id="toc-by-year" class="nav-link" data-scroll-target="#by-year"><span class="header-section-number">2.4.1.2</span> by year</a></li>
   </ul></li>
-  <li><a href="#including-outlier-velocities" id="toc-including-outlier-velocities" class="nav-link" data-scroll-target="#including-outlier-velocities"><span class="header-section-number">2.4.2</span> including outlier velocities</a></li>
-  <li><a href="#heatmaps" id="toc-heatmaps" class="nav-link" data-scroll-target="#heatmaps"><span class="header-section-number">2.4.3</span> heatmaps</a></li>
+  <li><a href="#including-outlier-velocities" id="toc-including-outlier-velocities" class="nav-link" data-scroll-target="#including-outlier-velocities"><span class="header-section-number">2.4.2</span> including outlier velocities</a>
+  <ul>
+  <li><a href="#overall-13" id="toc-overall-13" class="nav-link" data-scroll-target="#overall-13"><span class="header-section-number">2.4.2.1</span> overall</a></li>
   </ul></li>
-  <li><a href="#next-steps" id="toc-next-steps" class="nav-link" data-scroll-target="#next-steps"><span class="header-section-number">2.5</span> next steps</a></li>
+  <li><a href="#heatmaps" id="toc-heatmaps" class="nav-link" data-scroll-target="#heatmaps"><span class="header-section-number">2.4.3</span> heatmaps</a>
+  <ul>
+  <li><a href="#overall-15" id="toc-overall-15" class="nav-link" data-scroll-target="#overall-15"><span class="header-section-number">2.4.3.1</span> overall</a></li>
+  </ul></li>
+  </ul></li>
   </ul></li>
   </ul>
 </nav>
@@ -144,7 +149,7 @@ window.Quarto = {
     <div>
     <div class="quarto-title-meta-heading">Modified</div>
     <div class="quarto-title-meta-contents">
-      <p class="date-modified">2026-06-03 15:32</p>
+      <p class="date-modified">2026-06-03 17:21</p>
     </div>
   </div>
     
@@ -179,6 +184,7 @@ window.Quarto = {
 <li><em>analysis based on preprocessed <code>argo_object_01.RData</code> and is therefore limited to float observations in January of each year from 2007 through 2016</em></li>
 <li><em>augmented <code>preprocess_argo_data.R</code> to include velocity calculations</em></li>
 </ul>
+<p><strong>[[Note, just began incorporating by-year anaylses so those are incomplete]]</strong></p>
 <section id="float-preliminaries" class="level2" data-number="2.1">
 <h2 data-number="2.1" class="anchored" data-anchor-id="float-preliminaries"><span class="header-section-number">2.1</span> float preliminaries</h2>
 <ul>
@@ -344,7 +350,7 @@ window.Quarto = {
 <section id="velocity-maps" class="level3" data-number="2.2.3">
 <h3 data-number="2.2.3" class="anchored" data-anchor-id="velocity-maps"><span class="header-section-number">2.2.3</span> velocity maps</h3>
 <ul>
-<li><em>averaged speed/velocity within 1 deg by 1 deg cells</em></li>
+<li><em>averaged velocity within 1 deg by 1 deg cells across all years 2007-2016</em></li>
 </ul>
 <div class="tabset-margin-container"></div><div class="panel-tabset">
 <ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-2-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-2-1" role="tab" aria-controls="tabset-2-1" aria-selected="true" href="">eastward velocity</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-2-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-2-2" role="tab" aria-controls="tabset-2-2" aria-selected="false" href="">northward velocity</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-2-3-tab" data-bs-toggle="tab" data-bs-target="#tabset-2-3" role="tab" aria-controls="tabset-2-3" aria-selected="false" href="">speed</a></li></ul>
@@ -421,31 +427,6 @@ window.Quarto = {
 7:     0.04587</code></pre>
 </div>
 </div>
-<!--
-
-::: {.cell}
-::: {.cell-output-display}
-![](analysis_files/figure-html/unnamed-chunk-17-1.png){width=1056}
-:::
-:::
-
-
-
-::: {.cell}
-::: {.cell-output-display}
-![](analysis_files/figure-html/unnamed-chunk-18-1.png){width=1056}
-:::
-:::
-
-
-
-::: {.cell}
-::: {.cell-output-display}
-![](analysis_files/figure-html/unnamed-chunk-19-1.png){width=1056}
-:::
-:::
-
--->
 </section>
 </section>
 </section>
@@ -460,7 +441,6 @@ window.Quarto = {
 </ul></li>
 <li><strong>for temperature only analyses, used data filtered to floats with multiple observations; however, included the first profile observation for those floats for each year where we have missing velocity </strong></li>
 </ul>
-<!-- X[,.N,pressure_1000][,prop := N / sum(N)][order(-N)]-->
 <div class="tabset-margin-container"></div><div class="panel-tabset">
 <ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-3-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-3-1" role="tab" aria-controls="tabset-3-1" aria-selected="true" href="">0m</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-3-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-3-2" role="tab" aria-controls="tabset-3-2" aria-selected="false" href="">100m</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-3-3-tab" data-bs-toggle="tab" data-bs-target="#tabset-3-3" role="tab" aria-controls="tabset-3-3" aria-selected="false" href="">500m</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-3-4-tab" data-bs-toggle="tab" data-bs-target="#tabset-3-4" role="tab" aria-controls="tabset-3-4" aria-selected="false" href="">1000m</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-3-5-tab" data-bs-toggle="tab" data-bs-target="#tabset-3-5" role="tab" aria-controls="tabset-3-5" aria-selected="false" href="">2000m</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-3-6-tab" data-bs-toggle="tab" data-bs-target="#tabset-3-6" role="tab" aria-controls="tabset-3-6" aria-selected="false" href="">vhc</a></li></ul>
 <div class="tab-content">
@@ -469,7 +449,7 @@ window.Quarto = {
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><a href="analysis_files/figure-html/unnamed-chunk-20-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-11"><img src="analysis_files/figure-html/unnamed-chunk-20-1.png" class="img-fluid figure-img" width="1056"></a></p>
+<p><a href="analysis_files/figure-html/unnamed-chunk-17-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-11"><img src="analysis_files/figure-html/unnamed-chunk-17-1.png" class="img-fluid figure-img" width="1056"></a></p>
 </figure>
 </div>
 </div>
@@ -480,7 +460,7 @@ window.Quarto = {
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><a href="analysis_files/figure-html/unnamed-chunk-21-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-12"><img src="analysis_files/figure-html/unnamed-chunk-21-1.png" class="img-fluid figure-img" width="1056"></a></p>
+<p><a href="analysis_files/figure-html/unnamed-chunk-18-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-12"><img src="analysis_files/figure-html/unnamed-chunk-18-1.png" class="img-fluid figure-img" width="1056"></a></p>
 </figure>
 </div>
 </div>
@@ -491,7 +471,7 @@ window.Quarto = {
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><a href="analysis_files/figure-html/unnamed-chunk-22-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-13"><img src="analysis_files/figure-html/unnamed-chunk-22-1.png" class="img-fluid figure-img" width="1056"></a></p>
+<p><a href="analysis_files/figure-html/unnamed-chunk-19-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-13"><img src="analysis_files/figure-html/unnamed-chunk-19-1.png" class="img-fluid figure-img" width="1056"></a></p>
 </figure>
 </div>
 </div>
@@ -502,7 +482,7 @@ window.Quarto = {
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><a href="analysis_files/figure-html/unnamed-chunk-23-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-14"><img src="analysis_files/figure-html/unnamed-chunk-23-1.png" class="img-fluid figure-img" width="1056"></a></p>
+<p><a href="analysis_files/figure-html/unnamed-chunk-20-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-14"><img src="analysis_files/figure-html/unnamed-chunk-20-1.png" class="img-fluid figure-img" width="1056"></a></p>
 </figure>
 </div>
 </div>
@@ -513,7 +493,7 @@ window.Quarto = {
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><a href="analysis_files/figure-html/unnamed-chunk-24-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-15"><img src="analysis_files/figure-html/unnamed-chunk-24-1.png" class="img-fluid figure-img" width="1056"></a></p>
+<p><a href="analysis_files/figure-html/unnamed-chunk-21-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-15"><img src="analysis_files/figure-html/unnamed-chunk-21-1.png" class="img-fluid figure-img" width="1056"></a></p>
 </figure>
 </div>
 </div>
@@ -524,7 +504,7 @@ window.Quarto = {
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><a href="analysis_files/figure-html/unnamed-chunk-25-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-16"><img src="analysis_files/figure-html/unnamed-chunk-25-1.png" class="img-fluid figure-img" width="1056"></a></p>
+<p><a href="analysis_files/figure-html/unnamed-chunk-22-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-16"><img src="analysis_files/figure-html/unnamed-chunk-22-1.png" class="img-fluid figure-img" width="1056"></a></p>
 </figure>
 </div>
 </div>
@@ -535,7 +515,7 @@ window.Quarto = {
 <section id="temperature-maps" class="level3" data-number="2.3.1">
 <h3 data-number="2.3.1" class="anchored" data-anchor-id="temperature-maps"><span class="header-section-number">2.3.1</span> temperature maps</h3>
 <ul>
-<li><em>averaged temperature within 1 deg by 1 deg cells</em></li>
+<li><em>averaged temperature within 1 deg by 1 deg cells across all years 2007-2016</em></li>
 </ul>
 <div class="tabset-margin-container"></div><div class="panel-tabset">
 <ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-4-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-4-1" role="tab" aria-controls="tabset-4-1" aria-selected="true" href="">0m</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-4-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-4-2" role="tab" aria-controls="tabset-4-2" aria-selected="false" href="">100m</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-4-3-tab" data-bs-toggle="tab" data-bs-target="#tabset-4-3" role="tab" aria-controls="tabset-4-3" aria-selected="false" href="">500m</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-4-4-tab" data-bs-toggle="tab" data-bs-target="#tabset-4-4" role="tab" aria-controls="tabset-4-4" aria-selected="false" href="">1000m</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-4-5-tab" data-bs-toggle="tab" data-bs-target="#tabset-4-5" role="tab" aria-controls="tabset-4-5" aria-selected="false" href="">2000m</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-4-6-tab" data-bs-toggle="tab" data-bs-target="#tabset-4-6" role="tab" aria-controls="tabset-4-6" aria-selected="false" href="">vhc</a></li></ul>
@@ -545,7 +525,7 @@ window.Quarto = {
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><a href="analysis_files/figure-html/unnamed-chunk-26-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-17"><img src="analysis_files/figure-html/unnamed-chunk-26-1.png" class="img-fluid figure-img" width="1056"></a></p>
+<p><a href="analysis_files/figure-html/unnamed-chunk-23-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-17"><img src="analysis_files/figure-html/unnamed-chunk-23-1.png" class="img-fluid figure-img" width="1056"></a></p>
 </figure>
 </div>
 </div>
@@ -556,7 +536,7 @@ window.Quarto = {
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><a href="analysis_files/figure-html/unnamed-chunk-27-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-18"><img src="analysis_files/figure-html/unnamed-chunk-27-1.png" class="img-fluid figure-img" width="1056"></a></p>
+<p><a href="analysis_files/figure-html/unnamed-chunk-24-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-18"><img src="analysis_files/figure-html/unnamed-chunk-24-1.png" class="img-fluid figure-img" width="1056"></a></p>
 </figure>
 </div>
 </div>
@@ -567,7 +547,7 @@ window.Quarto = {
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><a href="analysis_files/figure-html/unnamed-chunk-28-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-19"><img src="analysis_files/figure-html/unnamed-chunk-28-1.png" class="img-fluid figure-img" width="1056"></a></p>
+<p><a href="analysis_files/figure-html/unnamed-chunk-25-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-19"><img src="analysis_files/figure-html/unnamed-chunk-25-1.png" class="img-fluid figure-img" width="1056"></a></p>
 </figure>
 </div>
 </div>
@@ -578,7 +558,7 @@ window.Quarto = {
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><a href="analysis_files/figure-html/unnamed-chunk-29-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-20"><img src="analysis_files/figure-html/unnamed-chunk-29-1.png" class="img-fluid figure-img" width="1056"></a></p>
+<p><a href="analysis_files/figure-html/unnamed-chunk-26-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-20"><img src="analysis_files/figure-html/unnamed-chunk-26-1.png" class="img-fluid figure-img" width="1056"></a></p>
 </figure>
 </div>
 </div>
@@ -589,7 +569,7 @@ window.Quarto = {
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><a href="analysis_files/figure-html/unnamed-chunk-30-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-21"><img src="analysis_files/figure-html/unnamed-chunk-30-1.png" class="img-fluid figure-img" width="1056"></a></p>
+<p><a href="analysis_files/figure-html/unnamed-chunk-27-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-21"><img src="analysis_files/figure-html/unnamed-chunk-27-1.png" class="img-fluid figure-img" width="1056"></a></p>
 </figure>
 </div>
 </div>
@@ -600,7 +580,7 @@ window.Quarto = {
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><a href="analysis_files/figure-html/unnamed-chunk-31-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-22"><img src="analysis_files/figure-html/unnamed-chunk-31-1.png" class="img-fluid figure-img" width="1056"></a></p>
+<p><a href="analysis_files/figure-html/unnamed-chunk-28-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-22"><img src="analysis_files/figure-html/unnamed-chunk-28-1.png" class="img-fluid figure-img" width="1056"></a></p>
 </figure>
 </div>
 </div>
@@ -613,8 +593,8 @@ window.Quarto = {
 <section id="correlation-between-temperature-and-velocity" class="level2" data-number="2.4">
 <h2 data-number="2.4" class="anchored" data-anchor-id="correlation-between-temperature-and-velocity"><span class="header-section-number">2.4</span> correlation between temperature and velocity</h2>
 <ul>
-<li><em>correlation between temperatures and velocities for floats with multiple observations</em></li>
-<li><em>dtemp_ variables are the change in temperature for consecutive float observations at the given depth</em>
+<li><em>correlation between temperatures and velocities for floats with multiple observations within a year</em></li>
+<li><em>dtemp_ variables are the change in temperature for consecutive (within year) float observations at the given depth</em>
 <ul>
 <li>negligible correlations between change in temperature and velocity</li>
 </ul></li>
@@ -7315,169 +7295,12 @@ window.Quarto = {
 </div>
 </div>
 </div>
-<!--
-#### by year
-::: {.panel-tabset}
-## 2016
-::: {.panel-tabset}
-
-## overall 
-
-|           |    u_ms|    v_ms| speed_ms|
-|:----------|-------:|-------:|--------:|
-|temp_0     | -0.1789| -0.0037|  -0.1670|
-|temp_500   | -0.1738| -0.0163|  -0.1086|
-|temp_1000  | -0.1486| -0.0282|  -0.0906|
-|temp_2000  | -0.0918| -0.0506|  -0.0285|
-|vhc_obs    | -0.1861| -0.0178|  -0.1441|
-|dtemp_0    | -0.0158|  0.0461|   0.0148|
-|dtemp_500  | -0.0170| -0.0009|   0.0361|
-|dtemp_1000 | -0.0239|  0.0068|   0.0407|
-|dtemp_2000 |  0.0046|  0.0547|   0.0317|
-|dvhc_obs   | -0.0194|  0.0332|   0.0380|
-N:
-4892
-
-## arctic ocean 
-
-|           |    u_ms|    v_ms| speed_ms|
-|:----------|-------:|-------:|--------:|
-|temp_0     |  0.5187|  0.5919|  -0.6770|
-|temp_500   | -0.7330| -0.2125|   0.7077|
-|temp_1000  | -0.7926| -0.2190|   0.7978|
-|temp_2000  |  0.5709|  0.0857|  -0.4357|
-|vhc_obs    | -0.8717| -0.1545|   0.8831|
-|dtemp_0    |  0.3518|  0.3885|  -0.3350|
-|dtemp_500  | -0.7631|  0.6725|   0.5966|
-|dtemp_1000 | -0.8021|  0.6273|   0.6518|
-|dtemp_2000 |  0.9732| -0.2135|  -0.9448|
-|dvhc_obs   | -0.6533|  0.3568|   0.6796|
-N:
-4
-
-
-
-## indian ocean 
-
-|           |    u_ms|    v_ms| speed_ms|
-|:----------|-------:|-------:|--------:|
-|temp_0     | -0.2199| -0.0245|  -0.2222|
-|temp_500   | -0.2351|  0.0070|  -0.1338|
-|temp_1000  | -0.2040| -0.0061|  -0.1595|
-|temp_2000  | -0.1710| -0.0022|  -0.0528|
-|vhc_obs    | -0.2334| -0.0047|  -0.1835|
-|dtemp_0    |  0.0329|  0.0988|   0.0721|
-|dtemp_500  |  0.0014|  0.0374|   0.0833|
-|dtemp_1000 | -0.0085| -0.0486|   0.0093|
-|dtemp_2000 |  0.0045| -0.0295|   0.0237|
-|dvhc_obs   |  0.0399|  0.0518|   0.0695|
-N:
-1074
-
-
-
-## north atlantic ocean 
-
-|           |    u_ms|    v_ms| speed_ms|
-|:----------|-------:|-------:|--------:|
-|temp_0     | -0.0380|  0.0289|  -0.1543|
-|temp_500   | -0.0429| -0.0347|  -0.0746|
-|temp_1000  | -0.0641| -0.0150|  -0.1407|
-|temp_2000  | -0.0054| -0.0008|  -0.1275|
-|vhc_obs    | -0.0520| -0.0215|  -0.1150|
-|dtemp_0    | -0.0776| -0.1184|  -0.0425|
-|dtemp_500  | -0.0565| -0.1714|   0.1423|
-|dtemp_1000 | -0.0953| -0.0634|   0.1187|
-|dtemp_2000 |  0.0286| -0.0183|  -0.0049|
-|dvhc_obs   | -0.0856| -0.1497|   0.0803|
-N:
-562
-
-
-
-## north pacific ocean 
-
-|           |    u_ms|    v_ms| speed_ms|
-|:----------|-------:|-------:|--------:|
-|temp_0     | -0.0424|  0.0983|   0.0815|
-|temp_500   | -0.0384|  0.0527|   0.0617|
-|temp_1000  | -0.0309|  0.0536|   0.0484|
-|temp_2000  |  0.0116|  0.0396|   0.0738|
-|vhc_obs    | -0.0423|  0.0846|   0.0711|
-|dtemp_0    | -0.0438| -0.0949|  -0.0296|
-|dtemp_500  | -0.0297|  0.0133|   0.0102|
-|dtemp_1000 |  0.0143|  0.0895|   0.0427|
-|dtemp_2000 |  0.0121|  0.0817|   0.0009|
-|dvhc_obs   | -0.0481|  0.0050|  -0.0335|
-N:
-1374
-
-
-
-## south atlantic ocean 
-
-|           |    u_ms|    v_ms| speed_ms|
-|:----------|-------:|-------:|--------:|
-|temp_0     | -0.2861| -0.0114|  -0.3679|
-|temp_500   | -0.2629|  0.0226|  -0.3805|
-|temp_1000  | -0.2510|  0.0197|  -0.3399|
-|temp_2000  | -0.2248| -0.0098|  -0.2503|
-|vhc_obs    | -0.2692|  0.0218|  -0.3752|
-|dtemp_0    | -0.1249|  0.1234|  -0.0706|
-|dtemp_500  | -0.0239|  0.0140|  -0.0507|
-|dtemp_1000 | -0.0915|  0.0912|   0.0081|
-|dtemp_2000 | -0.0160|  0.1444|   0.0802|
-|dvhc_obs   | -0.0283|  0.1192|  -0.0010|
-N:
-524
-
-
-
-## south pacific ocean 
-
-|           |    u_ms|    v_ms| speed_ms|
-|:----------|-------:|-------:|--------:|
-|temp_0     | -0.2120| -0.1092|  -0.3135|
-|temp_500   | -0.2036| -0.0533|  -0.1510|
-|temp_1000  | -0.1497| -0.0399|  -0.1111|
-|temp_2000  | -0.1111|  0.0197|  -0.0654|
-|vhc_obs    | -0.2205| -0.0848|  -0.2603|
-|dtemp_0    | -0.0211|  0.1564|  -0.0061|
-|dtemp_500  |  0.0268|  0.1076|   0.0562|
-|dtemp_1000 |  0.0095|  0.0574|   0.0793|
-|dtemp_2000 | -0.0119|  0.0999|   0.0570|
-|dvhc_obs   |  0.0094|  0.1257|   0.0822|
-N:
-1204
-
-
-
-## southern ocean 
-
-|           |    u_ms|    v_ms| speed_ms|
-|:----------|-------:|-------:|--------:|
-|temp_0     |  0.1350| -0.0333|   0.2571|
-|temp_500   |  0.2335| -0.0546|   0.3878|
-|temp_1000  |  0.2510| -0.0724|   0.3843|
-|temp_2000  |  0.2742| -0.0891|   0.3861|
-|vhc_obs    |  0.2335| -0.0758|   0.3737|
-|dtemp_0    | -0.1046|  0.1905|  -0.0791|
-|dtemp_500  | -0.0100| -0.0781|   0.0078|
-|dtemp_1000 | -0.1174|  0.4056|  -0.0922|
-|dtemp_2000 | -0.0302|  0.3605|  -0.0460|
-|dvhc_obs   | -0.1745|  0.3139|  -0.1434|
-N:
-150
-
-
-
-:::
-:::
--->
 </section>
 </section>
 <section id="including-outlier-velocities" class="level3" data-number="2.4.2">
 <h3 data-number="2.4.2" class="anchored" data-anchor-id="including-outlier-velocities"><span class="header-section-number">2.4.2</span> including outlier velocities</h3>
+<section id="overall-13" class="level4" data-number="2.4.2.1">
+<h4 data-number="2.4.2.1" class="anchored" data-anchor-id="overall-13"><span class="header-section-number">2.4.2.1</span> overall</h4>
 <ul>
 <li><em>overall, south atlantic, and southern correlations are sensitive to outliers</em></li>
 </ul>
@@ -8087,12 +7910,15 @@ N:
 </div>
 </div>
 </section>
+</section>
 <section id="heatmaps" class="level3" data-number="2.4.3">
 <h3 data-number="2.4.3" class="anchored" data-anchor-id="heatmaps"><span class="header-section-number">2.4.3</span> heatmaps</h3>
 <ul>
-<li><em>centered temperatures averaged within 0.01m/s cells of (u, v)</em></li>
+<li><em>centered temperatures (across all years) averaged within 0.01m/s cells of (u, v)</em></li>
 <li><em>positive eastward velocity appears to be correlated with negative temperatures</em></li>
 </ul>
+<section id="overall-15" class="level4" data-number="2.4.3.1">
+<h4 data-number="2.4.3.1" class="anchored" data-anchor-id="overall-15"><span class="header-section-number">2.4.3.1</span> overall</h4>
 <div class="tabset-margin-container"></div><div class="panel-tabset">
 <ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-18-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-18-1" role="tab" aria-controls="tabset-18-1" aria-selected="true" href="">0m</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-18-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-18-2" role="tab" aria-controls="tabset-18-2" aria-selected="false" href="">100m</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-18-3-tab" data-bs-toggle="tab" data-bs-target="#tabset-18-3" role="tab" aria-controls="tabset-18-3" aria-selected="false" href="">500m</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-18-4-tab" data-bs-toggle="tab" data-bs-target="#tabset-18-4" role="tab" aria-controls="tabset-18-4" aria-selected="false" href="">1000m</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-18-5-tab" data-bs-toggle="tab" data-bs-target="#tabset-18-5" role="tab" aria-controls="tabset-18-5" aria-selected="false" href="">2000m</a></li></ul>
 <div class="tab-content">
@@ -8101,7 +7927,7 @@ N:
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><a href="analysis_files/figure-html/unnamed-chunk-38-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-23"><img src="analysis_files/figure-html/unnamed-chunk-38-1.png" class="img-fluid figure-img" width="1056"></a></p>
+<p><a href="analysis_files/figure-html/unnamed-chunk-34-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-23"><img src="analysis_files/figure-html/unnamed-chunk-34-1.png" class="img-fluid figure-img" width="1056"></a></p>
 </figure>
 </div>
 </div>
@@ -8112,7 +7938,7 @@ N:
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><a href="analysis_files/figure-html/unnamed-chunk-40-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-24"><img src="analysis_files/figure-html/unnamed-chunk-40-1.png" class="img-fluid figure-img" width="1056"></a></p>
+<p><a href="analysis_files/figure-html/unnamed-chunk-35-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-24"><img src="analysis_files/figure-html/unnamed-chunk-35-1.png" class="img-fluid figure-img" width="1056"></a></p>
 </figure>
 </div>
 </div>
@@ -8123,7 +7949,7 @@ N:
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><a href="analysis_files/figure-html/unnamed-chunk-41-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-25"><img src="analysis_files/figure-html/unnamed-chunk-41-1.png" class="img-fluid figure-img" width="1056"></a></p>
+<p><a href="analysis_files/figure-html/unnamed-chunk-36-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-25"><img src="analysis_files/figure-html/unnamed-chunk-36-1.png" class="img-fluid figure-img" width="1056"></a></p>
 </figure>
 </div>
 </div>
@@ -8134,7 +7960,7 @@ N:
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><a href="analysis_files/figure-html/unnamed-chunk-42-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-26"><img src="analysis_files/figure-html/unnamed-chunk-42-1.png" class="img-fluid figure-img" width="1056"></a></p>
+<p><a href="analysis_files/figure-html/unnamed-chunk-37-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-26"><img src="analysis_files/figure-html/unnamed-chunk-37-1.png" class="img-fluid figure-img" width="1056"></a></p>
 </figure>
 </div>
 </div>
@@ -8145,7 +7971,7 @@ N:
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><a href="analysis_files/figure-html/unnamed-chunk-43-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-27"><img src="analysis_files/figure-html/unnamed-chunk-43-1.png" class="img-fluid figure-img" width="1056"></a></p>
+<p><a href="analysis_files/figure-html/unnamed-chunk-38-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-27"><img src="analysis_files/figure-html/unnamed-chunk-38-1.png" class="img-fluid figure-img" width="1056"></a></p>
 </figure>
 </div>
 </div>
@@ -8155,84 +7981,6 @@ N:
 </div>
 </section>
 </section>
-<section id="next-steps" class="level2" data-number="2.5">
-<h2 data-number="2.5" class="anchored" data-anchor-id="next-steps"><span class="header-section-number">2.5</span> next steps</h2>
-<ul>
-<li>include data from all months, not just january</li>
-<li>focus on finer ocean geographies
-<ul>
-<li>significant heterogeneity in temperature and velocity within large global ocean regions</li>
-</ul></li>
-</ul>
-<!--
-
-::: {.cell}
-
-:::
-
-
-
-::: {.cell}
-::: {.cell-output-display}
-![](analysis_files/figure-html/unnamed-chunk-45-1.png){width=1056}
-:::
-:::
-
-
-
-::: {.cell}
-::: {.cell-output-display}
-![](analysis_files/figure-html/unnamed-chunk-46-1.png){width=1056}
-:::
-:::
-
-
-
-::: {.cell}
-::: {.cell-output-display}
-![](analysis_files/figure-html/unnamed-chunk-47-1.png){width=1056}
-:::
-:::
-
-
-
-::: {.cell}
-::: {.cell-output-display}
-![](analysis_files/figure-html/unnamed-chunk-48-1.png){width=1056}
-:::
-:::
-
-
-
-::: {.cell}
-
-:::
-
-
-
-::: {.cell}
-
-:::
-
-
-
-::: {.cell}
-
-:::
-
-
-
-::: {.cell}
-
-:::
-
--->
-<!--
-- calc. radius of drift (by region)
-- do floats replace eachother in the same area? eg does a float move out of an initial radius but a different float moves into that initial radius?
-  - within a fixed region (basins) how much area is covered by the floats over time? do they begin to cluster or do they circle and replace eachother such that the same area is covered?
-- discuss distance metrics to calc. velocity
--->
 </section>
 </section>
 

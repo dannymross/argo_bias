@@ -46,7 +46,7 @@ editor_options:
 - *analysis based on preprocessed `argo_object_01.RData` and is therefore limited to float observations in January of each year from 2007 through 2016*
 - *augmented `preprocess_argo_data.R` to include velocity calculations*
 
-**[[Note, just began incorporating by-year anaylses so these are incomplete]]**
+**[[Note, just began incorporating by-year anaylses so those are incomplete]]**
 
 ```{r}
 options(digits = 4, scipen = 999)
@@ -54,9 +54,7 @@ options(digits = 4, scipen = 999)
 root <- getwd()
 library(tidyverse)
 library(data.table)
-library(pbapply)
 library(geosphere)
-library(GpGp)
 
 load(paste0(root, "/data/argo_velo_data_january.RData"))
 ```
@@ -112,13 +110,6 @@ B <- A[!is.na(dt_day), .N, dt_day]
 
 par(mfrow = c(1,1))
 hist(A$dt_day, breaks = seq(0,31,.05), main = "obs freq", xlab = NULL)
-#hist(A[dt_day < 50, dt_day], breaks = seq(0,50,.5), main = "0-50 days", xlab = NULL)
-#hist(A[between(dt_day,300,400), dt_day], breaks = seq(300,400,1), main = "300-400 days", xlab = NULL)
-#hist(A[between(dt_day,680,780), dt_day], breaks = seq(680,780,1), main = "680-780 days", xlab = NULL)
-
-#b <- c(0,9,11,300,400,1000,2500)
-#B[, cat := cut(dt_day, breaks = b, dig.lab = 5)]
-#B[,.(obs = sum(N)),keyby = cat][,prop := obs / sum(obs)][, c_prop := cumsum(prop)][]
 ```
 
 ### ocean region 
@@ -208,7 +199,6 @@ X[, unlist(lapply(.SD, my.sum)), .SDcols = c("u_ms","v_ms","speed_ms")]
 ### outliers
 - *for preliminary analyses simply dropped outliers and did not further analyze patterns in these obs*
 ```{r}
-#b <- c(seq(0,.1,.01),seq(.2,.5,.1),1,10,20,50,100,500,1000)
 b <- c(0,.5,1,10,20,50,100,500,B[,max(speed_ms)])
 B[, speed_g := cut(speed_ms, breaks = b, dig.lab = 5)]
 B[,.(obs = .N),keyby = speed_g][,prop := obs / sum(obs)][, c_prop := cumsum(prop)][]
@@ -216,7 +206,7 @@ B[,.(obs = .N),keyby = speed_g][,prop := obs / sum(obs)][, c_prop := cumsum(prop
 
 ### velocity maps
 
-- *averaged speed/velocity within 1 deg by 1 deg cells*
+- *averaged velocity within 1 deg by 1 deg cells across all years 2007-2016*
 
 ::: {.panel-tabset}
 
@@ -262,44 +252,6 @@ my.sum <- function(x) list(mean = mean(x), sd = sd(x))
 X[, as.list(unlist(lapply(.SD, my.sum))), .SDcols = c("u_ms","v_ms","speed_ms"), keyby=ocean]
 ```
 
-<!--
-```{r}
-par(mfrow = c(2,4))
-for (o in oceans) {
-  hist(
-    X[ocean == o, speed_ms],
-    breaks = seq(0, 0.5, 0.01),
-    main = o,
-    xlab = "speed (m/s)"
-  )
-}
-```
-
-```{r}
-par(mfrow = c(2,4))
-for (o in oceans) {
-  hist(
-    X[ocean == o,u_ms],
-    breaks = seq(-0.5, 0.5, 0.01),
-    main = o,
-    xlab = "u (m/s)"
-  )
-}
-```
-
-```{r}
-par(mfrow = c(2,4))
-for (o in oceans) {
-  hist(
-    X[ocean == o,v_ms],
-    breaks = seq(-0.5, 0.5, 0.01),
-    main = o,
-    xlab = "v (m/s)"
-  )
-}
-```
--->
-
 ## temperature
 
 - *histograms of centered temperature by profile pressure (~depth in m)*
@@ -307,8 +259,6 @@ for (o in oceans) {
 - *for other depths, found the temperature associated with the pressure obs closest to the target depth*
   - *e.g., the most common pressure (8.4% of floats) for the '1000m' observations is in fact 988m, while 7.7% of floats have an obs at exactly 1000.0m*
 - **for temperature only analyses, used data filtered to floats with multiple observations; however, included the first profile observation for those floats for each year where we have missing velocity **
-
-<!-- X[,.N,pressure_1000][,prop := N / sum(N)][order(-N)]-->
 
 ::: {.panel-tabset}
 ### 0m
@@ -393,7 +343,7 @@ for (o in oceans) {
 
 ### temperature maps
 
-- *averaged temperature within 1 deg by 1 deg cells*
+- *averaged temperature within 1 deg by 1 deg cells across all years 2007-2016*
 
 ::: {.panel-tabset}
 ## 0m
@@ -436,8 +386,8 @@ map_sum_pts(A, z = "vhc_obs") +
 
 ## correlation between temperature and velocity
 
-- *correlation between temperatures and velocities for floats with multiple observations*
-- *dtemp_ variables are the change in temperature for consecutive float observations at the given depth*
+- *correlation between temperatures and velocities for floats with multiple observations within a year*
+- *dtemp_ variables are the change in temperature for consecutive (within year) float observations at the given depth*
   - negligible correlations between change in temperature and velocity
 - **small to moderate negative correlation between eastward velocity and temperature/vhc across depths in southern hemisphere**
   - southern antarctic ocean which has positive correlation between eastward velocity and temperature/vhc
@@ -511,37 +461,9 @@ for (yr in 2007:2016){
 
 :::
 
-<!--
-#### by year
-::: {.panel-tabset}
-## 2016
-```{r}
-#| results: asis
-#| echo: false
-cat("::: {.panel-tabset}\n\n")
-
-cat("## overall", "\n\n")
-Y <- X[years == 2016]
-tab <- knitr::kable(velo_temp_cor(Y))
-cat(tab, sep = "\n")
-cat("N:", Y[,.N], sep = "\n")
-cat("\n")
-
-for (o in oceans) {
-  cat("##", o, "\n\n")
-  tab <- knitr::kable(velo_temp_cor(Y[ocean == o,]))
-  cat(tab, sep = "\n")
-  cat("N:", Y[ocean == o,.N], sep = "\n")
-  cat("\n")
-  cat("\n\n")
-}
-
-cat(":::\n")
-```
-:::
--->
-
 ### including outlier velocities
+
+#### overall
 - *overall, south atlantic, and southern correlations are sensitive to outliers*
 
 ```{r}
@@ -571,7 +493,7 @@ cat(":::\n")
 ```
 
 ### heatmaps
-- *centered temperatures averaged within 0.01m/s cells of (u, v)*
+- *centered temperatures (across all years) averaged within 0.01m/s cells of (u, v)*
 - *positive eastward velocity appears to be correlated with negative temperatures*
 
 ```{r}
@@ -593,15 +515,13 @@ plot_velocity_heatmap <- function(df,z,title = z,binwidth = 0.01, midpoint = 0, 
 }
 ```
 
+#### overall
 ::: {.panel-tabset}
 ## 0m
 ```{r}
 plot_velocity_heatmap(X, "temp_0_c", "centered ocean temp at 0m")
 ```
 ## 100m
-```{r}
-#plot_velocity_heatmap(X, "temp_100", "ocean temp at 100m", ocean=F)
-```
 ```{r}
 plot_velocity_heatmap(X, "temp_100_c", "centered ocean temp at 100m")
 ```
@@ -619,95 +539,3 @@ plot_velocity_heatmap(X, "temp_2000_c", "centered ocean temp at 2000m")
 ```
 :::
 
-## next steps
-- include data from all months, not just january
-- focus on finer ocean geographies
-  - significant heterogeneity in temperature and velocity within large global ocean regions
-
-
-
-<!--
-```{r}
-scatter <- function(df, x, y, main = NULL, line = TRUE){
-  main <- ifelse(is.null(main), paste(x, "vs", y), main)
-  plot(df[[x]], df[[y]],
-     pch = 1, 
-     xlab = x, 
-     ylab = y,
-     main = main
-  )
-  lines(lowess(df[[x]], df[[y]]), col = "red", lwd = 1)
-}
-```
-
-```{r}
-scatter(X, "u_ms", "dtemp_1000")
-```
-
-```{r}
-scatter(X, "u_ms", "temp_1000")
-```
-
-```{r}
-par(mfrow = c(2,4))
-for(o in oceans){
-  scatter(X[ocean==o], "u_ms", "dtemp_1000", main = o)
-}
-```
-
-```{r}
-par(mfrow = c(2,4))
-for(o in oceans){
-  scatter(X[ocean==o], "u_ms", "temp_1000", main = o)
-}
-```
-
-```{r}
-#NAO <- A[ocean %in% c("north atlantic ocean")]
-#NAO[, has10 := any(between(dt_day,9,11)), float_id]
-#NAO <- NAO[(has10),]
-#map_pts(NAO, color = "speed_ms") + 
-#  coord_sf(xlim = c(-80,5), ylim = c(0,65)) +
-#  scale_color_viridis_c(option = "plasma", na.value = "grey80") +
-#  guides(color = guide_colorbar())
-#
-#fid <- NAO[which.max(float_i), float_id]
-#X <- NAO[float_id == fid]
-#map_pts(X, color = "speed_ms") +
-#  coord_sf(xlim = c(-80,5), ylim = c(0,65)) +
-#  scale_color_viridis_c(option = "plasma", na.value = "grey80") +
-#  guides(color = guide_colorbar())
-```
-
-```{r}
-#X <- NAO[!is.na(speed_ms),.(speed_ms, u_ms, v_ms, z)]
-#cor(X)
-#cor.test(X$speed_ms, X$z)
-#cor.test(X$u_ms, X$z)
-#cor.test(X$v_ms, X$z)
-```
-
-```{r}
-#S <- NAO[1:2, .(float_id, max_depth, obs_pressures, obs_temps, )]
-```
-
-```{r}
-#fid <- A[which.max(float_i), float_id]
-#X <- A[float_id == fid]
-#map_pts(X, color = "speed_ms") +
-#  scale_color_viridis_c(option = "plasma", na.value = "grey80") +
-#  guides(color = guide_colorbar())
-#X <- A[!is.na(speed_ms),.(speed_ms, u_ms, v_ms, z)]
-#cor(X)
-#ct <- cor.test(X$speed_ms, X$z)
-#cor.test(X$u_ms, X$z)
-#cor.test(X$v_ms, X$z)
-```
--->
-
-<!--
-- calc. radius of drift (by region)
-- do floats replace eachother in the same area? eg does a float move out of an initial radius but a different float moves into that initial radius?
-  - within a fixed region (basins) how much area is covered by the floats over time? do they begin to cluster or do they circle and replace eachother such that the same area is covered?
-- discuss distance metrics to calc. velocity
--->
