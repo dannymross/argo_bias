@@ -102,7 +102,7 @@ argo[, float_n := .N, float_id]
 argo[, float_i := 1:.N, float_id]
 argo[, float_r := float_n > 1] # dummy for floats with multiple obs
 
-argo[(float_r), dt_s := as.numeric(difftime(isodatetime, lag(isodatetime), units = "secs")), float_id]
+argo[(float_r), dt_s := as.numeric(difftime(isodatetime, lag(isodatetime), units = "secs")), .(float_id, years)]
 
 ## distance, velocity, bearing, speed
 vincenty_dx <- function(lon1, lat1, lon2, lat2) {
@@ -112,12 +112,12 @@ vincenty_dx <- function(lon1, lat1, lon2, lat2) {
   )
 }
 
-argo[(float_r), dlat_degrees := c(NA, diff(lat_degrees)), float_id]
-argo[(float_r), dlon_degrees := c(NA, diff(lon_degrees)), float_id]
+argo[(float_r), dlat_degrees := c(NA, diff(lat_degrees)), .(float_id, years)]
+argo[(float_r), dlon_degrees := c(NA, diff(lon_degrees)), .(float_id, years)]
 
-argo[(float_r), dx_m := vincenty_dx(lag(lon_degrees), lag(lat_degrees), lon_degrees, lat_degrees), float_id]
-argo[(float_r), dlat_m := sign(dlat_degrees) * vincenty_dx(lag(lon_degrees), lag(lat_degrees), lag(lon_degrees), lat_degrees), float_id]
-argo[(float_r), dlon_m := sign(dlon_degrees) * vincenty_dx(lag(lon_degrees), lag(lat_degrees), lon_degrees, lag(lat_degrees)), float_id]
+argo[(float_r), dx_m := vincenty_dx(lag(lon_degrees), lag(lat_degrees), lon_degrees, lat_degrees), .(float_id, years)]
+argo[(float_r), dlat_m := sign(dlat_degrees) * vincenty_dx(lag(lon_degrees), lag(lat_degrees), lag(lon_degrees), lat_degrees), .(float_id, years)]
+argo[(float_r), dlon_m := sign(dlon_degrees) * vincenty_dx(lag(lon_degrees), lag(lat_degrees), lon_degrees, lag(lat_degrees)), .(float_id, years)]
 
 argo[, speed_ms := dx_m / dt_s] # speed m/s
 argo[, u_ms := dlon_m / dt_s] # eastward velocity m/s
@@ -144,7 +144,7 @@ add_temp_cols <- function(df, depths) {
 
 add_dtemp_cols <- function(df, depths) {
   for (depth in depths) {
-    df[, paste0("dtemp_", depth) := c(NA, diff(get(paste0("temp_", depth)))), float_id]
+    df[, paste0("dtemp_", depth) := c(NA, diff(get(paste0("temp_", depth)))), .(float_id, years)]
   }
 }
 
@@ -152,7 +152,7 @@ depths <- c(0, 100, 500, 1000, 2000)
 add_temp_cols(argo, depths)
 add_dtemp_cols(argo, depths)
 
-argo[, dvhc_obs := c(NA, diff(vhc_obs)), float_id]
+argo[, dvhc_obs := c(NA, diff(vhc_obs)), .(float_id, years)]
 
 ## add ocean region
 # mregions2 downloads shapefiles from <https://www.marineregions.org/sources.php#goas>
