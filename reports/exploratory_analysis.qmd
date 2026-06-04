@@ -1,6 +1,6 @@
 ---
 title: "argo bias"
-subtitle: "analysis notebook"
+subtitle: "exploratory analysis notebook"
 author : daniel ross
 date-modified: last-modified
 date-format: "YYYY-MM-DD HH:mm"
@@ -14,6 +14,7 @@ format:
     number-sections: true
 lightbox: true
 execute:
+  freeze: auto
   echo: false
   warning: false
   message: false
@@ -21,6 +22,8 @@ execute:
   fig-align: center
   fig-width: 11
   fig-height: 8.5
+params:
+  archive_eval: false
 knitr:
   opts_chunk:
     prompt: false
@@ -28,6 +31,11 @@ knitr:
 editor_options:
   chunk_output_type: console
 ---
+
+# Archive {.unnumbered}
+
+::: {.callout-note collapse="true"}
+# 2026-06-03
 
 # literature
 ## float velocity
@@ -49,6 +57,7 @@ editor_options:
 **[[Note, just began incorporating by-year anaylses so those are incomplete]]**
 
 ```{r}
+#| eval: !expr params$archive_eval
 options(digits = 4, scipen = 999)
 
 root <- getwd()
@@ -65,6 +74,7 @@ load(paste0(root, "/data/argo_velo_data_january.RData"))
 - **velocity was calculated within year, therefore the first observation for a float in each year will have a missing velocity**
   - e.g., the velocity is not calculated between a given float's 2015-01-31 and 2016-01-01 profile
 ```{r}
+#| eval: !expr params$archive_eval
 argo[,.(
   floats = uniqueN(float_id),
   obs = .N,
@@ -76,6 +86,7 @@ A <- argo[(float_r)]
 ```
 
 ```{r}
+#| eval: !expr params$archive_eval
 oceans <- sort(unique(A$ocean))
 oceans <- oceans[oceans!="south china and easter archipelagic seas"]
 ```
@@ -84,6 +95,7 @@ oceans <- oceans[oceans!="south china and easter archipelagic seas"]
 ::: {.panel-tabset}
 ## overall
 ```{r}
+#| eval: !expr params$archive_eval
 float_n <- A[,.N,float_id]
 summary(float_n$N)
 hist(float_n$N, breaks = seq(0,44,1), main = "obs per float", xlab = "n")
@@ -91,6 +103,7 @@ hist(float_n$N, breaks = seq(0,44,1), main = "obs per float", xlab = "n")
 
 ## region
 ```{r}
+#| eval: !expr params$archive_eval
 par(mfrow = c(2,4))
 for (o in oceans) {
   float_n <- A[ocean == o,.N,float_id]
@@ -104,6 +117,7 @@ for (o in oceans) {
 - *most floats do share data every 10 days*
 
 ```{r}
+#| eval: !expr params$archive_eval
 A[, dt_day := dt_s / (60^2 * 24)]
 summary(A$dt_day)
 B <- A[!is.na(dt_day), .N, dt_day]
@@ -121,6 +135,7 @@ hist(A$dt_day, breaks = seq(0,31,.05), main = "obs freq", xlab = NULL)
 
 
 ```{r}
+#| eval: !expr params$archive_eval
 float_loc <- A[,.(float_id, float_i, lon_degrees, lat_degrees, ocean, speed_ms)]
 
 float_loc[,.(
@@ -167,6 +182,7 @@ map_pts(sample_locs, color = "ocean", legend.rows = 3)
 - *histograms of float velocity over entire ocean omitting extreme outliers corresponding to speeds >0.5m/s*
 - *outliers are dropped for the remainder of this analysis*
 ```{r}
+#| eval: !expr params$archive_eval
 #| fig-height: 6
 B <- A[!is.na(speed_ms)]
 
@@ -179,6 +195,7 @@ hist(X[,v_ms], breaks = seq(-.5,.5,.01), main = "float northward velocity", xlab
 ```
 
 ```{r}
+#| eval: !expr params$archive_eval
   ggplot(X, aes(x = u_ms, y = v_ms)) +
     stat_bin_2d(aes(fill = after_stat(density)), binwidth = 0.01) +
     scale_fill_viridis_c(option = "C") +
@@ -192,6 +209,7 @@ hist(X[,v_ms], breaks = seq(-.5,.5,.01), main = "float northward velocity", xlab
 ```
 
 ```{r}
+#| eval: !expr params$archive_eval
 my.sum <- function(x) list(mean = mean(x), sd = sd(x))
 X[, unlist(lapply(.SD, my.sum)), .SDcols = c("u_ms","v_ms","speed_ms")]
 ```
@@ -199,6 +217,7 @@ X[, unlist(lapply(.SD, my.sum)), .SDcols = c("u_ms","v_ms","speed_ms")]
 ### outliers
 - *for preliminary analyses simply dropped outliers and did not further analyze patterns in these obs*
 ```{r}
+#| eval: !expr params$archive_eval
 b <- c(0,.5,1,10,20,50,100,500,B[,max(speed_ms)])
 B[, speed_g := cut(speed_ms, breaks = b, dig.lab = 5)]
 B[,.(obs = .N),keyby = speed_g][,prop := obs / sum(obs)][, c_prop := cumsum(prop)][]
@@ -212,18 +231,21 @@ B[,.(obs = .N),keyby = speed_g][,prop := obs / sum(obs)][, c_prop := cumsum(prop
 
 ## eastward velocity
 ```{r}
+#| eval: !expr params$archive_eval
 map_sum_pts(X, z = "u_ms") +
   labs(title = "u (m/s) eastward velocity")
 ```
 
 ## northward velocity
 ```{r}
+#| eval: !expr params$archive_eval
 map_sum_pts(X, z = "v_ms") +
   labs(title = "v (m/s) northward velocity")
 ```
 
 ## speed
 ```{r}
+#| eval: !expr params$archive_eval
 map_sum_pts(X, z = "speed_ms") + 
   labs(title = "speed (m/s)")
 ```
@@ -234,6 +256,7 @@ map_sum_pts(X, z = "speed_ms") +
 
 #### joint dist of velocity components
 ```{r}
+#| eval: !expr params$archive_eval
 ggplot(X, aes(x = u_ms, y = v_ms)) +
   stat_bin_2d(aes(fill = after_stat(density)), binwidth = 0.01) +
   facet_wrap(~ ocean, axes = "all") +
@@ -248,6 +271,7 @@ ggplot(X, aes(x = u_ms, y = v_ms)) +
 ```
 
 ```{r}
+#| eval: !expr params$archive_eval
 my.sum <- function(x) list(mean = mean(x), sd = sd(x))
 X[, as.list(unlist(lapply(.SD, my.sum))), .SDcols = c("u_ms","v_ms","speed_ms"), keyby=ocean]
 ```
@@ -263,6 +287,7 @@ X[, as.list(unlist(lapply(.SD, my.sum))), .SDcols = c("u_ms","v_ms","speed_ms"),
 ::: {.panel-tabset}
 ### 0m
 ```{r}
+#| eval: !expr params$archive_eval
 par(mfrow = c(2,4))
 for (o in oceans) {
   hist(
@@ -276,6 +301,7 @@ for (o in oceans) {
 ```
 ### 100m
 ```{r}
+#| eval: !expr params$archive_eval
 par(mfrow = c(2,4))
 for (o in oceans) {
   hist(
@@ -289,6 +315,7 @@ for (o in oceans) {
 ```
 ### 500m
 ```{r}
+#| eval: !expr params$archive_eval
 par(mfrow = c(2,4))
 for (o in oceans) {
   hist(
@@ -302,6 +329,7 @@ for (o in oceans) {
 ```
 ### 1000m
 ```{r}
+#| eval: !expr params$archive_eval
 par(mfrow = c(2,4))
 for (o in oceans) {
   hist(
@@ -315,6 +343,7 @@ for (o in oceans) {
 ```
 ### 2000m
 ```{r}
+#| eval: !expr params$archive_eval
 par(mfrow = c(2,4))
 for (o in oceans) {
   hist(
@@ -328,6 +357,7 @@ for (o in oceans) {
 ```
 ### vhc
 ```{r}
+#| eval: !expr params$archive_eval
 par(mfrow = c(2,4))
 for (o in oceans) {
   hist(
@@ -348,36 +378,42 @@ for (o in oceans) {
 ::: {.panel-tabset}
 ## 0m
 ```{r}
+#| eval: !expr params$archive_eval
 map_sum_pts(A, z = "temp_0") + 
   scale_fill_gradient2(low = "blue",mid = "white",high = "red", midpoint = X[, mean(temp_0)]) + 
   labs(title = "temp 0m")
 ```
 ## 100m
 ```{r}
+#| eval: !expr params$archive_eval
 map_sum_pts(A, z = "temp_100") + 
   scale_fill_gradient2(low = "blue",mid = "white",high = "red", midpoint = X[, mean(temp_100)]) + 
   labs(title = "temp 100m")
 ```
 ## 500m
 ```{r}
+#| eval: !expr params$archive_eval
 map_sum_pts(A, z = "temp_500") + 
   scale_fill_gradient2(low = "blue",mid = "white",high = "red", midpoint = X[, mean(temp_500)]) + 
   labs(title = "temp 500m")
 ```
 ## 1000m
 ```{r}
+#| eval: !expr params$archive_eval
 map_sum_pts(A, z = "temp_1000") + 
   scale_fill_gradient2(low = "blue",mid = "white",high = "red", midpoint = X[, mean(temp_1000)]) + 
   labs(title = "temp 1000m")
 ```
 ## 2000m
 ```{r}
+#| eval: !expr params$archive_eval
 map_sum_pts(A, z = "temp_2000") + 
   scale_fill_gradient2(low = "blue",mid = "white",high = "red", midpoint = X[, mean(temp_2000)]) + 
   labs(title = "temp 2000m")
 ```
 ## vhc 
 ```{r}
+#| eval: !expr params$archive_eval
 map_sum_pts(A, z = "vhc_obs") + 
   scale_fill_gradient2(low = "blue",mid = "white",high = "red", midpoint = X[, mean(vhc_obs)]) + 
   labs(title = "vhc")
@@ -396,6 +432,7 @@ map_sum_pts(A, z = "vhc_obs") +
 - **negligible or no correlation between northward velocity and temperature**
 
 ```{r}
+#| eval: !expr params$archive_eval
 #| echo: false
 velo_temp_cor <- function(df, digits = 4){
   cols <- c("u_ms", "v_ms", "speed_ms",paste0("temp_",c(0,500,1000,2000)),"vhc_obs",paste0("dtemp_",c(0,500,1000,2000)),"dvhc_obs")
@@ -407,6 +444,7 @@ velo_temp_cor <- function(df, digits = 4){
 ### excluding outlier velocities
 #### overall
 ```{r}
+#| eval: !expr params$archive_eval
 #| results: asis
 #| echo: false
 cat("::: {.panel-tabset}\n\n")
@@ -433,6 +471,7 @@ cat(":::\n")
 ::: {.panel-tabset}
 
 ```{r}
+#| eval: !expr params$archive_eval
 #| results: asis
 #| echo: false
 
@@ -467,6 +506,7 @@ for (yr in 2007:2016){
 - *overall, south atlantic, and southern correlations are sensitive to outliers*
 
 ```{r}
+#| eval: !expr params$archive_eval
 #| results: asis
 #| echo: false
 
@@ -497,6 +537,7 @@ cat(":::\n")
 - *positive eastward velocity appears to be correlated with negative temperatures*
 
 ```{r}
+#| eval: !expr params$archive_eval
 plot_velocity_heatmap <- function(df,z,title = z,binwidth = 0.01, midpoint = 0, ocean = T) {
 
   p <- ggplot(df, aes(x = u_ms, y = v_ms, z = .data[[z]])) +
@@ -519,23 +560,29 @@ plot_velocity_heatmap <- function(df,z,title = z,binwidth = 0.01, midpoint = 0, 
 ::: {.panel-tabset}
 ## 0m
 ```{r}
+#| eval: !expr params$archive_eval
 plot_velocity_heatmap(X, "temp_0_c", "centered ocean temp at 0m")
 ```
 ## 100m
 ```{r}
+#| eval: !expr params$archive_eval
 plot_velocity_heatmap(X, "temp_100_c", "centered ocean temp at 100m")
 ```
 ## 500m
 ```{r}
+#| eval: !expr params$archive_eval
 plot_velocity_heatmap(X, "temp_500_c", "centered ocean temp at 500m")
 ```
 ## 1000m
 ```{r}
+#| eval: !expr params$archive_eval
 plot_velocity_heatmap(X, "temp_1000_c", "centered ocean temp at 1000m")
 ```
 ## 2000m
 ```{r}
+#| eval: !expr params$archive_eval
 plot_velocity_heatmap(X, "temp_2000_c", "centered ocean temp at 2000m")
 ```
 :::
 
+:::
