@@ -112,4 +112,4 @@ def map_trajectories(
 
 
 fig, ax = map_trajectories(ds, xlim=(-100, 30), ylim=(20, 80))
-plt.show()
+plt.savefig("reports/img/virtualfleet_trajectories.png")
