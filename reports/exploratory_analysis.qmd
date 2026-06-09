@@ -83,7 +83,16 @@ argo_nac <- argo_ohc[(float_nac) & (float_r)]
 argo_nac_other <- argo_ohc[(float_nac_other)]
 ```
 
-## 10 day floats 
+## 10 day floats
+
+non-10 day obs freq quantiles
+```{r}
+#| label: irregular_floats
+A <- argo_nac[!(float_all_dt_day_10) & !(dt_day_10)]
+quantile(A$dt_day, probs = seq(0,1,.1))
+hist(A[dt_day<100,dt_day], breaks = 100, main = "non-10 day obs freq", xlab = "dt_day")
+```
+
 ```{r}
 #| label: 10_day_floats
 argo_nac[,.(floats = uniqueN(float_id), obs = .N), .(float_has_dt_day_10, float_all_dt_day_10)]
@@ -107,7 +116,9 @@ argo_nac_clean[, float_has_dohc_o := any(dohc_o), float_id]
 
 ```{r}
 #| label: dohc_outlier_plots
-plot(x=q700,y=q2000)
+#| fig-height: 4
+plot(x=q700,y=q2000, main = TeX(r"(0.5% quantiles of abs($\Delta$ohc))"),
+  xlab = TeX(r"($\Delta$ohc700)"), ylab = TeX(r"($\Delta$ohc2000)"))
 abline(v=q700["99.0%"], h=q2000["99.0%"], col="red")
 ```
 
@@ -136,7 +147,25 @@ hist(obs_p_float$obs, breaks = seq(0,510,10))
 
 ### float trajectory
 
-#### cohort
+#### 10 day obs floats
+```{r}
+#| label: float_anim
+#| eval: false
+map_trace_anim(
+  argo_nac_clean,
+  fps = 4,
+  xlim = any_nac_lon,
+  ylim = any_nac_lat,
+  title = "north atlantic current - 10 day obs floats",
+  z = "dohc_700",
+  voption = "plasma",
+  filename = "anim/argo_nac_float_anim.mp4"
+)
+```
+
+{{< video anim/argo_nac_float_anim.mp4 >}}
+
+#### 10 day obs cohort
 ```{r}
 #| label: float_cohort
 
@@ -155,7 +184,6 @@ argo_nac_clean[float_id %in% float_cohort,.(
 map_trace_anim(
   argo_nac_clean[float_id %in% float_cohort],
   fps = 4,
-  wake_length = .05,
   xlim = any_nac_lon,
   ylim = any_nac_lat,
   title = "north atlantic current - 10 day obs floats - 2011 cohort",
@@ -166,33 +194,13 @@ map_trace_anim(
 ```
 {{< video anim/argo_nac_cohort_anim.mp4 >}}
 
-#### all
-```{r}
-#| label: float_anim
-#| eval: false
-map_trace_anim(
-  argo_nac_clean,
-  fps = 4,
-  wake_length = .05,
-  xlim = any_nac_lon,
-  ylim = any_nac_lat,
-  title = "north atlantic current - 10 day obs floats",
-  z = "dohc_700",
-  voption = "plasma",
-  filename = "anim/argo_nac_float_anim.mp4"
-)
-```
-
-{{< video anim/argo_nac_float_anim.mp4 >}}
-
-#### dohc outliers
+#### 10 day obs dohc outliers
 ```{r}
 #| label: float_outlier_anim
 #| eval: false
 map_trace_anim(
   argo_nac_clean[(float_has_dohc_o)],
   fps = 4,
-  wake_length = .05,
   xlim = any_nac_lon,
   ylim = any_nac_lat,
   title = "north atlantic current - 10 day obs floats with dohc outlier",
@@ -216,7 +224,7 @@ map_grid(
   voptions = c("plasma","plasma","viridis","viridis"),
   xlim = any_nac_lon,
   ylim = any_nac_lat,
-  binwidth = c(.5,.5),
+  binwidth = c(.25,.25),
   title = TeX(r"(velocity and $\Delta$ohc)"),
   subtitle = "north atlantic current"
 )
@@ -232,7 +240,7 @@ map_grid(
   voptions = c("plasma","plasma","viridis","viridis"),
   xlim = any_nac_lon,
   ylim = any_nac_lat,
-  binwidth = c(.5,.5),
+  binwidth = c(.25,.25),
   title = TeX(r"(velocity and $\Delta$ohc)"),
   subtitle = "north atlantic current"
 )
@@ -270,29 +278,46 @@ map_grid(
 ```
 
 ### correlation
+
+all 10 day obs floats
 ```{r}
-#| label: correlation
-X <- argo_nac_clean[!is.na(u_ms),.(u_ms,v_ms,dohc_700,dohc_2000)]
-cor(X, use = "complete.obs")
-X <- argo_nac_clean[(float_has_dohc_o) & !is.na(u_ms),.(u_ms,v_ms,dohc_700,dohc_2000)]
-cor(X, use = "complete.obs")
-X <- argo_nac_clean[!(float_has_dohc_o) & !is.na(u_ms),.(u_ms,v_ms,dohc_700,dohc_2000)]
-cor(X, use = "complete.obs")
+#| label: correlation_all
+X <- na.omit(argo_nac_clean[!is.na(u_ms),.(u_ms,v_ms,dohc_700,dohc_2000)])
+cat("N:",X[,.N])
+cor(X)
+```
+
+10 day obs floats with outlier dohc
+```{r}
+#| label: correlation_dohc_o
+X <- na.omit(argo_nac_clean[(float_has_dohc_o) & !is.na(u_ms),.(u_ms,v_ms,dohc_700,dohc_2000)])
+cat("N:", X[,.N])
+cor(X)
+```
+
+10 day obs floats without outlier dohc
+```{r}
+#| label: correlation_dohc_not_o
+X <- na.omit(argo_nac_clean[!(float_has_dohc_o) & !is.na(u_ms),.(u_ms,v_ms,dohc_700,dohc_2000)])
+cat("N:", X[,.N])
+cor(X)
 ```
 
 ```{r}
 #| label: velo_dohc_plots
 p1 <- plot_velocity_heatmap(argo_nac_clean[!is.na(u_ms)], z = "dohc_700")
 p2 <- plot_velocity_heatmap(argo_nac_clean[!is.na(u_ms)], z = "dohc_2000")
-p1 + p2
+(p1 + p2) + plot_annotation(title = "north atlantic current", subtitle = "10 day obs floats")
 
 p1 <- plot_velocity_heatmap(argo_nac_clean[(float_has_dohc_o) & !is.na(u_ms)], z = "dohc_700")
 p2 <- plot_velocity_heatmap(argo_nac_clean[(float_has_dohc_o) & !is.na(u_ms)], z = "dohc_2000")
-p1 + p2
+(p1 + p2) + plot_annotation(title = "north atlantic current",
+  subtitle = TeX(r"(10 day obs floats with $\Delta$ohc outlier)"))
 
 p1 <- plot_velocity_heatmap(argo_nac_clean[!(float_has_dohc_o) & !is.na(u_ms)], z = "dohc_700")
 p2 <- plot_velocity_heatmap(argo_nac_clean[!(float_has_dohc_o) & !is.na(u_ms)], z = "dohc_2000")
-p1 + p2
+(p1 + p2) + plot_annotation(title = "north atlantic current",
+  subtitle = TeX(r"(10 day obs floats without $\Delta$ohc outlier)"))
 ```
 
 # reananalysis

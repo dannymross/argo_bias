@@ -110,7 +110,7 @@ VO <- argo_ohc[!is.na(speed_ms) & speed_ms > 0.5,]
 
 ```{r}
 #| eval: !expr params$archive_eval
-A <- argo_nac[(float_has_dt_day_10) & !(float_all_dt_day_10) & !(dt_day_10)]
+A <- argo_nac[!(float_all_dt_day_10) & !(dt_day_10)]
 summary(A$dt_day)
 hist(A$dt_day)
 hist(A[dt_day<100,dt_day])

@@ -1,4 +1,5 @@
 library(data.table)
+library(geosphere)
 
 add_velocity_enu <- function(
   df,

@@ -99,9 +99,11 @@ map_trace_anim <- function(
   id = "float_id",
   obs = "float_obs_n",
   date = "date",
+  size = 2,
+  linewidth = 0.25,
+  trail_alpha = .2,
   title = title,
   xlim = NULL, ylim = NULL,
-  linewidth = 0.25,
   voption = "viridis",
   wake_length = 0.05,
   fps = 5,
@@ -117,8 +119,7 @@ map_trace_anim <- function(
   df[is.na(xstart), xstart := .SD[[x]]]
   df[is.na(ystart), ystart := .SD[[y]]]
 
-  # df[, n_floats := uniqueN(float_id), obs]
-
+  nframes <- max(df$float_obs_n)
   p <- ggplot(df) +
     labs(
       title = title,
@@ -143,7 +144,7 @@ map_trace_anim <- function(
         color = .data[[z]],
         group = .data[[id]]
       ),
-      size = 0.9
+      size = size
     ) +
     scale_color_viridis_c(option = voption) +
     coord_sf(xlim = xlim, ylim = ylim) +
@@ -154,17 +155,17 @@ map_trace_anim <- function(
     ) +
     guides(color = guide_colorbar()) +
     transition_states(.data[[obs]], transition_length = 0, state_length = 1) +
-    # transition_manual(float_obs_n) +
-    shadow_wake(wake_length = wake_length, wrap = FALSE, alpha = FALSE) +
+    shadow_trail(distance = 1 / nframes, alpha = trail_alpha, size = 0) +
+    # shadow_wake(wake_length = wake_length, wrap = FALSE, alpha = .1, size = 0, exclude_layer = NULL, falloff = "linear") +
     ease_aes("linear")
 
   a <- animate(
     p,
-    nframes = max(df$float_obs_n),
+    nframes = nframes,
     fps = fps,
     detail = 1,
-    width = 900,
-    height = 500,
+    width = 1920,
+    height = 1080,
     renderer = av_renderer()
   )
 
