@@ -34,16 +34,19 @@ editor_options:
   chunk_output_type: console
 ---
 
+# setup
+source required scripts
 ```{r}
 #| label: helpers
-#| cold-fold: show
+#| cold-fold: false
 source("../code/velocity_helpers.R")
 source("../code/plot_helpers.R")
 ```
 
+process `argo_ohc.csv`
 ```{r}
 #| label: argo_ohc_processing
-#| colde-fold: show
+#| colde-fold: false
 argo_ohc <- fread("../data/argo_ohc.csv") %>% 
   add_velocity_enu() %>% 
   add_dtemp()
@@ -102,6 +105,40 @@ any_nac_lat <- argo_nac_clean[, range(lat)]
 any_nac_lon <- argo_nac_clean[, range(lon)]
 ```
 
+## outlier velocity
+```{r}
+#| label: velo_outliers
+qspeed <- quantile(argo_nac_clean$speed_ms, probs = seq(0, 1, 0.1), na.rm = TRUE)
+
+argo_nac_clean[, speed_o := F]
+argo_nac_clean[speed_ms >= 0.2, speed_o := T]
+argo_nac_clean[, float_has_speed_o := any(speed_o), float_id]
+```
+
+```{r}
+#| label: outlier_speed_hist
+par(mfrow = c(1,3))
+b = seq(-.5,.5,.05)
+hist(argo_nac_clean$speed_ms, main = "speed_ms")
+hist(argo_nac_clean$u_ms, main = "u_ms", breaks = b)
+hist(argo_nac_clean$v_ms, main = "v_ms", breaks = b)
+```
+
+```{r}
+#| label: outlier_velo_scatter
+ggplot(argo_nac_clean[(speed_o)], aes(x = u_ms, y = v_ms)) +
+  stat_bin_2d(aes(fill = after_stat(density)), binwidth = 0.01) +
+  scale_fill_viridis_c(option = "C") +
+  labs(
+    title = "velocity for speed >= 0.2m/s",
+    x = "u (m/s)",
+    y = "v (m/s)",
+    fill = "density"
+  ) +
+  theme_minimal() +
+  coord_fixed()
+```
+
 ## outlier ohc change
 ```{r}
 #| label: dohc_outliers
@@ -122,22 +159,41 @@ plot(x=q700,y=q2000, main = TeX(r"(0.5% quantiles of abs($\Delta$ohc))"),
 abline(v=q700["99.0%"], h=q2000["99.0%"], col="red")
 ```
 
+## analysis dataset summary
+
 ```{r}
 #| label: nac_float_summary
-argo_nac_clean[,.(
+o <- argo_nac_clean[,.(
   floats = uniqueN(float_id),
   floats_outlier_ohc = uniqueN(float_id[(float_has_dohc_o)]),
-  obs = .N
+  floats_outlier_speed = uniqueN(float_id[(float_has_speed_o)]),
+  floats_outlier_ohc_speed = uniqueN(float_id[(float_has_speed_o) & (float_has_dohc_o)]),
+  obs = .N,
+  obs_dohc_o = sum(dohc_o),
+  obs_speed_o = sum(speed_o),
+  obs_dohc_speed_o = sum(dohc_o & speed_o)
 )]
-argo_nac_clean[,.(
+
+y <- argo_nac_clean[,.(
   floats = uniqueN(float_id),
   floats_new = sum(float_obs_n == 1),
   floats_outlier_dohc = uniqueN(float_id[(dohc_o)]),
+  floats_outlier_speed = uniqueN(float_id[(speed_o)]),
+  floats_outlier_dohc_speed = uniqueN(float_id[(speed_o) & (dohc_o)]),
   obs = .N,
-  obs_dohc_o = sum(dohc_o)
+  obs_dohc_o = sum(dohc_o),
+  obs_speed_o = sum(speed_o),
+  obs_dohc_speed_o = sum(dohc_o & speed_o)
 ), keyby = c("year")
 ]
 
+knitr::kable(o)
+knitr::kable(y)
+```
+
+observations per float
+```{r}
+#| label: nac_obs_p_float
 obs_p_float <- argo_nac_clean[,.(
   obs = .N
 ),float_id]
@@ -145,9 +201,9 @@ summary(obs_p_float$obs)
 hist(obs_p_float$obs, breaks = seq(0,510,10))
 ```
 
-### float trajectory
+## float trajectory
 
-#### 10 day obs floats
+### 10 day obs floats
 ```{r}
 #| label: float_anim
 #| eval: false
@@ -165,7 +221,7 @@ map_trace_anim(
 
 {{< video anim/argo_nac_float_anim.mp4 >}}
 
-#### 10 day obs cohort
+### 10 day obs cohort
 ```{r}
 #| label: float_cohort
 
@@ -194,9 +250,9 @@ map_trace_anim(
 ```
 {{< video anim/argo_nac_cohort_anim.mp4 >}}
 
-#### 10 day obs dohc outliers
+### 10 day obs dohc outliers
 ```{r}
-#| label: float_outlier_anim
+#| label: float_dohc_outlier_anim
 #| eval: false
 map_trace_anim(
   argo_nac_clean[(float_has_dohc_o)],
@@ -211,6 +267,25 @@ map_trace_anim(
 ```
 
 {{< video anim/argo_nac_float_dohco_anim.mp4 >}}
+
+#### 10 day obs speed outliers
+```{r}
+#| label: float_speed_outlier_anim
+#| eval: false
+map_trace_anim(
+  argo_nac_clean[(float_has_speed_o)],
+  fps = 4,
+  xlim = any_nac_lon,
+  ylim = any_nac_lat,
+  title = "north atlantic current - 10 day obs floats with speed outlier",
+  z = "speed_ms",
+  voption = "plasma",
+  filename = "anim/argo_nac_float_speedo_anim.mp4"
+)
+```
+
+{{< video anim/argo_nac_float_speedo_anim.mp4 >}}
+
 
 ## grid plots
 
@@ -232,9 +307,25 @@ map_grid(
 
 ### dohc outliers
 ```{r}
-#| label: map_grid_outliers
+#| label: map_grid_dohc_outliers
 map_grid(
   argo_nac_clean[(dohc_o)],
+  map_sum_pts,
+  z = c("dohc_700","dohc_2000","u_ms","v_ms"),
+  voptions = c("plasma","plasma","viridis","viridis"),
+  xlim = any_nac_lon,
+  ylim = any_nac_lat,
+  binwidth = c(.25,.25),
+  title = TeX(r"(velocity and $\Delta$ohc)"),
+  subtitle = "north atlantic current"
+)
+```
+
+### speed outliers
+```{r}
+#| label: map_grid_speed_outliers
+map_grid(
+  argo_nac_clean[(speed_o)],
   map_sum_pts,
   z = c("dohc_700","dohc_2000","u_ms","v_ms"),
   voptions = c("plasma","plasma","viridis","viridis"),
@@ -264,7 +355,7 @@ map_grid(
 
 ### has dohc outlier obs
 ```{r}
-#| label: map_grid_trace_outlier
+#| label: map_grid_trace_dohc_outlier
 map_grid(
   argo_nac_clean[(float_has_dohc_o)],
   map_trace,
@@ -277,34 +368,66 @@ map_grid(
 )
 ```
 
-### correlation
+### has speed outlier obs
+```{r}
+#| label: map_grid_trace_speed_outlier
+map_grid(
+  argo_nac_clean[(float_has_speed_o)],
+  map_trace,
+  z = c("dohc_700","dohc_2000","u_ms","v_ms","float_obs_n"),
+  voptions = c("plasma","plasma","viridis","viridis","magma"),
+  xlim = any_nac_lon,
+  ylim = any_nac_lat,
+  title = TeX(r"(velocity and $\Delta$ohc)"),
+  subtitle = "north atlantic current"
+)
+```
 
-all 10 day obs floats
+## correlation tables
+
+### all 10 day obs floats
 ```{r}
 #| label: correlation_all
-X <- na.omit(argo_nac_clean[!is.na(u_ms),.(u_ms,v_ms,dohc_700,dohc_2000)])
+X <- na.omit(argo_nac_clean[,.(u_ms,v_ms,dohc_700,dohc_2000)])
 cat("N:",X[,.N])
 cor(X)
 ```
 
-10 day obs floats with outlier dohc
+### 10 day obs floats with outlier dohc
 ```{r}
 #| label: correlation_dohc_o
-X <- na.omit(argo_nac_clean[(float_has_dohc_o) & !is.na(u_ms),.(u_ms,v_ms,dohc_700,dohc_2000)])
+X <- na.omit(argo_nac_clean[(float_has_dohc_o),.(u_ms,v_ms,dohc_700,dohc_2000)])
 cat("N:", X[,.N])
 cor(X)
 ```
 
-10 day obs floats without outlier dohc
+### 10 day obs floats with outlier speed
+```{r}
+#| label: correlation_speed_o
+X <- na.omit(argo_nac_clean[(float_has_speed_o),.(u_ms,v_ms,dohc_700,dohc_2000)])
+cat("N:", X[,.N])
+cor(X)
+```
+
+### 10 day obs floats without outlier dohc
 ```{r}
 #| label: correlation_dohc_not_o
-X <- na.omit(argo_nac_clean[!(float_has_dohc_o) & !is.na(u_ms),.(u_ms,v_ms,dohc_700,dohc_2000)])
+X <- na.omit(argo_nac_clean[!(float_has_dohc_o),.(u_ms,v_ms,dohc_700,dohc_2000)])
 cat("N:", X[,.N])
 cor(X)
 ```
 
+### 10 day obs floats without outlier speed
 ```{r}
-#| label: velo_dohc_plots
+#| label: correlation_speed_not_o
+X <- na.omit(argo_nac_clean[!(float_has_speed_o),.(u_ms,v_ms,dohc_700,dohc_2000)])
+cat("N:", X[,.N])
+cor(X)
+```
+
+## correlation heatmaps
+```{r}
+#| label: velo_heatmap_plots
 p1 <- plot_velocity_heatmap(argo_nac_clean[!is.na(u_ms)], z = "dohc_700")
 p2 <- plot_velocity_heatmap(argo_nac_clean[!is.na(u_ms)], z = "dohc_2000")
 (p1 + p2) + plot_annotation(title = "north atlantic current", subtitle = "10 day obs floats")
@@ -314,13 +437,18 @@ p2 <- plot_velocity_heatmap(argo_nac_clean[(float_has_dohc_o) & !is.na(u_ms)], z
 (p1 + p2) + plot_annotation(title = "north atlantic current",
   subtitle = TeX(r"(10 day obs floats with $\Delta$ohc outlier)"))
 
-p1 <- plot_velocity_heatmap(argo_nac_clean[!(float_has_dohc_o) & !is.na(u_ms)], z = "dohc_700")
-p2 <- plot_velocity_heatmap(argo_nac_clean[!(float_has_dohc_o) & !is.na(u_ms)], z = "dohc_2000")
+p1 <- plot_velocity_heatmap(argo_nac_clean[(float_has_speed_o) & !is.na(u_ms)], z = "dohc_700")
+p2 <- plot_velocity_heatmap(argo_nac_clean[(float_has_speed_o) & !is.na(u_ms)], z = "dohc_2000")
 (p1 + p2) + plot_annotation(title = "north atlantic current",
-  subtitle = TeX(r"(10 day obs floats without $\Delta$ohc outlier)"))
+  subtitle = TeX(r"(10 day obs floats with speed outlier)"))
+
+p1 <- plot_velocity_heatmap(argo_nac_clean[!(float_has_speed_o) & !is.na(u_ms)], z = "dohc_700")
+p2 <- plot_velocity_heatmap(argo_nac_clean[!(float_has_speed_o) & !is.na(u_ms)], z = "dohc_2000")
+(p1 + p2) + plot_annotation(title = "north atlantic current",
+  subtitle = TeX(r"(10 day obs floats without speed outlier)"))
 ```
 
-# reananalysis
+# en4 data
 ```{r}
 #| label: en4_read
 ohc_en4 <- readRDS("../data/ohc_en4_gridded.rds")
