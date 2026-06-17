@@ -16,11 +16,18 @@ import cartopy.feature as cfeature
 
 
 def open_trajectories(output):
-    """Open one zarr path, or concat a glob of batch outputs on trajectory."""
+    """Open one zarr path, or concat a glob of batch outputs on trajectory.
+
+    Each batch zarr numbers its floats 0..n-1 locally, so concatenating leaves
+    duplicate ``trajectory`` labels across batches. We reassign a unique
+    trajectory index after concat, otherwise any per-float groupby would merge
+    floats that share a local id across batches.
+    """
     paths = sorted(glob.glob(output)) if isinstance(output, str) and "*" in output else [output]
     if len(paths) == 1:
         return xr.open_zarr(paths[0])
-    return xr.concat([xr.open_zarr(p) for p in paths], dim="trajectory")
+    ds = xr.concat([xr.open_zarr(p) for p in paths], dim="trajectory")
+    return ds.assign_coords(trajectory=np.arange(ds.sizes["trajectory"]))
 
 
 def _zarr_stem(output):
