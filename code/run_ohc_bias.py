@@ -38,6 +38,9 @@ def main(argv=None):
     p.add_argument("--degs", type=float, nargs="+", default=None,
                    help="if set, sweep these cell sizes and emit a bias-vs-resolution "
                         "curve instead of a single-resolution analysis")
+    p.add_argument("--unweighted-ref", action="store_true",
+                   help="use the unweighted native-cell truth mean as the reference "
+                        "instead of the default cos(lat) area-weighted domain mean")
     p.add_argument("--outdir", default="data/ohc_bias")
     p.add_argument("--figdir", default="figures")
     p.add_argument("--prefix", default="ohc_bias")
@@ -66,10 +69,16 @@ def main(argv=None):
     sim.to_csv(sim_path, index=False)
     print(f"  {len(sim)} synthetic profiles -> {sim_path}")
 
+    weighted_ref = not args.unweighted_ref
+    ref = ohc.truth_domain_mean(truth_field, weighted=weighted_ref)
+    print(f"truth reference: {'cos(lat) area-weighted' if weighted_ref else 'unweighted'} "
+          f"domain mean")
+
     # Cell-size sweep: re-grid truth and floats cheaply at each resolution.
     if args.degs:
         print(f"sweeping cell sizes: {args.degs}")
-        sweep = ohc_bias.sweep_resolution(truth_field, sim, args.degs)
+        sweep = ohc_bias.sweep_resolution(truth_field, sim, args.degs,
+                                          weighted_reference=weighted_ref)
         sweep_path = os.path.join(args.outdir, f"{args.prefix}_sweep.csv")
         sweep.to_csv(sweep_path, index=False)
         print("\n=== bias vs cell size (GJ/m2, time-averaged) ===")
@@ -89,7 +98,7 @@ def main(argv=None):
 
     # 3. Bias.
     print("computing bias ...")
-    res = ohc_bias.compute_bias(float_cells, truth_cells)
+    res = ohc_bias.compute_bias(float_cells, truth_cells, true_domain_mean=ref)
     summary = ohc_bias.bias_summary(res["domain"])
 
     res["domain"].to_csv(os.path.join(args.outdir, f"{args.prefix}_domain.csv"), index=False)

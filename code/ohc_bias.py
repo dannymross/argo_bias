@@ -26,7 +26,8 @@ J_TO_GJ = 1e-9
 
 
 # ---- BIAS METRICS --------------------------------------------------------
-def compute_bias(float_cells, truth_cells, value_cols=("ohc_700", "ohc_2000")):
+def compute_bias(float_cells, truth_cells, value_cols=("ohc_700", "ohc_2000"),
+                 true_domain_mean=None):
     """Join float and truth cells and compute per-cell and domain-level bias.
 
     Parameters
@@ -36,6 +37,13 @@ def compute_bias(float_cells, truth_cells, value_cols=("ohc_700", "ohc_2000")):
         columns ``month, cell_lat, cell_lon, <value_cols>, n``.
     value_cols : tuple
         OHC columns to analyse.
+    true_domain_mean : DataFrame, optional
+        Fixed per-month true domain mean (columns ``month`` + value_cols, J/m2)
+        from :func:`ohc.truth_domain_mean`. If given, it is used as the truth
+        reference for total and coverage bias instead of the cell-mean over all
+        truth cells -- which removes the resolution-dependent drift of the
+        reference across a cell-size sweep. The total = coverage + representation
+        decomposition is preserved either way.
 
     Returns
     -------
@@ -71,8 +79,12 @@ def compute_bias(float_cells, truth_cells, value_cols=("ohc_700", "ohc_2000")):
     })
     domain["sampled_fraction"] = domain["n_sampled_cells"] / domain["n_truth_cells"]
 
+    ref = true_domain_mean.set_index("month") if true_domain_mean is not None else None
+
     for c in value_cols:
-        true_mean = gb[f"{c}_truth"].mean()                          # truth, all cells
+        cell_true_mean = gb[f"{c}_truth"].mean()                     # truth, all cells (this deg)
+        # Fixed area-weighted reference if supplied, else the cell-mean over all cells.
+        true_mean = ref[c].reindex(cell_true_mean.index) if ref is not None else cell_true_mean
         float_mean = gb[f"{c}_float"].mean()                         # float estimate (NaN-skip = sampled)
         true_at_sampled = merged[f"{c}_truth"].where(sampled).groupby(month).mean()
         domain[f"{c}_true_mean"] = true_mean
@@ -104,7 +116,8 @@ def bias_summary(domain, value_cols=("ohc_700", "ohc_2000")):
 
 
 # ---- CELL-SIZE SWEEP -----------------------------------------------------
-def sweep_resolution(truth_field, sim, degs, value_cols=("ohc_700", "ohc_2000")):
+def sweep_resolution(truth_field, sim, degs, value_cols=("ohc_700", "ohc_2000"),
+                     weighted_reference=True):
     """Sweep the analysis cell size and report bias vs resolution.
 
     The grid cell size is a parameter of the estimator (a box-kernel proxy for
@@ -123,7 +136,11 @@ def sweep_resolution(truth_field, sim, degs, value_cols=("ohc_700", "ohc_2000"))
     sim : pandas.DataFrame
         Per-profile synthetic-Argo OHC from :func:`ohc.float_ohc`.
     degs : iterable of float
-        Cell sizes (degrees) to sweep, e.g. ``[0.5, 1, 2, 5]``.
+        Cell sizes (degrees) to sweep, e.g. ``[1/12, 0.25, 0.5, 1]``.
+    weighted_reference : bool
+        If True (default), measure bias against the fixed cos(lat) area-weighted
+        true domain mean (native resolution), so only the estimator changes
+        across the sweep. If False, use the unweighted native-cell mean.
 
     Returns
     -------
@@ -131,11 +148,13 @@ def sweep_resolution(truth_field, sim, degs, value_cols=("ohc_700", "ohc_2000"))
         One row per (deg, depth) with time-averaged bias terms in GJ/m2,
         the mean sampled-cell fraction, and the mean cell count.
     """
+    ref = ohc.truth_domain_mean(truth_field, weighted=weighted_reference,
+                                value_cols=list(value_cols))
     rows = []
     for deg in degs:
         truth_cells = ohc.coarsen_truth(truth_field, deg=deg)
         float_cells = ohc.grid_cells(sim, list(value_cols), deg=deg)
-        res = compute_bias(float_cells, truth_cells, value_cols)
+        res = compute_bias(float_cells, truth_cells, value_cols, true_domain_mean=ref)
         summary = bias_summary(res["domain"], value_cols)
         summary.insert(0, "deg", deg)
         summary["mean_n_truth_cells"] = res["domain"]["n_truth_cells"].mean()

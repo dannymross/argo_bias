@@ -36,12 +36,15 @@ def _zarr_stem(output):
 
 
 def _auto_extent(lat_vals, lon_vals, margin=3):
-    """Compute [lon_min, lon_max, lat_min, lat_max] with a margin."""
+    """Compute [lon_min, lon_max, lat_min, lat_max] with a margin.
+
+    NaN-aware: deleted floats leave NaN positions in the trajectory arrays.
+    """
     return [
-        lon_vals.min() - margin,
-        lon_vals.max() + margin,
-        lat_vals.min() - margin,
-        lat_vals.max() + margin,
+        np.nanmin(lon_vals) - margin,
+        np.nanmax(lon_vals) + margin,
+        np.nanmin(lat_vals) - margin,
+        np.nanmax(lat_vals) + margin,
     ]
 
 
@@ -141,6 +144,72 @@ def map_trajectories(
     else:
         plt.close(fig)
 
+    return fig, ax
+
+
+def map_trajectories_minimal(
+    output,
+    extent=None,
+    margin=1.5,
+    boxes=None,
+    line_color="#1a4f8a",
+    figsize=(8, 8),
+    save_path=None,
+    dpi=200,
+    title=None,
+    show=True,
+):
+    """Minimal map of many float trajectories.
+
+    Unlike :func:`map_trajectories` (one colour + legend entry per float, made
+    for a handful of floats), this draws all tracks as thin translucent lines
+    with deployment dots -- readable for a 100-float pilot. Optional ``boxes``
+    (list of ``(lat_min, lat_max, lon_min, lon_max, label)``) outline e.g. the
+    truth domain and the deployment region.
+    """
+    ds = open_trajectories(output)
+    lat_vals = ds["lat"].values.astype(float)
+    lon_vals = ds["lon"].values.astype(float)
+    n_traj = lat_vals.shape[0]
+
+    fig = plt.figure(figsize=figsize)
+    ax = plt.axes(projection=ccrs.PlateCarree())
+    ax.add_feature(cfeature.LAND, facecolor="#ededed", edgecolor="none", zorder=1)
+    ax.add_feature(cfeature.COASTLINE, linewidth=0.5, edgecolor="grey", zorder=2)
+
+    for i in range(n_traj):
+        ax.plot(lon_vals[i], lat_vals[i], lw=0.5, color=line_color, alpha=0.35,
+                transform=ccrs.PlateCarree(), zorder=3)
+    ax.scatter(lon_vals[:, 0], lat_vals[:, 0], s=12, color="#e84040", zorder=5,
+               edgecolors="none", transform=ccrs.PlateCarree(), label="deployment")
+
+    for box in (boxes or []):
+        la0, la1, lo0, lo1 = box[:4]
+        label = box[4] if len(box) > 4 else None
+        ax.plot([lo0, lo1, lo1, lo0, lo0], [la0, la0, la1, la1, la0],
+                lw=1.2, ls="--", color="k", alpha=0.7, transform=ccrs.PlateCarree(),
+                zorder=4, label=label)
+
+    map_extent = extent if extent is not None else _auto_extent(lat_vals, lon_vals, margin)
+    ax.set_extent(map_extent, crs=ccrs.PlateCarree())
+    gl = ax.gridlines(draw_labels=True, linewidth=0.3, color="grey", alpha=0.4, linestyle=":")
+    gl.top_labels = gl.right_labels = False
+
+    if title is None:
+        t0 = np.datetime_as_string(np.nanmin(ds.time.values), unit="D")
+        t1 = np.datetime_as_string(np.nanmax(ds.time.values), unit="D")
+        title = f"{n_traj} float trajectories  |  {t0} → {t1}"
+    ax.set_title(title, fontsize=11, pad=8)
+    ax.legend(loc="upper left", fontsize=8, framealpha=0.9)
+    plt.tight_layout()
+
+    if save_path is not None:
+        fig.savefig(os.path.expanduser(save_path), dpi=dpi, bbox_inches="tight")
+        print(f"saved {save_path}")
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
     return fig, ax
 
 

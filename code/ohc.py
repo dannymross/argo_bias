@@ -158,6 +158,42 @@ def grid_cells(df, value_cols, deg=1, lat_col="lat", lon_col="lon", date_col="da
     return cells
 
 
+def truth_domain_mean(truth_field, weighted=True, value_cols=None):
+    """True domain-mean OHC per month from the native-resolution field.
+
+    This is the fixed reference for the bias-vs-resolution sweep: unlike the
+    coarsened cell-mean (which drifts as the analysis cell size changes), it is
+    computed once on the native grid and does not depend on the estimator.
+
+    Parameters
+    ----------
+    truth_field : xarray.Dataset
+        Output of :func:`truth_ohc_field` (ohc_700/ohc_2000 on the native grid).
+    weighted : bool
+        If True (default), cos(lat) area-weighted mean over valid (deep-water)
+        cells -- the gold standard. If False, a simple unweighted mean over
+        native cells (kept as an option for comparison).
+    value_cols : list, optional
+        OHC variables to average (default: all data variables).
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns ``['month', *value_cols]`` in J/m2, one row per month.
+    """
+    if value_cols is None:
+        value_cols = list(truth_field.data_vars)
+    monthly = truth_field.resample(time="1MS").mean()
+    if weighted:
+        w = np.cos(np.deg2rad(monthly["latitude"]))
+        dm = monthly.weighted(w).mean(dim=("latitude", "longitude"))
+    else:
+        dm = monthly.mean(dim=("latitude", "longitude"))
+    df = dm.to_dataframe().reset_index().rename(columns={"time": "month"})
+    df["month"] = pd.to_datetime(df["month"])
+    return df[["month"] + list(value_cols)]
+
+
 def coarsen_truth(truth_ds, deg=1, value_cols=None):
     """Monthly-mean the truth field and average onto deg-degree cells.
 
