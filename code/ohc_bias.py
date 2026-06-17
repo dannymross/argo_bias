@@ -60,27 +60,28 @@ def compute_bias(float_cells, truth_cells, value_cols=("ohc_700", "ohc_2000")):
     for c in value_cols:
         cell_rows[f"{c}_bias"] = cell_rows[f"{c}_float"] - cell_rows[f"{c}_truth"]
 
-    # Domain-level summary per month.
-    dom = []
-    for month, g in merged.groupby("month"):
-        n_all = len(g)
-        s = g[g["n_float"].notna()]
-        row = {"month": month, "n_truth_cells": n_all,
-               "n_sampled_cells": len(s),
-               "sampled_fraction": len(s) / n_all if n_all else np.nan}
-        for c in value_cols:
-            true_mean = g[f"{c}_truth"].mean()              # truth over all cells
-            float_mean = s[f"{c}_float"].mean()             # float estimate
-            true_at_sampled = s[f"{c}_truth"].mean()        # truth where floats are
-            row[f"{c}_true_mean"] = true_mean
-            row[f"{c}_float_mean"] = float_mean
-            row[f"{c}_true_at_sampled"] = true_at_sampled
-            # Total bias splits into coverage (which cells) + representation (value error).
-            row[f"{c}_bias"] = float_mean - true_mean
-            row[f"{c}_coverage_bias"] = true_at_sampled - true_mean
-            row[f"{c}_repr_bias"] = float_mean - true_at_sampled
-        dom.append(row)
-    domain = pd.DataFrame(dom).sort_values("month").reset_index(drop=True)
+    # Domain-level summary per month, via vectorised groupby aggregation.
+    month = merged["month"]
+    gb = merged.groupby("month")
+    domain = pd.DataFrame({
+        "n_truth_cells": gb.size(),
+        "n_sampled_cells": gb["n_float"].count(),  # non-NaN = sampled cells
+    })
+    domain["sampled_fraction"] = domain["n_sampled_cells"] / domain["n_truth_cells"]
+
+    for c in value_cols:
+        true_mean = gb[f"{c}_truth"].mean()                          # truth, all cells
+        float_mean = gb[f"{c}_float"].mean()                         # float estimate (NaN-skip = sampled)
+        true_at_sampled = merged[f"{c}_truth"].where(sampled).groupby(month).mean()
+        domain[f"{c}_true_mean"] = true_mean
+        domain[f"{c}_float_mean"] = float_mean
+        domain[f"{c}_true_at_sampled"] = true_at_sampled
+        # Total bias splits into coverage (which cells) + representation (value error).
+        domain[f"{c}_bias"] = float_mean - true_mean
+        domain[f"{c}_coverage_bias"] = true_at_sampled - true_mean
+        domain[f"{c}_repr_bias"] = float_mean - true_at_sampled
+
+    domain = domain.reset_index().sort_values("month").reset_index(drop=True)
 
     return {"cells": cell_rows, "domain": domain}
 
