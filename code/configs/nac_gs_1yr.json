@@ -21,7 +21,7 @@
   "years": null,
   "days": 365,
   "step_seconds": 300,
-  "record_seconds": 1800,
+  "record_seconds": 21600,
 
   "ntasks": 8,
   "local_cores": 8,
