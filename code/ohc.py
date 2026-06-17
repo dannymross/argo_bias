@@ -217,12 +217,18 @@ def _one_position_per_cycle(traj, traj_dim="trajectory"):
     """Reduce a trajectory dataset to one (float, cycle) surfacing position.
 
     For each float and each ``cycle_number``, takes the shallowest observation
-    (minimum ``z``) of the cycle -- the point where the float reaches the
-    surface to report its profile. This is robust to the transmit phase
-    (``cycle_phase == 4``) being too brief to be recorded for many floats at the
-    output cadence. Returns a tidy DataFrame with float_id, cycle, lat, lon,
-    date. ``traj_dim`` is the per-float dimension of the VirtualFleet/Parcels
-    zarr (``trajectory``).
+    (minimum ``z``) of the cycle -- the surfacing point where the float reports
+    its profile. This is robust to the brief ascent/transmit phases being missed
+    at the output cadence (the surface points are reliably recorded).
+
+    The first (deployment) cycle is dropped: a float starts at the surface at its
+    launch position, which would otherwise register a spurious profile at the
+    deployment cell on day 0. A real Argo float does not report a profile until
+    it surfaces at the end of its first ~10-day cycle, at its drifted position --
+    so the first kept observation is that post-ascent surfacing.
+
+    Returns a tidy DataFrame with float_id, cycle, lat, lon, date. ``traj_dim``
+    is the per-float dimension of the VirtualFleet/Parcels zarr (``trajectory``).
     """
     df = (
         traj[["cycle_number", "z", "lat", "lon", "time"]]
@@ -235,7 +241,10 @@ def _one_position_per_cycle(traj, traj_dim="trajectory"):
     idx = df.groupby(["float_id", "cycle"])["z"].idxmin()
     out = df.loc[idx, ["float_id", "cycle", "lat", "lon", "date"]].copy()
     out["cycle"] = out["cycle"].astype(int)
-    return out.sort_values(["float_id", "cycle"]).reset_index(drop=True)
+    out = out.sort_values(["float_id", "cycle"]).reset_index(drop=True)
+    # Drop the deployment cycle (smallest cycle per float).
+    first_cycle = out.groupby("float_id")["cycle"].transform("min")
+    return out[out["cycle"] > first_cycle].reset_index(drop=True)
 
 
 def sample_float_profiles(traj, theta_ds, theta_var="thetao", depth_dim="depth"):

@@ -85,11 +85,14 @@ VALUE           = "ohc_2000"            # primary depth layer for figures (also 
 # The simulation
 
 The float advection is run by `code/run_trajsim.py`, driven by a JSON config.
-It deploys 100 floats on a grid in the deployment box — snapped to the GLORYS
-1/12° cell centres so each float's initial profile samples one true model column
-— and advects them with daily GLORYS velocities at the parking depth for 365 days
-(2020), writing 6-hourly trajectories to a `.zarr` file. The chunk below documents
-the command; it is **not executed here** (the output already exists).
+It deploys **one float per 0.5° analysis cell** tiling the deployment box (96
+floats; cell centres lie exactly on the GLORYS 1/12° grid, so there is no
+deployment-vs-analysis grid mismatch) and advects them with daily GLORYS
+velocities at the parking depth for 365 days (2020), writing 6-hourly
+trajectories to a `.zarr` file. Following real Argo, a float reports its **first
+profile at the end of its first ~10-day cycle** (at its drifted position), not at
+the deployment site. The chunk below documents the command; it is **not executed
+here** (the output already exists).
 
 ```{python}
 #| eval: false
@@ -100,8 +103,8 @@ the command; it is **not executed here** (the output already exists).
 #       --ntasks 1 --local-cores 1
 #
 # Config highlights (code/configs/nac_gs_1yr_wide.json):
-#   nfloats=100, deployment box lat 36–40°N / lon −68 to −62°W,
-#   deployment snapped to the GLORYS 1/12° cell centres (snap_deg),
+#   deployment box lat 36–40°N / lon −68 to −62°W,
+#   cell_deg=0.5 -> one float per 0.5° cell (96), on the GLORYS 1/12° grid,
 #   365 days from 2020-01-01, step=300 s, record=21600 s (6-hourly),
 #   velocity = GLORYS12 daily uo/vo/thetao, 0–2300 m, over the extended
 #   advection domain (lat 30–48°N, lon −74 to −49°W) so floats stay

@@ -68,7 +68,7 @@ def _write_log(path, data):
 _CONFIG_KEYS = {
     "experiment", "velocity", "model", "nfloats", "deploy_time", "years",
     "days", "step_seconds", "record_seconds", "outdir", "prefix", "ntasks",
-    "snap_deg",
+    "snap_deg", "cell_deg",
 }
 _CONFIG_TUPLE_KEYS = {"top_left", "bottom_right"}
 
@@ -115,6 +115,9 @@ def build_parser():
     p.add_argument("--snap-deg", type=float, default=None,
                    help="snap deployment positions to the nearest multiple of this "
                         "degree value (model cell centres; use 0.0833333 for GLORYS12)")
+    p.add_argument("--cell-deg", type=float, default=None,
+                   help="deploy one float per analysis cell of this size (degrees), "
+                        "tiling the box so deployment aligns with the analysis grid")
 
     # Simulation
     p.add_argument("--years", type=float, default=None,
@@ -166,6 +169,7 @@ def run_batch(args, ntasks, task_id):
         nfloats=args.nfloats,
         deploy_time=args.deploy_time,
         snap_deg=args.snap_deg,
+        cell_deg=args.cell_deg,
     )
     nfloats_total = len(plan["lat"])
 

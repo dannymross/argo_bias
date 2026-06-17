@@ -33,6 +33,7 @@ def deploy_float_grid(
     deploy_time="2020-01-01",
     ocean_only=True,
     snap_deg=None,
+    cell_deg=None,
 ):
     """Deploy floats on a regular lat/lon grid within a bounding box.
 
@@ -67,6 +68,13 @@ def deploy_float_grid(
         ``snap_deg`` so floats sit at model cell centres (use 1/12 for GLORYS12,
         whose grid points lie on exact multiples of 1/12 deg). Positions that are
         already centred are left unchanged (the snap is idempotent).
+    cell_deg : float, optional
+        If set, deploy exactly one float at the centre of every analysis cell of
+        size ``cell_deg`` within the box, using the same floor-binning as
+        :func:`ohc.grid_cells` (centres at ``floor(x/cell_deg)*cell_deg +
+        cell_deg/2``). This removes any grid-spacing mismatch between the
+        deployment and the analysis grid (one float per cell). Overrides the
+        nfloats / spacing_deg grid. Requires ``bottom_right``.
 
     Returns
     -------
@@ -84,7 +92,16 @@ def deploy_float_grid(
         raise ValueError("Provide either bottom_right, spacing_deg, or both.")
 
     # Build 1-D grid arrays
-    if spacing_deg is not None:
+    if cell_deg is not None:
+        # One float per analysis-cell centre (floor-binning, matching
+        # ohc.grid_cells), so deployment tiles the analysis grid exactly.
+        def _cell_centers_in(lo, hi, c):
+            start = np.floor(lo / c) * c + c / 2.0
+            cs = np.arange(start, hi, c)
+            return cs[(cs >= lo) & (cs <= hi)]
+        lat_pts = _cell_centers_in(lat_min, lat_max, cell_deg)[::-1]  # N -> S
+        lon_pts = _cell_centers_in(lon_min, lon_max, cell_deg)
+    elif spacing_deg is not None:
         lat_pts = np.arange(lat_max, lat_min - 1e-9, -spacing_deg)
         lon_pts = np.arange(lon_min, lon_max + 1e-9, spacing_deg)
     else:
