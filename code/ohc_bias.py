@@ -165,6 +165,61 @@ def sweep_resolution(truth_field, sim, degs, value_cols=("ohc_700", "ohc_2000"),
     return out[cols].sort_values(["depth", "deg"]).reset_index(drop=True)
 
 
+# ---- ANALYSIS-REGION SWEEP ----------------------------------------------
+def subset_region(truth_field, sim, bounds):
+    """Restrict the truth field and synthetic profiles to a lat/lon box.
+
+    ``bounds`` is ``(lat_min, lat_max, lon_min, lon_max)``. Used to evaluate the
+    bias over a defined analysis region rather than the whole download domain --
+    e.g. starting at the float deployment footprint and expanding outward, so
+    never-sampled shelf / far-field cells don't dominate the coverage term.
+    """
+    la0, la1, lo0, lo1 = bounds
+    tf = truth_field.sel(latitude=slice(la0, la1), longitude=slice(lo0, lo1))
+    s = sim[sim["lat"].between(la0, la1) & sim["lon"].between(lo0, lo1)]
+    return tf, s
+
+
+def sweep_region(truth_field, sim, regions, deg=1.0,
+                 value_cols=("ohc_700", "ohc_2000"), weighted_reference=True):
+    """Compute bias over a sequence of analysis regions at a fixed cell size.
+
+    Parameters
+    ----------
+    regions : list of (bounds, label)
+        ``bounds`` is ``(lat_min, lat_max, lon_min, lon_max)``; ``label`` names
+        the region (e.g. "deploy", "+2deg").
+    deg : float
+        Analysis cell size held fixed across the region sweep.
+    weighted_reference : bool
+        cos(lat) area-weighted true domain mean per region (default) vs unweighted.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per (region, depth) with time-averaged bias terms (GJ/m2), the
+        region box, and its area in deg^2.
+    """
+    rows = []
+    for bounds, label in regions:
+        tf, s = subset_region(truth_field, sim, bounds)
+        ref = ohc.truth_domain_mean(tf, weighted=weighted_reference,
+                                    value_cols=list(value_cols))
+        truth_cells = ohc.coarsen_truth(tf, deg=deg)
+        float_cells = ohc.grid_cells(s, list(value_cols), deg=deg)
+        res = compute_bias(float_cells, truth_cells, value_cols, true_domain_mean=ref)
+        summary = bias_summary(res["domain"], value_cols)
+        la0, la1, lo0, lo1 = bounds
+        summary.insert(0, "region", label)
+        summary["area_deg2"] = (la1 - la0) * (lo1 - lo0)
+        summary["n_profiles"] = len(s)
+        rows.append(summary)
+    out = pd.concat(rows, ignore_index=True)
+    cols = ["region", "area_deg2", "depth", "n_profiles", "mean_sampled_fraction",
+            "mean_true_GJ", "bias_GJ", "coverage_bias_GJ", "repr_bias_GJ"]
+    return out[cols].reset_index(drop=True)
+
+
 # ---- PLOTS ---------------------------------------------------------------
 def plot_domain_timeseries(domain, value_col="ohc_2000", out_path=None):
     """Truth vs synthetic-Argo domain-mean OHC over time, with coverage."""
@@ -219,6 +274,39 @@ def plot_bias_vs_resolution(sweep, value_col="ohc_2000", out_path=None):
     ax2.set_xlabel("cell size (deg)")
     ax2.set_xscale("log")
     ax2.grid(alpha=0.2, which="both")
+    fig.tight_layout()
+    if out_path:
+        fig.savefig(out_path, dpi=130, bbox_inches="tight")
+        print(f"saved {out_path}")
+    return fig
+
+
+def plot_bias_vs_region(sweep, value_col="ohc_2000", out_path=None):
+    """Bias terms vs analysis-region size (expanding from the deployment box)."""
+    import matplotlib.pyplot as plt
+
+    df = sweep[sweep["depth"] == value_col].sort_values("area_deg2")
+    x = df["area_deg2"]
+    fig, (ax, ax2) = plt.subplots(
+        2, 1, figsize=(8, 6), sharex=True, gridspec_kw={"height_ratios": [3, 1]}
+    )
+    ax.axhline(0, color="0.6", lw=0.8)
+    ax.plot(x, df["bias_GJ"], "-o", color="#1a1a1a", label="total bias")
+    ax.plot(x, df["coverage_bias_GJ"], "-s", color="#4a90d9", label="coverage bias")
+    ax.plot(x, df["repr_bias_GJ"], "-^", color="#e07b39", label="representation bias")
+    for xi, lab in zip(x, df["region"]):
+        ax.annotate(lab, (xi, 0), textcoords="offset points", xytext=(0, 4),
+                    ha="center", fontsize=7, color="0.4")
+    ax.set_ylabel(f"{value_col} bias  (GJ m$^{{-2}}$)")
+    ax.legend(frameon=False)
+    ax.set_title(f"OHC sampling bias vs analysis region ({value_col})")
+    ax.grid(alpha=0.2)
+
+    ax2.plot(x, df["mean_sampled_fraction"], "-o", color="#4a90d9")
+    ax2.set_ylabel("sampled\ncell frac")
+    ax2.set_ylim(0, 1)
+    ax2.set_xlabel("analysis-region area (deg$^2$)")
+    ax2.grid(alpha=0.2)
     fig.tight_layout()
     if out_path:
         fig.savefig(out_path, dpi=130, bbox_inches="tight")

@@ -41,6 +41,16 @@ def main(argv=None):
     p.add_argument("--unweighted-ref", action="store_true",
                    help="use the unweighted native-cell truth mean as the reference "
                         "instead of the default cos(lat) area-weighted domain mean")
+    p.add_argument("--analysis-bounds", type=float, nargs=4, default=None,
+                   metavar=("LAT0", "LAT1", "LON0", "LON1"),
+                   help="restrict the bias analysis to this box (default: full domain)")
+    p.add_argument("--region-sweep", action="store_true",
+                   help="sweep expanding analysis regions from the deployment box outward")
+    p.add_argument("--deploy-bounds", type=float, nargs=4,
+                   default=(36, 40, -68, -62), metavar=("LAT0", "LAT1", "LON0", "LON1"),
+                   help="deployment footprint, the innermost region for --region-sweep")
+    p.add_argument("--region-margins", type=float, nargs="+", default=(0, 1, 2, 4, 8),
+                   help="degrees to grow the deployment box by, for --region-sweep")
     p.add_argument("--outdir", default="data/ohc_bias")
     p.add_argument("--figdir", default="figures")
     p.add_argument("--prefix", default="ohc_bias")
@@ -70,9 +80,39 @@ def main(argv=None):
     print(f"  {len(sim)} synthetic profiles -> {sim_path}")
 
     weighted_ref = not args.unweighted_ref
-    ref = ohc.truth_domain_mean(truth_field, weighted=weighted_ref)
     print(f"truth reference: {'cos(lat) area-weighted' if weighted_ref else 'unweighted'} "
           f"domain mean")
+
+    # Expanding analysis regions from the deployment box outward.
+    if args.region_sweep:
+        dla0, dla1, dlo0, dlo1 = args.deploy_bounds
+        fla0, fla1 = args.lat_bounds
+        flo0, flo1 = args.lon_bounds
+        regions = []
+        for m in args.region_margins:
+            b = (max(fla0, dla0 - m), min(fla1, dla1 + m),
+                 max(flo0, dlo0 - m), min(flo1, dlo1 + m))
+            regions.append((b, "deploy" if m == 0 else f"+{m:g}deg"))
+        print(f"region sweep at deg={args.deg}: {[r[1] for r in regions]}")
+        rsweep = ohc_bias.sweep_region(truth_field, sim, regions, deg=args.deg,
+                                       weighted_reference=weighted_ref)
+        rsweep.to_csv(os.path.join(args.outdir, f"{args.prefix}_region_sweep.csv"), index=False)
+        print("\n=== bias vs analysis region (GJ/m2, time-averaged) ===")
+        print(rsweep.to_string(index=False))
+        for v in ("ohc_700", "ohc_2000"):
+            ohc_bias.plot_bias_vs_region(
+                rsweep, value_col=v,
+                out_path=os.path.join(args.figdir, f"{args.prefix}_{v}_region_sweep.png"),
+            )
+        print("done.")
+        return
+
+    # Restrict the analysis to a sub-region if requested.
+    if args.analysis_bounds:
+        truth_field, sim = ohc_bias.subset_region(truth_field, sim, args.analysis_bounds)
+        print(f"restricted analysis to {tuple(args.analysis_bounds)}: {len(sim)} profiles")
+
+    ref = ohc.truth_domain_mean(truth_field, weighted=weighted_ref)
 
     # Cell-size sweep: re-grid truth and floats cheaply at each resolution.
     if args.degs:
