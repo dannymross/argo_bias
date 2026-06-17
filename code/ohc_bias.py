@@ -20,6 +20,8 @@ import os
 import numpy as np
 import pandas as pd
 
+import ohc
+
 J_TO_GJ = 1e-9
 
 
@@ -101,6 +103,49 @@ def bias_summary(domain, value_cols=("ohc_700", "ohc_2000")):
     return pd.DataFrame(rows)
 
 
+# ---- CELL-SIZE SWEEP -----------------------------------------------------
+def sweep_resolution(truth_field, sim, degs, value_cols=("ohc_700", "ohc_2000")):
+    """Sweep the analysis cell size and report bias vs resolution.
+
+    The grid cell size is a parameter of the estimator (a box-kernel proxy for
+    a Gaussian-process correlation length), not an intrinsic feature of the
+    ungridded float data. Coverage and representation bias both depend on it:
+    coarse cells -> small coverage bias but large representation/smoothing bias;
+    fine cells -> the reverse. This traces that curve.
+
+    The expensive pieces (truth OHC field and synthetic-float profiles) are
+    computed once by the caller and re-gridded cheaply at each ``deg``.
+
+    Parameters
+    ----------
+    truth_field : xarray.Dataset
+        Output of :func:`ohc.truth_ohc_field` (ohc_700/ohc_2000 on the native grid).
+    sim : pandas.DataFrame
+        Per-profile synthetic-Argo OHC from :func:`ohc.float_ohc`.
+    degs : iterable of float
+        Cell sizes (degrees) to sweep, e.g. ``[0.5, 1, 2, 5]``.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per (deg, depth) with time-averaged bias terms in GJ/m2,
+        the mean sampled-cell fraction, and the mean cell count.
+    """
+    rows = []
+    for deg in degs:
+        truth_cells = ohc.coarsen_truth(truth_field, deg=deg)
+        float_cells = ohc.grid_cells(sim, list(value_cols), deg=deg)
+        res = compute_bias(float_cells, truth_cells, value_cols)
+        summary = bias_summary(res["domain"], value_cols)
+        summary.insert(0, "deg", deg)
+        summary["mean_n_truth_cells"] = res["domain"]["n_truth_cells"].mean()
+        rows.append(summary)
+    out = pd.concat(rows, ignore_index=True)
+    cols = ["deg", "depth", "mean_n_truth_cells", "mean_sampled_fraction",
+            "mean_true_GJ", "bias_GJ", "coverage_bias_GJ", "repr_bias_GJ"]
+    return out[cols].sort_values(["depth", "deg"]).reset_index(drop=True)
+
+
 # ---- PLOTS ---------------------------------------------------------------
 def plot_domain_timeseries(domain, value_col="ohc_2000", out_path=None):
     """Truth vs synthetic-Argo domain-mean OHC over time, with coverage."""
@@ -124,6 +169,37 @@ def plot_domain_timeseries(domain, value_col="ohc_2000", out_path=None):
     ax2.set_ylim(0, 1)
     ax2.set_xlabel("month")
     ax2.grid(alpha=0.2)
+    fig.tight_layout()
+    if out_path:
+        fig.savefig(out_path, dpi=130, bbox_inches="tight")
+        print(f"saved {out_path}")
+    return fig
+
+
+def plot_bias_vs_resolution(sweep, value_col="ohc_2000", out_path=None):
+    """Bias terms vs cell size (the box-kernel proxy for a GP length scale)."""
+    import matplotlib.pyplot as plt
+
+    df = sweep[sweep["depth"] == value_col].sort_values("deg")
+    fig, (ax, ax2) = plt.subplots(
+        2, 1, figsize=(8, 6), sharex=True, gridspec_kw={"height_ratios": [3, 1]}
+    )
+    ax.axhline(0, color="0.6", lw=0.8)
+    ax.plot(df["deg"], df["bias_GJ"], "-o", color="#1a1a1a", label="total bias")
+    ax.plot(df["deg"], df["coverage_bias_GJ"], "-s", color="#4a90d9", label="coverage bias")
+    ax.plot(df["deg"], df["repr_bias_GJ"], "-^", color="#e07b39", label="representation bias")
+    ax.set_ylabel(f"{value_col} bias  (GJ m$^{{-2}}$)")
+    ax.set_xscale("log")
+    ax.legend(frameon=False)
+    ax.set_title(f"OHC sampling bias vs analysis cell size ({value_col})")
+    ax.grid(alpha=0.2, which="both")
+
+    ax2.plot(df["deg"], df["mean_sampled_fraction"], "-o", color="#4a90d9")
+    ax2.set_ylabel("sampled\ncell frac")
+    ax2.set_ylim(0, 1)
+    ax2.set_xlabel("cell size (deg)")
+    ax2.set_xscale("log")
+    ax2.grid(alpha=0.2, which="both")
     fig.tight_layout()
     if out_path:
         fig.savefig(out_path, dpi=130, bbox_inches="tight")
