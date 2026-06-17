@@ -188,22 +188,18 @@ def _one_position_per_cycle(traj, traj_dim="trajectory"):
     date. ``traj_dim`` is the per-float dimension of the VirtualFleet/Parcels
     zarr (``trajectory``).
     """
-    cyc = traj["cycle_number"]
-    z = traj["z"]
-    rows = []
-    ntraj = traj.sizes[traj_dim]
-    for i in range(ntraj):
-        cn = cyc.isel({traj_dim: i}).values
-        zi = z.isel({traj_dim: i}).values
-        lat = traj["lat"].isel({traj_dim: i}).values
-        lon = traj["lon"].isel({traj_dim: i}).values
-        tim = traj["time"].isel({traj_dim: i}).values
-        valid = np.isfinite(cn) & np.isfinite(lat) & np.isfinite(lon) & np.isfinite(zi)
-        for c in np.unique(cn[valid]):
-            sel = np.where(valid & (cn == c))[0]
-            j = sel[np.argmin(zi[sel])]  # shallowest point of the cycle
-            rows.append((i, int(c), float(lat[j]), float(lon[j]), tim[j]))
-    return pd.DataFrame(rows, columns=["float_id", "cycle", "lat", "lon", "date"])
+    df = (
+        traj[["cycle_number", "z", "lat", "lon", "time"]]
+        .to_dataframe()
+        .reset_index()
+        .rename(columns={traj_dim: "float_id", "cycle_number": "cycle", "time": "date"})
+        .dropna(subset=["cycle", "z", "lat", "lon"])
+    )
+    # Shallowest (min z) observation of each (float, cycle): one profile per cycle.
+    idx = df.groupby(["float_id", "cycle"])["z"].idxmin()
+    out = df.loc[idx, ["float_id", "cycle", "lat", "lon", "date"]].copy()
+    out["cycle"] = out["cycle"].astype(int)
+    return out.sort_values(["float_id", "cycle"]).reset_index(drop=True)
 
 
 def sample_float_profiles(traj, theta_ds, theta_var="thetao", depth_dim="depth"):
@@ -216,7 +212,6 @@ def sample_float_profiles(traj, theta_ds, theta_var="thetao", depth_dim="depth")
     pos = _one_position_per_cycle(traj)
     theta = theta_ds[theta_var] if isinstance(theta_ds, xr.Dataset) else theta_ds
 
-    prof = xr.DataArray(np.arange(len(pos)), dims="profile")
     cols = theta.interp(
         time=xr.DataArray(pos["date"].values, dims="profile"),
         latitude=xr.DataArray(pos["lat"].values, dims="profile"),
