@@ -326,6 +326,7 @@ def plot_monthly_cell_maps(cells, value_col="ohc_2000", ncols=4, vmin=None, vmax
                  .reindex(index=lats, columns=lons)) * J_TO_GJ
         mesh = ax.pcolormesh(lons, lats, grid.values, cmap=cmap,
                              vmin=vmin, vmax=vmax, shading="nearest")
+        ax.set_aspect("equal")  # 1 deg lon == 1 deg lat, so cells render square
         ax.set_title(pd.Timestamp(m).strftime("%Y-%m"), fontsize=8)
         ax.tick_params(labelsize=6)
     for ax in axes[len(months):]:

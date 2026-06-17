@@ -53,8 +53,9 @@ reported in GJ m⁻². Because OHC is linear in temperature, time- and space-ave
 commute with the depth integration.
 
 **This report.** We start with the cleanest sub-problem: the bias **only over the
-region where the floats are deployed** (a 5° box in the Gulf Stream), evaluated at
-three estimator cell sizes — **1/12° (GLORYS native), 1/2°, and 1°**.
+region where the floats are deployed** (a 4°×6° box in the Gulf Stream, lat 36–40°N
+/ lon −68 to −62°W), evaluated at three estimator cell sizes — **1/12° (GLORYS
+native), 1/2°, and 1°**.
 
 ```{python}
 #| label: setup
@@ -74,7 +75,7 @@ from trajplots import open_trajectories, map_trajectories_minimal
 TRAJ            = "../data/virtualfleet/nac_gs_1yr_wide_task*.zarr"  # batch trajectory zarrs
 VELOCITY        = "../data/velocity_gs_wide/velocity_*.nc"          # GLORYS uo/vo/thetao (extended)
 TRUTH_BOUNDS    = (30, 48, -74, -49)    # advection domain (lat0, lat1, lon0, lon1)
-DEPLOY_BOUNDS   = (36, 40, -68, -62)    # 5° float deployment box = our analysis region
+DEPLOY_BOUNDS   = (36, 40, -68, -62)    # float deployment box (4° lat × 6° lon) = analysis region
 ANALYSIS_BOUNDS = DEPLOY_BOUNDS
 DEGS            = [1/12, 0.5, 1.0]      # estimator cell sizes to compare
 MAP_DEG         = 0.5                   # cell size for the monthly maps
@@ -144,7 +145,7 @@ map_trajectories_minimal(
     TRAJ,
     extent=[-76, -47, 28, 50],
     boxes=[(*TRUTH_BOUNDS, "advection domain"),
-           (*DEPLOY_BOUNDS, "deployment (5°)")],
+           (*DEPLOY_BOUNDS, "deployment (4°×6°)")],
     title="Pilot: Argo floats advected by GLORYS, 2020 (1000 m park)",
     show=True,
 )
@@ -191,7 +192,8 @@ float_cells_map = ohc.grid_cells(sim, ["ohc_700", "ohc_2000"], deg=MAP_DEG)
 vmin = float((truth_cells_map[VALUE] * ohc_bias.J_TO_GJ).quantile(0.02))
 vmax = float((truth_cells_map[VALUE] * ohc_bias.J_TO_GJ).quantile(0.98))
 
-ohc_bias.plot_monthly_cell_maps(
+# assign to _ so the figure shows once (returning it would also echo a 2nd copy)
+_ = ohc_bias.plot_monthly_cell_maps(
     float_cells_map, VALUE, vmin=vmin, vmax=vmax,
     title=f"Synthetic-Argo {VALUE} by month (deg={MAP_DEG})",
 )
@@ -206,7 +208,7 @@ the sampled cells are.
 ```{python}
 #| label: fig-truth-maps
 #| fig-cap: "True OHC (0–2000 m) from GLORYS by month."
-ohc_bias.plot_monthly_cell_maps(
+_ = ohc_bias.plot_monthly_cell_maps(
     truth_cells_map, VALUE, vmin=vmin, vmax=vmax,
     title=f"True (GLORYS) {VALUE} by month (deg={MAP_DEG})",
 )
@@ -233,7 +235,7 @@ sweep.round(3)
 ```{python}
 #| label: fig-sweep
 #| fig-cap: "OHC sampling bias vs analysis cell size (deployment box)."
-ohc_bias.plot_bias_vs_resolution(sweep, value_col=VALUE)
+_ = ohc_bias.plot_bias_vs_resolution(sweep, value_col=VALUE)
 ```
 
 ## Domain-mean OHC over time (1° estimator)
@@ -249,7 +251,7 @@ tc  = ohc.coarsen_truth(truth_field, deg=1.0)
 fc  = ohc.grid_cells(sim, ["ohc_700", "ohc_2000"], deg=1.0)
 res = ohc_bias.compute_bias(fc, tc, true_domain_mean=ref)
 
-ohc_bias.plot_domain_timeseries(res["domain"], value_col=VALUE)
+_ = ohc_bias.plot_domain_timeseries(res["domain"], value_col=VALUE)
 ```
 
 ## Headline bias table (1° estimator)
