@@ -220,6 +220,20 @@ def sweep_region(truth_field, sim, regions, deg=1.0,
     return out[cols].reset_index(drop=True)
 
 
+def monthly_float_counts(sim):
+    """Distinct floats and profile counts per month in a (region-filtered) sim.
+
+    ``sim`` is the per-profile table from :func:`ohc.float_ohc`, already
+    restricted to the analysis region (e.g. via :func:`subset_region`). Returns
+    columns ``month, n_floats, n_profiles``.
+    """
+    s = sim.copy()
+    s["month"] = pd.to_datetime(s["date"]).dt.to_period("M").dt.to_timestamp()
+    g = s.groupby("month")
+    out = pd.DataFrame({"n_floats": g["float_id"].nunique(), "n_profiles": g.size()})
+    return out.reset_index()
+
+
 # ---- PLOTS ---------------------------------------------------------------
 def plot_domain_timeseries(domain, value_col="ohc_2000", out_path=None):
     """Truth vs synthetic-Argo domain-mean OHC over time, with coverage."""
@@ -275,6 +289,52 @@ def plot_bias_vs_resolution(sweep, value_col="ohc_2000", out_path=None):
     ax2.set_xscale("log")
     ax2.grid(alpha=0.2, which="both")
     fig.tight_layout()
+    if out_path:
+        fig.savefig(out_path, dpi=130, bbox_inches="tight")
+        print(f"saved {out_path}")
+    return fig
+
+
+def plot_monthly_cell_maps(cells, value_col="ohc_2000", ncols=4, vmin=None, vmax=None,
+                           cmap="viridis", title=None, out_path=None):
+    """Facet of monthly OHC maps from a gridded cells table.
+
+    Works for both the truth cells (dense) and the synthetic-float cells
+    (sparse) -- unsampled cells are left blank, so a float-cell panel doubles as
+    a coverage map. Pass a shared ``vmin``/``vmax`` (e.g. from the truth) to make
+    float and truth panels directly comparable. OHC shown in GJ/m2.
+    """
+    import matplotlib.pyplot as plt
+
+    months = sorted(pd.to_datetime(cells["month"]).unique())
+    lats = np.sort(cells["cell_lat"].unique())
+    lons = np.sort(cells["cell_lon"].unique())
+    vals = cells[value_col] * J_TO_GJ
+    if vmin is None:
+        vmin = float(np.nanpercentile(vals, 2))
+    if vmax is None:
+        vmax = float(np.nanpercentile(vals, 98))
+
+    nrows = int(np.ceil(len(months) / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(2.6 * ncols, 2.6 * nrows),
+                             sharex=True, sharey=True, squeeze=False)
+    axes = axes.ravel()
+    mesh = None
+    for ax, m in zip(axes, months):
+        d = cells[pd.to_datetime(cells["month"]) == m]
+        grid = (d.pivot_table(index="cell_lat", columns="cell_lon", values=value_col)
+                 .reindex(index=lats, columns=lons)) * J_TO_GJ
+        mesh = ax.pcolormesh(lons, lats, grid.values, cmap=cmap,
+                             vmin=vmin, vmax=vmax, shading="nearest")
+        ax.set_title(pd.Timestamp(m).strftime("%Y-%m"), fontsize=8)
+        ax.tick_params(labelsize=6)
+    for ax in axes[len(months):]:
+        ax.axis("off")
+    if mesh is not None:
+        cb = fig.colorbar(mesh, ax=axes.tolist(), shrink=0.7, pad=0.02)
+        cb.set_label(f"{value_col}  (GJ m$^{{-2}}$)")
+    if title:
+        fig.suptitle(title, y=1.0, fontsize=12)
     if out_path:
         fig.savefig(out_path, dpi=130, bbox_inches="tight")
         print(f"saved {out_path}")
