@@ -5,6 +5,15 @@
   "velocity": "data/velocity/*.nc",
   "model": "GLORYS12V1",
 
+  "download": {
+    "dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1D-m",
+    "variables": ["uo", "vo", "thetao"],
+    "lon_bounds": [-78, 17],
+    "lat_bounds": [18, 80],
+    "depth_bounds": [0, 2300],
+    "notes": "depth_bounds=(0,2300) captures GLORYS levels at 1941.9m and 2225.1m, bracketing 2000m for OHC integration"
+  },
+
   "nfloats": 1000,
   "top_left": [42, -68],
   "bottom_right": [30, -44],
@@ -13,7 +22,7 @@
   "years": 5,
   "days": 30,
   "step_seconds": 300,
-  "record_seconds": 3600,
+  "record_seconds": 1800,
 
   "ntasks": 32,
   "local_cores": 8,

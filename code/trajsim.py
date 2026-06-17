@@ -143,9 +143,9 @@ def fetch_velocity_data(
     lat_bounds=(18, 80),
     start_date="2020-01-01",
     end_date="2020-01-31",
-    depth_bounds=(0, 2000),
+    depth_bounds=(0, 2300),
     dataset_id="cmems_mod_glo_phy_my_0.083deg_P1D-m",
-    variables=("uo", "vo"),
+    variables=("uo", "vo", "thetao"),
     force_download=False,
 ):
     """Download a velocity subset from Copernicus Marine; return the file path.
@@ -221,9 +221,9 @@ def fetch_velocity_months(
     file_prefix="velocity",
     lon_bounds=(-78, 17),
     lat_bounds=(18, 80),
-    depth_bounds=(0, 2000),
+    depth_bounds=(0, 2300),
     dataset_id="cmems_mod_glo_phy_my_0.083deg_P1D-m",
-    variables=("uo", "vo"),
+    variables=("uo", "vo", "thetao"),
     force_download=False,
 ):
     """Download a velocity subset one file per month over a date span.
