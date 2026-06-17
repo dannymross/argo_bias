@@ -13,11 +13,12 @@ format:
     embed-resources: true
     fig-width: 9
     fig-height: 5
-    theme: cosmo
+    theme: default
+lightbox: true
 jupyter: python3
 execute:
   warning: false
-  cache: false
+  cache: true
 ---
 
 <!--
@@ -69,7 +70,7 @@ import xarray as xr
 
 import ohc
 import ohc_bias
-from trajplots import open_trajectories, map_trajectories_minimal
+from trajplots import open_trajectories, map_trajectories_minimal, map_positions_by_month
 
 # --- experiment configuration (mirrors code/configs/nac_gs_1yr_wide.json) ---
 TRAJ            = "../data/virtualfleet/nac_gs_1yr_wide_task*.zarr"  # batch trajectory zarrs
@@ -95,6 +96,7 @@ the deployment site. The chunk below documents the command; it is **not executed
 here** (the output already exists).
 
 ```{python}
+#| label: run_trajsim_cli
 #| eval: false
 #| code-summary: "Run the simulation (shown for reference; already executed)"
 # From the repo root, in the `virtualfleet` conda env:
@@ -143,14 +145,26 @@ and the deployment region (5°).
 
 ```{python}
 #| label: fig-trajectories
-#| fig-cap: "All 96 float trajectories (2020). Red dots: deployment positions."
-map_trajectories_minimal(
+#| fig-cap: "All 96 float trajectories (2020). deployment positions."
+_ = map_trajectories_minimal(
     TRAJ,
     extent=[-76, -47, 28, 50],
     boxes=[(*TRUTH_BOUNDS, "advection domain"),
            (*DEPLOY_BOUNDS, "deployment (4°×6°)")],
     title="Pilot: Argo floats advected by GLORYS, 2020 (1000 m park)",
     show=True,
+)
+```
+
+```{python}
+#| label: fig-trajectories-month
+#| fig-cap: "All 96 float trajectories (2020). end of month positions."
+_ = map_positions_by_month(
+    TRAJ,
+    extent=[-76, -47, 28, 50],
+    boxes=[(*TRUTH_BOUNDS, "advection domain"),
+           (*DEPLOY_BOUNDS, "deployment (4°×6°)")],
+    title="Pilot: Argo floats advected by GLORYS, 2020 (1000 m park)"
 )
 ```
 
@@ -195,10 +209,26 @@ float_cells_map = ohc.grid_cells(sim, ["ohc_700", "ohc_2000"], deg=MAP_DEG)
 vmin = float((truth_cells_map[VALUE] * ohc_bias.J_TO_GJ).quantile(0.02))
 vmax = float((truth_cells_map[VALUE] * ohc_bias.J_TO_GJ).quantile(0.98))
 
-# assign to _ so the figure shows once (returning it would also echo a 2nd copy)
 _ = ohc_bias.plot_monthly_cell_maps(
     float_cells_map, VALUE, vmin=vmin, vmax=vmax,
     title=f"Synthetic-Argo {VALUE} by month (deg={MAP_DEG})",
+)
+```
+
+## Profiles per cell each month
+
+The companion to the OHC map: how many synthetic-Argo profiles fall in each cell
+each month. Early on a cell may hold several profiles (multiple floats, or one
+float profiling several times); as floats disperse, most sampled cells hold just
+one, and the bin-mean rests on a single observation.
+
+```{python}
+#| label: fig-float-count-maps
+#| fig-cap: "Number of synthetic-Argo profiles per cell, by month (blank = none)."
+_ = ohc_bias.plot_monthly_cell_maps(
+    float_cells_map, value_col="n", value_scale=1, vmin=0,
+    cmap="magma", cbar_label="profiles per cell",
+    title=f"Synthetic-Argo profiles per cell (deg={MAP_DEG})",
 )
 ```
 

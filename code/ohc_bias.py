@@ -296,20 +296,25 @@ def plot_bias_vs_resolution(sweep, value_col="ohc_2000", out_path=None):
 
 
 def plot_monthly_cell_maps(cells, value_col="ohc_2000", ncols=4, vmin=None, vmax=None,
-                           cmap="viridis", title=None, out_path=None):
-    """Facet of monthly OHC maps from a gridded cells table.
+                           cmap="viridis", title=None, out_path=None,
+                           value_scale=J_TO_GJ, cbar_label=None):
+    """Facet of monthly cell maps from a gridded cells table.
 
     Works for both the truth cells (dense) and the synthetic-float cells
     (sparse) -- unsampled cells are left blank, so a float-cell panel doubles as
     a coverage map. Pass a shared ``vmin``/``vmax`` (e.g. from the truth) to make
-    float and truth panels directly comparable. OHC shown in GJ/m2.
+    float and truth panels directly comparable.
+
+    Defaults plot OHC in GJ/m2. To plot another quantity (e.g. the per-cell
+    profile count ``n``) pass ``value_col="n"``, ``value_scale=1`` and a
+    ``cbar_label``.
     """
     import matplotlib.pyplot as plt
 
     months = sorted(pd.to_datetime(cells["month"]).unique())
     lats = np.sort(cells["cell_lat"].unique())
     lons = np.sort(cells["cell_lon"].unique())
-    vals = cells[value_col] * J_TO_GJ
+    vals = cells[value_col] * value_scale
     if vmin is None:
         vmin = float(np.nanpercentile(vals, 2))
     if vmax is None:
@@ -323,7 +328,7 @@ def plot_monthly_cell_maps(cells, value_col="ohc_2000", ncols=4, vmin=None, vmax
     for ax, m in zip(axes, months):
         d = cells[pd.to_datetime(cells["month"]) == m]
         grid = (d.pivot_table(index="cell_lat", columns="cell_lon", values=value_col)
-                 .reindex(index=lats, columns=lons)) * J_TO_GJ
+                 .reindex(index=lats, columns=lons)) * value_scale
         mesh = ax.pcolormesh(lons, lats, grid.values, cmap=cmap,
                              vmin=vmin, vmax=vmax, shading="nearest")
         ax.set_aspect("equal")  # 1 deg lon == 1 deg lat, so cells render square
@@ -333,7 +338,7 @@ def plot_monthly_cell_maps(cells, value_col="ohc_2000", ncols=4, vmin=None, vmax
         ax.axis("off")
     if mesh is not None:
         cb = fig.colorbar(mesh, ax=axes.tolist(), shrink=0.7, pad=0.02)
-        cb.set_label(f"{value_col}  (GJ m$^{{-2}}$)")
+        cb.set_label(cbar_label or f"{value_col}  (GJ m$^{{-2}}$)")
     if title:
         fig.suptitle(title, y=1.0, fontsize=12)
     if out_path:
