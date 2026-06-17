@@ -32,6 +32,7 @@ def deploy_float_grid(
     spacing_deg=None,
     deploy_time="2020-01-01",
     ocean_only=True,
+    snap_deg=None,
 ):
     """Deploy floats on a regular lat/lon grid within a bounding box.
 
@@ -61,6 +62,11 @@ def deploy_float_grid(
         ISO-8601 deployment date for all floats.
     ocean_only : bool
         Drop grid points that fall on land (default True).
+    snap_deg : float, optional
+        If set, snap deployment latitudes/longitudes to the nearest multiple of
+        ``snap_deg`` so floats sit at model cell centres (use 1/12 for GLORYS12,
+        whose grid points lie on exact multiples of 1/12 deg). Positions that are
+        already centred are left unchanged (the snap is idempotent).
 
     Returns
     -------
@@ -90,6 +96,12 @@ def deploy_float_grid(
         n_lon = max(1, round(n_lat * aspect))
         lat_pts = np.linspace(lat_max, lat_min, n_lat)
         lon_pts = np.linspace(lon_min, lon_max, n_lon)
+
+    # Snap to model cell centres (e.g. GLORYS 1/12 deg grid). Idempotent for
+    # positions already on the grid.
+    if snap_deg:
+        lat_pts = np.round(lat_pts / snap_deg) * snap_deg
+        lon_pts = np.round(lon_pts / snap_deg) * snap_deg
 
     lon_grid, lat_grid = np.meshgrid(lon_pts, lat_pts)
     lat_flat = lat_grid.ravel()
