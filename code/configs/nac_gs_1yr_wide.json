@@ -24,8 +24,8 @@
   "step_seconds": 300,
   "record_seconds": 21600,
 
-  "ntasks": 8,
-  "local_cores": 8,
+  "ntasks": 1,
+  "local_cores": 1,
 
   "outdir": "data/virtualfleet",
   "prefix": "nac_gs_1yr_wide",

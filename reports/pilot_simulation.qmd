@@ -17,7 +17,7 @@ format:
 jupyter: python3
 execute:
   warning: false
-  cache: true
+  cache: false
 ---
 
 <!--
@@ -70,10 +70,10 @@ import ohc
 import ohc_bias
 from trajplots import open_trajectories, map_trajectories_minimal
 
-# --- experiment configuration (mirrors code/configs/nac_gs_1yr.json) ---
-TRAJ            = "../data/virtualfleet/nac_gs_1yr_task*.zarr"   # batch trajectory zarrs
-VELOCITY        = "../data/velocity_gs/velocity_*.nc"           # GLORYS uo/vo/thetao
-TRUTH_BOUNDS    = (33, 48, -74, -59)    # downloaded GLORYS box (lat0, lat1, lon0, lon1)
+# --- experiment configuration (mirrors code/configs/nac_gs_1yr_wide.json) ---
+TRAJ            = "../data/virtualfleet/nac_gs_1yr_wide_task*.zarr"  # batch trajectory zarrs
+VELOCITY        = "../data/velocity_gs_wide/velocity_*.nc"          # GLORYS uo/vo/thetao (extended)
+TRUTH_BOUNDS    = (30, 48, -74, -49)    # advection domain (lat0, lat1, lon0, lon1)
 DEPLOY_BOUNDS   = (36, 40, -68, -62)    # 5° float deployment box = our analysis region
 ANALYSIS_BOUNDS = DEPLOY_BOUNDS
 DEGS            = [1/12, 0.5, 1.0]      # estimator cell sizes to compare
@@ -84,24 +84,29 @@ VALUE           = "ohc_2000"            # primary depth layer for figures (also 
 # The simulation
 
 The float advection is run by `code/run_trajsim.py`, driven by a JSON config.
-It deploys 100 floats on a grid in the deployment box and advects them with daily
-GLORYS velocities at the parking depth for 365 days (2020), writing 6-hourly
-trajectories to per-batch `.zarr` files. The chunk below documents the command;
-it is **not executed here** (the output already exists).
+It deploys 100 floats on a grid in the deployment box — snapped to the GLORYS
+1/12° cell centres so each float's initial profile samples one true model column
+— and advects them with daily GLORYS velocities at the parking depth for 365 days
+(2020), writing 6-hourly trajectories to a `.zarr` file. The chunk below documents
+the command; it is **not executed here** (the output already exists).
 
 ```{python}
 #| eval: false
 #| code-summary: "Run the simulation (shown for reference; already executed)"
 # From the repo root, in the `virtualfleet` conda env:
 #
-#   python code/run_trajsim.py --config code/configs/nac_gs_1yr.json \
-#       --ntasks 8 --local-cores 8
+#   python code/run_trajsim.py --config code/configs/nac_gs_1yr_wide.json \
+#       --ntasks 1 --local-cores 1
 #
-# Config highlights (code/configs/nac_gs_1yr.json):
+# Config highlights (code/configs/nac_gs_1yr_wide.json):
 #   nfloats=100, deployment box lat 36–40°N / lon −68 to −62°W,
+#   deployment snapped to the GLORYS 1/12° cell centres (snap_deg),
 #   365 days from 2020-01-01, step=300 s, record=21600 s (6-hourly),
-#   velocity = GLORYS12 daily uo/vo/thetao, 0–2300 m.
-# Output: data/virtualfleet/nac_gs_1yr_task000..007.zarr
+#   velocity = GLORYS12 daily uo/vo/thetao, 0–2300 m, over the extended
+#   advection domain (lat 30–48°N, lon −74 to −49°W) so floats stay
+#   in-bounds longer. Run on a single core: the velocity field is loaded
+#   lazily per process, so one process avoids redundant field I/O.
+# Output: data/virtualfleet/nac_gs_1yr_wide_task000.zarr
 ```
 
 We now load the trajectories and the velocity/temperature field, compute the
@@ -137,10 +142,10 @@ and the deployment region (5°).
 #| fig-cap: "All 96 float trajectories (2020). Red dots: deployment positions."
 map_trajectories_minimal(
     TRAJ,
-    extent=[-76, -57, 31, 50],
-    boxes=[(*TRUTH_BOUNDS, "truth domain (15°)"),
+    extent=[-76, -47, 28, 50],
+    boxes=[(*TRUTH_BOUNDS, "advection domain"),
            (*DEPLOY_BOUNDS, "deployment (5°)")],
-    title="Pilot: 96 Argo floats advected by GLORYS, 2020 (1000 m park)",
+    title="Pilot: Argo floats advected by GLORYS, 2020 (1000 m park)",
     show=True,
 )
 ```
@@ -270,4 +275,4 @@ ohc_bias.bias_summary(res["domain"]).round(3)
 - **Toward a Gaussian-process estimator.** The cell-size axis is the discrete
   stand-in for a GP correlation length; the GP will also provide a posterior
   variance that flags where coverage is weak.
-```
+
