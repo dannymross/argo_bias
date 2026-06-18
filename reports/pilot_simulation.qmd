@@ -193,6 +193,52 @@ plt.tight_layout()
 counts
 ```
 
+## Comparison with the real Argo array
+
+Is the pilot's sampling density realistic? We filter the **real** Argo OHC
+observations (`data/argo_ohc.csv`) to the *same* observation box and count
+distinct floats and profiles per month. The table below is the climatological
+monthly mean over all available years; the printout gives the per-year context.
+
+```{python}
+#| label: fig-sim-vs-real-argo
+#| fig-cap: "Profiles per month in the box: this simulation (2020) vs real Argo (log scale)."
+la0, la1, lo0, lo1 = ANALYSIS_BOUNDS
+argo = pd.read_csv("../data/argo_ohc.csv", usecols=["float_id", "lat", "lon", "date"])
+argo["date"] = pd.to_datetime(argo["date"], format="ISO8601")
+argo = argo[argo.lat.between(la0, la1) & argo.lon.between(lo0, lo1)].copy()
+argo["year"] = argo["date"].dt.year
+argo["mon"] = argo["date"].dt.month
+
+# Real Argo: per-year totals, and the climatological monthly mean over years.
+annual = argo.groupby("year").agg(profiles=("float_id", "size"), floats=("float_id", "nunique"))
+permon = (argo.groupby(["year", "mon"])
+              .agg(profiles=("float_id", "size"), floats=("float_id", "nunique")).reset_index())
+clim = (permon.groupby("mon")
+              .agg(real_profiles=("profiles", "mean"), real_floats=("floats", "mean"))
+              .round(1).reindex(range(1, 13)).fillna(0))
+
+print(f"Real Argo in box, {int(argo.year.min())}-{int(argo.year.max())}: "
+      f"median {annual.profiles.median():.0f} profiles/yr from {annual.floats.median():.0f} "
+      f"distinct floats/yr (2020: {int(annual.profiles.get(2020, 0))} profiles).")
+print(f"This simulation (2020): {len(sim)} profiles from {sim.float_id.nunique()} floats "
+      f"-- the pilot over-samples the box by ~1-2 orders of magnitude.")
+
+sim_mon = counts.set_index(counts["month"].dt.month)["n_profiles"]
+mons = list(range(1, 13))
+fig, ax = plt.subplots(figsize=(9, 3.6))
+ax.bar(mons, [clim["real_profiles"].get(m, 0) for m in mons], color="#4a90d9",
+       alpha=0.8, label="real Argo (climatological mean)")
+ax.plot(mons, [sim_mon.get(m, 0) for m in mons], "-o", color="#e07b39",
+        label="simulation (2020)")
+ax.set_yscale("log")
+ax.set_xlabel("month"); ax.set_ylabel("profiles per month (log)")
+ax.set_title("Profiles per month in the box: simulation vs real Argo")
+ax.legend(frameon=False); ax.grid(alpha=0.2, which="both")
+plt.tight_layout()
+clim
+```
+
 # Monthly maps of synthetic-Argo OHC
 
 OHC of the virtual-float observations, binned to `MAP_DEG`-degree cells per month,
