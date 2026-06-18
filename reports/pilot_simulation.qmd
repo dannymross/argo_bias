@@ -316,13 +316,26 @@ for d in DEPTHS:
     ohc_bias.plot_domain_timeseries(res["domain"], value_col=d)
 ```
 
-## Headline bias table (1° estimator)
+## Headline bias table (0.5° and 1° estimators)
 
-Time-averaged bias terms in GJ m⁻², for both depth layers.
+Time-averaged bias terms in GJ m⁻², for both depth layers, at the 0.5° and 1°
+estimator resolutions. **`coverage_bias_GJ`** = (mean *true* OHC over the cells
+the floats sampled) − (the fixed area-weighted *true* domain mean): the effect of
+*which* cells get sampled, using true values only. **`repr_bias_GJ`** = (float
+estimate − truth) within those sampled cells. The two sum to **`bias_GJ`**.
 
 ```{python}
 #| label: tbl-summary
-ohc_bias.bias_summary(res["domain"]).round(3)
+ref = ohc.truth_domain_mean(truth_field, weighted=True)
+summ = []
+for deg in [MAP_DEG, 1.0]:
+    tcd = ohc.coarsen_truth(truth_field, deg=deg)
+    fcd = ohc.grid_cells(sim, ["ohc_700", "ohc_2000"], deg=deg)
+    s = ohc_bias.bias_summary(
+        ohc_bias.compute_bias(fcd, tcd, true_domain_mean=ref)["domain"])
+    s.insert(0, "deg", deg)
+    summ.append(s)
+pd.concat(summ, ignore_index=True).round(3)
 ```
 
 ## Per-cell bias maps
