@@ -226,7 +226,7 @@ one, and the bin-mean rests on a single observation.
 #| label: fig-float-count-maps
 #| fig-cap: "Number of synthetic-Argo profiles per cell, by month (blank = none)."
 _ = ohc_bias.plot_monthly_cell_maps(
-    float_cells_map, value_col="n", value_scale=1, vmin=0,
+    float_cells_map, value_col="n", value_scale=1, discrete=True,
     cmap="magma", cbar_label="profiles per cell",
     title=f"Synthetic-Argo profiles per cell (deg={MAP_DEG})",
 )

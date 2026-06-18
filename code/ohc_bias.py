@@ -297,7 +297,7 @@ def plot_bias_vs_resolution(sweep, value_col="ohc_2000", out_path=None):
 
 def plot_monthly_cell_maps(cells, value_col="ohc_2000", ncols=4, vmin=None, vmax=None,
                            cmap="viridis", title=None, out_path=None,
-                           value_scale=J_TO_GJ, cbar_label=None):
+                           value_scale=J_TO_GJ, cbar_label=None, discrete=False):
     """Facet of monthly cell maps from a gridded cells table.
 
     Works for both the truth cells (dense) and the synthetic-float cells
@@ -307,18 +307,33 @@ def plot_monthly_cell_maps(cells, value_col="ohc_2000", ncols=4, vmin=None, vmax
 
     Defaults plot OHC in GJ/m2. To plot another quantity (e.g. the per-cell
     profile count ``n``) pass ``value_col="n"``, ``value_scale=1`` and a
-    ``cbar_label``.
+    ``cbar_label``. With ``discrete=True`` the values are treated as integers
+    and shown on a discrete colour scale with one band per integer level (use
+    for counts).
     """
     import matplotlib.pyplot as plt
+    import matplotlib.colors as mcolors
 
     months = sorted(pd.to_datetime(cells["month"]).unique())
     lats = np.sort(cells["cell_lat"].unique())
     lons = np.sort(cells["cell_lon"].unique())
     vals = cells[value_col] * value_scale
-    if vmin is None:
-        vmin = float(np.nanpercentile(vals, 2))
-    if vmax is None:
-        vmax = float(np.nanpercentile(vals, 98))
+
+    norm = ticks = None
+    cmap_used = cmap
+    if discrete:
+        finite = vals[np.isfinite(vals)]
+        lo = int(np.floor(vmin if vmin is not None else finite.min()))
+        hi = int(np.ceil(vmax if vmax is not None else finite.max()))
+        ncol = max(1, hi - lo + 1)
+        cmap_used = plt.get_cmap(cmap, ncol)
+        norm = mcolors.BoundaryNorm(np.arange(lo - 0.5, hi + 1.5, 1.0), ncol)
+        ticks = np.arange(lo, hi + 1)
+    else:
+        if vmin is None:
+            vmin = float(np.nanpercentile(vals, 2))
+        if vmax is None:
+            vmax = float(np.nanpercentile(vals, 98))
 
     nrows = int(np.ceil(len(months) / ncols))
     fig, axes = plt.subplots(nrows, ncols, figsize=(2.6 * ncols, 2.6 * nrows),
@@ -329,15 +344,19 @@ def plot_monthly_cell_maps(cells, value_col="ohc_2000", ncols=4, vmin=None, vmax
         d = cells[pd.to_datetime(cells["month"]) == m]
         grid = (d.pivot_table(index="cell_lat", columns="cell_lon", values=value_col)
                  .reindex(index=lats, columns=lons)) * value_scale
-        mesh = ax.pcolormesh(lons, lats, grid.values, cmap=cmap,
-                             vmin=vmin, vmax=vmax, shading="nearest")
+        mesh_kw = dict(cmap=cmap_used, shading="nearest")
+        if norm is not None:
+            mesh_kw["norm"] = norm
+        else:
+            mesh_kw.update(vmin=vmin, vmax=vmax)
+        mesh = ax.pcolormesh(lons, lats, grid.values, **mesh_kw)
         ax.set_aspect("equal")  # 1 deg lon == 1 deg lat, so cells render square
         ax.set_title(pd.Timestamp(m).strftime("%Y-%m"), fontsize=8)
         ax.tick_params(labelsize=6)
     for ax in axes[len(months):]:
         ax.axis("off")
     if mesh is not None:
-        cb = fig.colorbar(mesh, ax=axes.tolist(), shrink=0.7, pad=0.02)
+        cb = fig.colorbar(mesh, ax=axes.tolist(), shrink=0.7, pad=0.02, ticks=ticks)
         cb.set_label(cbar_label or f"{value_col}  (GJ m$^{{-2}}$)")
     if title:
         fig.suptitle(title, y=1.0, fontsize=12)

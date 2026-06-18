@@ -58,6 +58,29 @@ def _color_by_label(color_by):
     return "deployed latitude (°N)" if color_by == "lat" else "deployed longitude (°E)"
 
 
+def _discrete_color(cvals, cmap):
+    """Discrete BoundaryNorm + colormap keyed to the unique values in ``cvals``.
+
+    With a cell-aligned deployment there are only a handful of distinct launch
+    latitudes/longitudes, so each gets its own colour band. Returns
+    ``(norm, discrete_cmap, ticks)`` where ``ticks`` are the unique values.
+    """
+    import matplotlib.colors as mcolors
+
+    vals = np.round(np.asarray(cvals, dtype=float), 3)
+    uniq = np.unique(vals[np.isfinite(vals)])
+    n = len(uniq)
+    cmap_d = plt.get_cmap(cmap, n)
+    if n == 1:
+        bounds = np.array([uniq[0] - 0.5, uniq[0] + 0.5])
+    else:
+        mids = (uniq[:-1] + uniq[1:]) / 2.0
+        lo = uniq[0] - (uniq[1] - uniq[0]) / 2.0
+        hi = uniq[-1] + (uniq[-1] - uniq[-2]) / 2.0
+        bounds = np.concatenate([[lo], mids, [hi]])
+    return mcolors.BoundaryNorm(bounds, n), cmap_d, uniq
+
+
 def _auto_extent(lat_vals, lon_vals, margin=3):
     """Compute [lon_min, lon_max, lat_min, lat_max] with a margin.
 
@@ -231,17 +254,15 @@ def map_trajectories_minimal(
     n_traj = lat_vals.shape[0]
 
     cvals = _deployed_color_values(lat_vals, lon_vals, color_by)
-    norm = sm = None
+    norm = cmap_obj = ticks = None
     if cvals is not None:
-        norm = plt.Normalize(np.nanmin(cvals), np.nanmax(cvals))
-        sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
+        norm, cmap_obj, ticks = _discrete_color(cvals, cmap)  # discrete by launch band
 
     fig = plt.figure(figsize=figsize)
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.add_feature(cfeature.LAND, facecolor="#ededed", edgecolor="none", zorder=1)
     ax.add_feature(cfeature.COASTLINE, linewidth=0.5, edgecolor="grey", zorder=2)
 
-    cmap_obj = plt.get_cmap(cmap)
     for i in range(n_traj):
         c = cmap_obj(norm(cvals[i])) if cvals is not None else line_color
         ax.plot(
@@ -257,7 +278,7 @@ def map_trajectories_minimal(
         lon_vals[:, 0],
         lat_vals[:, 0],
         c=cvals if cvals is not None else "#e84040",
-        cmap=cmap if cvals is not None else None,
+        cmap=cmap_obj if cvals is not None else None,
         norm=norm,
         s=12,
         zorder=5,
@@ -265,8 +286,9 @@ def map_trajectories_minimal(
         transform=ccrs.PlateCarree(),
         label=None if cvals is not None else "deployment",
     )
-    if sm is not None:
-        cb = fig.colorbar(sm, ax=ax, shrink=0.6, pad=0.02)
+    if cvals is not None:
+        sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap_obj)
+        cb = fig.colorbar(sm, ax=ax, shrink=0.6, pad=0.02, ticks=ticks)
         cb.set_label(_color_by_label(color_by))
 
     for box in boxes or []:
@@ -360,10 +382,10 @@ def map_positions_by_month(
     months = sorted(snap["month"].unique())
 
     cvals = _deployed_color_values(lat, lon, color_by)
-    norm = None
+    norm = cmap_obj = ticks = None
     if cvals is not None:
         snap["cval"] = cvals[snap["float_id"].values]
-        norm = plt.Normalize(np.nanmin(cvals), np.nanmax(cvals))
+        norm, cmap_obj, ticks = _discrete_color(cvals, cmap)  # discrete by launch band
 
     if extent is None:
         extent = _auto_extent(lat, lon, margin)
@@ -388,7 +410,7 @@ def map_positions_by_month(
             )
         if cvals is not None:
             ax.scatter(
-                d["lon"], d["lat"], c=d["cval"], cmap=cmap, norm=norm, s=7,
+                d["lon"], d["lat"], c=d["cval"], cmap=cmap_obj, norm=norm, s=7,
                 alpha=0.85, edgecolors="none", transform=ccrs.PlateCarree(), zorder=4,
             )
         else:
@@ -403,8 +425,8 @@ def map_positions_by_month(
         fig.suptitle(title, y=1.0, fontsize=12)
     fig.tight_layout()
     if cvals is not None:
-        sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
-        cb = fig.colorbar(sm, ax=fig.get_axes(), shrink=0.5, pad=0.02)
+        sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap_obj)
+        cb = fig.colorbar(sm, ax=fig.get_axes(), shrink=0.5, pad=0.02, ticks=ticks)
         cb.set_label(_color_by_label(color_by))
     if save_path is not None:
         fig.savefig(os.path.expanduser(save_path), dpi=dpi, bbox_inches="tight")
