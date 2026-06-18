@@ -232,19 +232,25 @@ VLIM = {d: (float((truth_cells_map[d] * ohc_bias.J_TO_GJ).quantile(0.02)),
             float((truth_cells_map[d] * ohc_bias.J_TO_GJ).quantile(0.98))) for d in DEPTHS}
 
 def show_map(kind, d, deg=MAP_DEG):
-    """Render one monthly facet for a source (kind), depth d, and cell size deg."""
+    """Render one monthly facet for a source (kind), depth d, and cell size deg.
+
+    The GLORYS sources (sim / truth / diff) are forced onto the truth cell grid
+    so the panels share an identical extent and line up when flipping tabs.
+    """
+    glats = np.sort(truth_by_deg[deg]["cell_lat"].unique())
+    glons = np.sort(truth_by_deg[deg]["cell_lon"].unique())
     if kind == "sim":
         ohc_bias.plot_monthly_cell_maps(float_by_deg[deg], d, vmin=VLIM[d][0], vmax=VLIM[d][1],
-            title=f"Synthetic-Argo {d} by month (deg={deg:.3g})")
+            lats=glats, lons=glons, title=f"Synthetic-Argo {d} by month (deg={deg:.3g})")
     elif kind == "truth":
         ohc_bias.plot_monthly_cell_maps(truth_by_deg[deg], d, vmin=VLIM[d][0], vmax=VLIM[d][1],
-            title=f"GLORYS truth {d} by month (deg={deg:.3g})")
+            lats=glats, lons=glons, title=f"GLORYS truth {d} by month (deg={deg:.3g})")
     elif kind == "diff":
         dc = diff_by_deg[deg]
         bmax = float((dc[f"{d}_bias"].abs() * ohc_bias.J_TO_GJ).quantile(0.95))
         ohc_bias.plot_monthly_cell_maps(dc, value_col=f"{d}_bias", vmin=-bmax, vmax=bmax,
             cmap="RdBu_r", cbar_label=f"{d} bias (GJ m$^{{-2}}$)",
-            title=f"Argo − truth, {d} (deg={deg:.3g})")
+            lats=glats, lons=glons, title=f"Argo − truth, {d} (deg={deg:.3g})")
     elif kind == "en4":
         ohc_bias.plot_monthly_cell_maps(en4_cells, d, vmin=VLIM[d][0], vmax=VLIM[d][1],
             title=f"EN4 {d} by month, 2020 (1°)")

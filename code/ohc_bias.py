@@ -26,8 +26,9 @@ J_TO_GJ = 1e-9
 
 
 # ---- BIAS METRICS --------------------------------------------------------
-def compute_bias(float_cells, truth_cells, value_cols=("ohc_700", "ohc_2000"),
-                 true_domain_mean=None):
+def compute_bias(
+    float_cells, truth_cells, value_cols=("ohc_700", "ohc_2000"), true_domain_mean=None
+):
     """Join float and truth cells and compute per-cell and domain-level bias.
 
     Parameters
@@ -73,19 +74,23 @@ def compute_bias(float_cells, truth_cells, value_cols=("ohc_700", "ohc_2000"),
     # Domain-level summary per month, via vectorised groupby aggregation.
     month = merged["month"]
     gb = merged.groupby("month")
-    domain = pd.DataFrame({
-        "n_truth_cells": gb.size(),
-        "n_sampled_cells": gb["n_float"].count(),  # non-NaN = sampled cells
-    })
+    domain = pd.DataFrame(
+        {
+            "n_truth_cells": gb.size(),
+            "n_sampled_cells": gb["n_float"].count(),  # non-NaN = sampled cells
+        }
+    )
     domain["sampled_fraction"] = domain["n_sampled_cells"] / domain["n_truth_cells"]
 
     ref = true_domain_mean.set_index("month") if true_domain_mean is not None else None
 
     for c in value_cols:
-        cell_true_mean = gb[f"{c}_truth"].mean()                     # truth, all cells (this deg)
+        cell_true_mean = gb[f"{c}_truth"].mean()  # truth, all cells (this deg)
         # Fixed area-weighted reference if supplied, else the cell-mean over all cells.
-        true_mean = ref[c].reindex(cell_true_mean.index) if ref is not None else cell_true_mean
-        float_mean = gb[f"{c}_float"].mean()                         # float estimate (NaN-skip = sampled)
+        true_mean = (
+            ref[c].reindex(cell_true_mean.index) if ref is not None else cell_true_mean
+        )
+        float_mean = gb[f"{c}_float"].mean()  # float estimate (NaN-skip = sampled)
         true_at_sampled = merged[f"{c}_truth"].where(sampled).groupby(month).mean()
         domain[f"{c}_true_mean"] = true_mean
         domain[f"{c}_float_mean"] = float_mean
@@ -104,20 +109,23 @@ def bias_summary(domain, value_cols=("ohc_700", "ohc_2000")):
     """Time-averaged bias summary in GJ/m2, for a quick headline table."""
     rows = []
     for c in value_cols:
-        rows.append({
-            "depth": c,
-            "mean_true_GJ": domain[f"{c}_true_mean"].mean() * J_TO_GJ,
-            "bias_GJ": domain[f"{c}_bias"].mean() * J_TO_GJ,
-            "coverage_bias_GJ": domain[f"{c}_coverage_bias"].mean() * J_TO_GJ,
-            "repr_bias_GJ": domain[f"{c}_repr_bias"].mean() * J_TO_GJ,
-            "mean_sampled_fraction": domain["sampled_fraction"].mean(),
-        })
+        rows.append(
+            {
+                "depth": c,
+                "mean_true_GJ": domain[f"{c}_true_mean"].mean() * J_TO_GJ,
+                "bias_GJ": domain[f"{c}_bias"].mean() * J_TO_GJ,
+                "coverage_bias_GJ": domain[f"{c}_coverage_bias"].mean() * J_TO_GJ,
+                "repr_bias_GJ": domain[f"{c}_repr_bias"].mean() * J_TO_GJ,
+                "mean_sampled_fraction": domain["sampled_fraction"].mean(),
+            }
+        )
     return pd.DataFrame(rows)
 
 
 # ---- CELL-SIZE SWEEP -----------------------------------------------------
-def sweep_resolution(truth_field, sim, degs, value_cols=("ohc_700", "ohc_2000"),
-                     weighted_reference=True):
+def sweep_resolution(
+    truth_field, sim, degs, value_cols=("ohc_700", "ohc_2000"), weighted_reference=True
+):
     """Sweep the analysis cell size and report bias vs resolution.
 
     The grid cell size is a parameter of the estimator (a box-kernel proxy for
@@ -148,8 +156,9 @@ def sweep_resolution(truth_field, sim, degs, value_cols=("ohc_700", "ohc_2000"),
         One row per (deg, depth) with time-averaged bias terms in GJ/m2,
         the mean sampled-cell fraction, and the mean cell count.
     """
-    ref = ohc.truth_domain_mean(truth_field, weighted=weighted_reference,
-                                value_cols=list(value_cols))
+    ref = ohc.truth_domain_mean(
+        truth_field, weighted=weighted_reference, value_cols=list(value_cols)
+    )
     rows = []
     for deg in degs:
         truth_cells = ohc.coarsen_truth(truth_field, deg=deg)
@@ -160,8 +169,16 @@ def sweep_resolution(truth_field, sim, degs, value_cols=("ohc_700", "ohc_2000"),
         summary["mean_n_truth_cells"] = res["domain"]["n_truth_cells"].mean()
         rows.append(summary)
     out = pd.concat(rows, ignore_index=True)
-    cols = ["deg", "depth", "mean_n_truth_cells", "mean_sampled_fraction",
-            "mean_true_GJ", "bias_GJ", "coverage_bias_GJ", "repr_bias_GJ"]
+    cols = [
+        "deg",
+        "depth",
+        "mean_n_truth_cells",
+        "mean_sampled_fraction",
+        "mean_true_GJ",
+        "bias_GJ",
+        "coverage_bias_GJ",
+        "repr_bias_GJ",
+    ]
     return out[cols].sort_values(["depth", "deg"]).reset_index(drop=True)
 
 
@@ -180,8 +197,14 @@ def subset_region(truth_field, sim, bounds):
     return tf, s
 
 
-def sweep_region(truth_field, sim, regions, deg=1.0,
-                 value_cols=("ohc_700", "ohc_2000"), weighted_reference=True):
+def sweep_region(
+    truth_field,
+    sim,
+    regions,
+    deg=1.0,
+    value_cols=("ohc_700", "ohc_2000"),
+    weighted_reference=True,
+):
     """Compute bias over a sequence of analysis regions at a fixed cell size.
 
     Parameters
@@ -203,8 +226,9 @@ def sweep_region(truth_field, sim, regions, deg=1.0,
     rows = []
     for bounds, label in regions:
         tf, s = subset_region(truth_field, sim, bounds)
-        ref = ohc.truth_domain_mean(tf, weighted=weighted_reference,
-                                    value_cols=list(value_cols))
+        ref = ohc.truth_domain_mean(
+            tf, weighted=weighted_reference, value_cols=list(value_cols)
+        )
         truth_cells = ohc.coarsen_truth(tf, deg=deg)
         float_cells = ohc.grid_cells(s, list(value_cols), deg=deg)
         res = compute_bias(float_cells, truth_cells, value_cols, true_domain_mean=ref)
@@ -215,8 +239,17 @@ def sweep_region(truth_field, sim, regions, deg=1.0,
         summary["n_profiles"] = len(s)
         rows.append(summary)
     out = pd.concat(rows, ignore_index=True)
-    cols = ["region", "area_deg2", "depth", "n_profiles", "mean_sampled_fraction",
-            "mean_true_GJ", "bias_GJ", "coverage_bias_GJ", "repr_bias_GJ"]
+    cols = [
+        "region",
+        "area_deg2",
+        "depth",
+        "n_profiles",
+        "mean_sampled_fraction",
+        "mean_true_GJ",
+        "bias_GJ",
+        "coverage_bias_GJ",
+        "repr_bias_GJ",
+    ]
     return out[cols].reset_index(drop=True)
 
 
@@ -243,10 +276,20 @@ def plot_domain_timeseries(domain, value_col="ohc_2000", out_path=None):
         2, 1, figsize=(9, 6), sharex=True, gridspec_kw={"height_ratios": [3, 1]}
     )
     m = domain["month"]
-    ax.plot(m, domain[f"{value_col}_true_mean"] * J_TO_GJ, "-o",
-            color="#1a4f8a", label="truth (all cells)")
-    ax.plot(m, domain[f"{value_col}_float_mean"] * J_TO_GJ, "-s",
-            color="#e07b39", label="synthetic Argo (sampled cells)")
+    ax.plot(
+        m,
+        domain[f"{value_col}_true_mean"] * J_TO_GJ,
+        "-o",
+        color="#1a4f8a",
+        label="truth (all cells)",
+    )
+    ax.plot(
+        m,
+        domain[f"{value_col}_float_mean"] * J_TO_GJ,
+        "-s",
+        color="#e07b39",
+        label="synthetic Argo (sampled cells)",
+    )
     ax.set_ylabel(f"{value_col}  (GJ m$^{{-2}}$)")
     ax.legend(frameon=False)
     ax.set_title(f"Domain-mean OHC: truth vs synthetic Argo ({value_col})")
@@ -264,7 +307,9 @@ def plot_domain_timeseries(domain, value_col="ohc_2000", out_path=None):
     return fig
 
 
-def plot_bias_vs_resolution(sweep, value_col="ohc_2000", out_path=None):
+def plot_bias_vs_resolution(
+    sweep, value_col="ohc_2000", xscale="linear", out_path=None
+):
     """Bias terms vs cell size (the box-kernel proxy for a GP length scale)."""
     import matplotlib.pyplot as plt
 
@@ -274,10 +319,18 @@ def plot_bias_vs_resolution(sweep, value_col="ohc_2000", out_path=None):
     )
     ax.axhline(0, color="0.6", lw=0.8)
     ax.plot(df["deg"], df["bias_GJ"], "-o", color="#1a1a1a", label="total bias")
-    ax.plot(df["deg"], df["coverage_bias_GJ"], "-s", color="#4a90d9", label="coverage bias")
-    ax.plot(df["deg"], df["repr_bias_GJ"], "-^", color="#e07b39", label="representation bias")
+    ax.plot(
+        df["deg"], df["coverage_bias_GJ"], "-s", color="#4a90d9", label="coverage bias"
+    )
+    ax.plot(
+        df["deg"],
+        df["repr_bias_GJ"],
+        "-^",
+        color="#e07b39",
+        label="representation bias",
+    )
     ax.set_ylabel(f"{value_col} bias  (GJ m$^{{-2}}$)")
-    ax.set_xscale("log")
+    ax.set_xscale(xscale)
     ax.legend(frameon=False)
     ax.set_title(f"OHC sampling bias vs analysis cell size ({value_col})")
     ax.grid(alpha=0.2, which="both")
@@ -286,7 +339,7 @@ def plot_bias_vs_resolution(sweep, value_col="ohc_2000", out_path=None):
     ax2.set_ylabel("sampled\ncell frac")
     ax2.set_ylim(0, 1)
     ax2.set_xlabel("cell size (deg)")
-    ax2.set_xscale("log")
+    ax2.set_xscale(xscale)
     ax2.grid(alpha=0.2, which="both")
     fig.tight_layout()
     if out_path:
@@ -295,15 +348,33 @@ def plot_bias_vs_resolution(sweep, value_col="ohc_2000", out_path=None):
     return fig
 
 
-def plot_monthly_cell_maps(cells, value_col="ohc_2000", ncols=4, vmin=None, vmax=None,
-                           cmap="viridis", title=None, out_path=None,
-                           value_scale=J_TO_GJ, cbar_label=None, discrete=False):
+def plot_monthly_cell_maps(
+    cells,
+    value_col="ohc_2000",
+    ncols=4,
+    vmin=None,
+    vmax=None,
+    cmap="viridis",
+    title=None,
+    out_path=None,
+    value_scale=J_TO_GJ,
+    cbar_label=None,
+    discrete=False,
+    lats=None,
+    lons=None,
+):
     """Facet of monthly cell maps from a gridded cells table.
 
     Works for both the truth cells (dense) and the synthetic-float cells
     (sparse) -- unsampled cells are left blank, so a float-cell panel doubles as
     a coverage map. Pass a shared ``vmin``/``vmax`` (e.g. from the truth) to make
     float and truth panels directly comparable.
+
+    By default the cell grid (and hence the map extent) is taken from the cells
+    present, so a sparse float panel spans a *smaller* extent than the dense
+    truth. Pass explicit ``lats``/``lons`` (e.g. the truth cell centres) to force
+    every source onto the **same grid and extent** -- essential when flipping
+    between maps in tabs, so they line up exactly.
 
     Defaults plot OHC in GJ/m2. To plot another quantity (e.g. the per-cell
     profile count ``n``) pass ``value_col="n"``, ``value_scale=1`` and a
@@ -315,8 +386,10 @@ def plot_monthly_cell_maps(cells, value_col="ohc_2000", ncols=4, vmin=None, vmax
     import matplotlib.colors as mcolors
 
     months = sorted(pd.to_datetime(cells["month"]).unique())
-    lats = np.sort(cells["cell_lat"].unique())
-    lons = np.sort(cells["cell_lon"].unique())
+    if lats is None:
+        lats = np.sort(cells["cell_lat"].unique())
+    if lons is None:
+        lons = np.sort(cells["cell_lon"].unique())
     vals = cells[value_col] * value_scale
 
     norm = ticks = None
@@ -336,14 +409,23 @@ def plot_monthly_cell_maps(cells, value_col="ohc_2000", ncols=4, vmin=None, vmax
             vmax = float(np.nanpercentile(vals, 98))
 
     nrows = int(np.ceil(len(months) / ncols))
-    fig, axes = plt.subplots(nrows, ncols, figsize=(2.6 * ncols, 2.6 * nrows),
-                             sharex=True, sharey=True, squeeze=False)
+    fig, axes = plt.subplots(
+        nrows,
+        ncols,
+        figsize=(2.6 * ncols, 2.6 * nrows),
+        sharex=True,
+        sharey=True,
+        squeeze=False,
+    )
     axes = axes.ravel()
     mesh = None
     for ax, m in zip(axes, months):
         d = cells[pd.to_datetime(cells["month"]) == m]
-        grid = (d.pivot_table(index="cell_lat", columns="cell_lon", values=value_col)
-                 .reindex(index=lats, columns=lons)) * value_scale
+        grid = (
+            d.pivot_table(
+                index="cell_lat", columns="cell_lon", values=value_col
+            ).reindex(index=lats, columns=lons)
+        ) * value_scale
         mesh_kw = dict(cmap=cmap_used, shading="nearest")
         if norm is not None:
             mesh_kw["norm"] = norm
@@ -353,7 +435,7 @@ def plot_monthly_cell_maps(cells, value_col="ohc_2000", ncols=4, vmin=None, vmax
         ax.set_aspect("equal")  # 1 deg lon == 1 deg lat, so cells render square
         ax.set_title(pd.Timestamp(m).strftime("%Y-%m"), fontsize=8)
         ax.tick_params(labelsize=6)
-    for ax in axes[len(months):]:
+    for ax in axes[len(months) :]:
         ax.axis("off")
     if mesh is not None:
         cb = fig.colorbar(mesh, ax=axes.tolist(), shrink=0.7, pad=0.02, ticks=ticks)
@@ -380,8 +462,15 @@ def plot_bias_vs_region(sweep, value_col="ohc_2000", out_path=None):
     ax.plot(x, df["coverage_bias_GJ"], "-s", color="#4a90d9", label="coverage bias")
     ax.plot(x, df["repr_bias_GJ"], "-^", color="#e07b39", label="representation bias")
     for xi, lab in zip(x, df["region"]):
-        ax.annotate(lab, (xi, 0), textcoords="offset points", xytext=(0, 4),
-                    ha="center", fontsize=7, color="0.4")
+        ax.annotate(
+            lab,
+            (xi, 0),
+            textcoords="offset points",
+            xytext=(0, 4),
+            ha="center",
+            fontsize=7,
+            color="0.4",
+        )
     ax.set_ylabel(f"{value_col} bias  (GJ m$^{{-2}}$)")
     ax.legend(frameon=False)
     ax.set_title(f"OHC sampling bias vs analysis region ({value_col})")
@@ -408,10 +497,20 @@ def plot_bias_map(cells, value_col="ohc_2000", month=None, out_path=None):
     vmax = np.nanpercentile(np.abs(bias), 95) if len(bias) else 1.0
 
     fig, ax = plt.subplots(figsize=(7, 6))
-    sc = ax.scatter(df["cell_lon"], df["cell_lat"], c=bias, cmap="RdBu_r",
-                    vmin=-vmax, vmax=vmax, s=140, marker="s", edgecolor="0.6")
+    sc = ax.scatter(
+        df["cell_lon"],
+        df["cell_lat"],
+        c=bias,
+        cmap="RdBu_r",
+        vmin=-vmax,
+        vmax=vmax,
+        s=140,
+        marker="s",
+        edgecolor="0.6",
+    )
     fig.colorbar(sc, ax=ax, label=f"{value_col} bias (GJ m$^{{-2}}$)")
-    ax.set_xlabel("lon"); ax.set_ylabel("lat")
+    ax.set_xlabel("lon")
+    ax.set_ylabel("lat")
     title = f"Per-cell OHC bias ({value_col})"
     if month is not None:
         title += f" — {pd.Timestamp(month):%Y-%m}"
