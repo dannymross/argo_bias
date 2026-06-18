@@ -203,39 +203,48 @@ counts
 
 # Monthly OHC maps — flip tabs to compare
 
-Pick a **depth**, then flip the inner tabs to swap the field *in place* on a
-shared colour scale and identical months, so differences jump out as you switch:
-**Synthetic Argo** (½° cells; blank = unsampled that month), the **GLORYS truth**
-(½°), their **difference** (Argo − truth per-cell error; red = float over-estimate,
-blue = under-estimate), and **EN4** (independent reference, native 1°, cells offset
-0.5° from GLORYS).
+Pick a **depth**, then a **cell size**, then flip the inner **source** tabs to
+swap the field *in place* on a shared colour scale and identical months, so
+differences jump out as you switch: **Synthetic Argo** (blank = unsampled that
+month), the **GLORYS truth**, their **difference** (Argo − truth per-cell error;
+red = float over-estimate, blue = under-estimate), and — at 1° only — **EN4**
+(independent reference, native 1°, cells offset 0.5° from GLORYS). The 1/12°, ½°,
+and 1° tabs are the three estimator cell sizes from the sweep: at 1/12° each
+profile sits in its own tiny cell (float panels nearly empty); at 1° the box is
+only ~24 cells and coverage looks far fuller.
 
 ```{python}
 #| label: maps-prep
-#| code-summary: "Grid truth / floats / EN4 / difference at the map resolution"
-truth_cells_map = ohc.coarsen_truth(truth_field, deg=MAP_DEG)
-float_cells_map = ohc.grid_cells(sim, ["ohc_700", "ohc_2000"], deg=MAP_DEG)
-en4_cells       = ohc.load_en4_cells(
+#| code-summary: "Grid truth / floats / difference at every resolution; load EN4"
+truth_by_deg = {deg: ohc.coarsen_truth(truth_field, deg=deg) for deg in DEGS}
+float_by_deg = {deg: ohc.grid_cells(sim, ["ohc_700", "ohc_2000"], deg=deg) for deg in DEGS}
+diff_by_deg  = {deg: ohc_bias.compute_bias(float_by_deg[deg], truth_by_deg[deg])["cells"]
+                for deg in DEGS}
+en4_cells    = ohc.load_en4_cells(
     "../data/ohc_en4_gridded_nwatlantic.csv", bounds=ANALYSIS_BOUNDS, year=2020)
-diff_cells      = ohc_bias.compute_bias(float_cells_map, truth_cells_map)["cells"]
 
-# Per-depth colour limits from the truth field, shared across the OHC tabs.
+# float/truth at the map resolution, handy for the profiles-per-cell section below.
+truth_cells_map = truth_by_deg[MAP_DEG]
+float_cells_map = float_by_deg[MAP_DEG]
+
+# Per-depth colour limits (from the ½° truth), shared across all OHC tabs.
 VLIM = {d: (float((truth_cells_map[d] * ohc_bias.J_TO_GJ).quantile(0.02)),
             float((truth_cells_map[d] * ohc_bias.J_TO_GJ).quantile(0.98))) for d in DEPTHS}
 
-def show_map(kind, d):
-    """Render one monthly facet for a given source (kind) and depth d."""
+def show_map(kind, d, deg=MAP_DEG):
+    """Render one monthly facet for a source (kind), depth d, and cell size deg."""
     if kind == "sim":
-        ohc_bias.plot_monthly_cell_maps(float_cells_map, d, vmin=VLIM[d][0], vmax=VLIM[d][1],
-            title=f"Synthetic-Argo {d} by month (½°)")
+        ohc_bias.plot_monthly_cell_maps(float_by_deg[deg], d, vmin=VLIM[d][0], vmax=VLIM[d][1],
+            title=f"Synthetic-Argo {d} by month (deg={deg:.3g})")
     elif kind == "truth":
-        ohc_bias.plot_monthly_cell_maps(truth_cells_map, d, vmin=VLIM[d][0], vmax=VLIM[d][1],
-            title=f"GLORYS truth {d} by month (½°)")
+        ohc_bias.plot_monthly_cell_maps(truth_by_deg[deg], d, vmin=VLIM[d][0], vmax=VLIM[d][1],
+            title=f"GLORYS truth {d} by month (deg={deg:.3g})")
     elif kind == "diff":
-        bmax = float((diff_cells[f"{d}_bias"].abs() * ohc_bias.J_TO_GJ).quantile(0.95))
-        ohc_bias.plot_monthly_cell_maps(diff_cells, value_col=f"{d}_bias",
-            vmin=-bmax, vmax=bmax, cmap="RdBu_r",
-            cbar_label=f"{d} bias (GJ m$^{{-2}}$)", title=f"Argo − truth, {d} (½°)")
+        dc = diff_by_deg[deg]
+        bmax = float((dc[f"{d}_bias"].abs() * ohc_bias.J_TO_GJ).quantile(0.95))
+        ohc_bias.plot_monthly_cell_maps(dc, value_col=f"{d}_bias", vmin=-bmax, vmax=bmax,
+            cmap="RdBu_r", cbar_label=f"{d} bias (GJ m$^{{-2}}$)",
+            title=f"Argo − truth, {d} (deg={deg:.3g})")
     elif kind == "en4":
         ohc_bias.plot_monthly_cell_maps(en4_cells, d, vmin=VLIM[d][0], vmax=VLIM[d][1],
             title=f"EN4 {d} by month, 2020 (1°)")
@@ -246,43 +255,117 @@ def show_map(kind, d):
 ## 0–700 m
 
 ::: {.panel-tabset}
-### Synthetic Argo
+
+### 1/12°
+::: {.panel-tabset}
+#### Synthetic Argo
 ```{python}
-show_map("sim", "ohc_700")
+show_map("sim", "ohc_700", 1/12)
 ```
-### GLORYS truth
+#### GLORYS truth
 ```{python}
-show_map("truth", "ohc_700")
+show_map("truth", "ohc_700", 1/12)
 ```
-### Argo − truth
+#### Argo − truth
 ```{python}
-show_map("diff", "ohc_700")
+show_map("diff", "ohc_700", 1/12)
 ```
-### EN4 (1°)
+:::
+
+### ½°
+::: {.panel-tabset}
+#### Synthetic Argo
 ```{python}
-show_map("en4", "ohc_700")
+show_map("sim", "ohc_700", 0.5)
 ```
+#### GLORYS truth
+```{python}
+show_map("truth", "ohc_700", 0.5)
+```
+#### Argo − truth
+```{python}
+show_map("diff", "ohc_700", 0.5)
+```
+:::
+
+### 1°
+::: {.panel-tabset}
+#### Synthetic Argo
+```{python}
+show_map("sim", "ohc_700", 1.0)
+```
+#### GLORYS truth
+```{python}
+show_map("truth", "ohc_700", 1.0)
+```
+#### Argo − truth
+```{python}
+show_map("diff", "ohc_700", 1.0)
+```
+#### EN4
+```{python}
+show_map("en4", "ohc_700", 1.0)
+```
+:::
+
 :::
 
 ## 0–2000 m
 
 ::: {.panel-tabset}
-### Synthetic Argo
+
+### 1/12°
+::: {.panel-tabset}
+#### Synthetic Argo
 ```{python}
-show_map("sim", "ohc_2000")
+show_map("sim", "ohc_2000", 1/12)
 ```
-### GLORYS truth
+#### GLORYS truth
 ```{python}
-show_map("truth", "ohc_2000")
+show_map("truth", "ohc_2000", 1/12)
 ```
-### Argo − truth
+#### Argo − truth
 ```{python}
-show_map("diff", "ohc_2000")
+show_map("diff", "ohc_2000", 1/12)
 ```
-### EN4 (1°)
+:::
+
+### ½°
+::: {.panel-tabset}
+#### Synthetic Argo
 ```{python}
-show_map("en4", "ohc_2000")
+show_map("sim", "ohc_2000", 0.5)
 ```
+#### GLORYS truth
+```{python}
+show_map("truth", "ohc_2000", 0.5)
+```
+#### Argo − truth
+```{python}
+show_map("diff", "ohc_2000", 0.5)
+```
+:::
+
+### 1°
+::: {.panel-tabset}
+#### Synthetic Argo
+```{python}
+show_map("sim", "ohc_2000", 1.0)
+```
+#### GLORYS truth
+```{python}
+show_map("truth", "ohc_2000", 1.0)
+```
+#### Argo − truth
+```{python}
+show_map("diff", "ohc_2000", 1.0)
+```
+#### EN4
+```{python}
+show_map("en4", "ohc_2000", 1.0)
+```
+:::
+
 :::
 
 :::
@@ -304,32 +387,6 @@ _ = ohc_bias.plot_monthly_cell_maps(
 )
 ```
 
-
-# Monthly maps at the other resolutions (1/12° and 1°)
-
-The same synthetic-Argo and true OHC maps at the other two estimator cell sizes
-from the sweep. At **1/12°** (GLORYS native) each profile sits in its own tiny
-cell, so the float panels are nearly empty and every sampled cell rests on a
-single observation; at **1°** the box is only ~24 cells and the float coverage
-looks far more complete — the two ends of the bias-vs-resolution trade-off. Each
-pair (synthetic then truth) shares a colour scale.
-
-```{python}
-#| label: fig-maps-other-res
-#| fig-cap: "Synthetic-Argo and true OHC by month at 1/12° and 1° cells, both depth layers."
-for deg in [d for d in DEGS if d != MAP_DEG]:
-    tcm = ohc.coarsen_truth(truth_field, deg=deg)
-    fcm = ohc.grid_cells(sim, ["ohc_700", "ohc_2000"], deg=deg)
-    for d in DEPTHS:
-        vlo = float((tcm[d] * ohc_bias.J_TO_GJ).quantile(0.02))
-        vhi = float((tcm[d] * ohc_bias.J_TO_GJ).quantile(0.98))
-        ohc_bias.plot_monthly_cell_maps(
-            fcm, d, vmin=vlo, vmax=vhi,
-            title=f"Synthetic-Argo {d} by month (deg={deg:.3g})")
-        ohc_bias.plot_monthly_cell_maps(
-            tcm, d, vmin=vlo, vmax=vhi,
-            title=f"True (GLORYS) {d} by month (deg={deg:.3g})")
-```
 
 # Bias diagnostics
 
