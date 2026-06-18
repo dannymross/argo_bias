@@ -247,6 +247,31 @@ _ = ohc_bias.plot_monthly_cell_maps(
 )
 ```
 
+# Monthly maps at the other resolutions (1/12° and 1°)
+
+The same synthetic-Argo and true OHC maps at the other two estimator cell sizes
+from the sweep. At **1/12°** (GLORYS native) each profile sits in its own tiny
+cell, so the float panels are nearly empty and every sampled cell rests on a
+single observation; at **1°** the box is only ~24 cells and the float coverage
+looks far more complete — the two ends of the bias-vs-resolution trade-off. Each
+pair (synthetic then truth) shares a colour scale.
+
+```{python}
+#| label: fig-maps-other-res
+#| fig-cap: "Synthetic-Argo and true OHC by month at 1/12° (top pair) and 1° (bottom pair)."
+for deg in [d for d in DEGS if d != MAP_DEG]:
+    tcm = ohc.coarsen_truth(truth_field, deg=deg)
+    fcm = ohc.grid_cells(sim, ["ohc_700", "ohc_2000"], deg=deg)
+    vlo = float((tcm[VALUE] * ohc_bias.J_TO_GJ).quantile(0.02))
+    vhi = float((tcm[VALUE] * ohc_bias.J_TO_GJ).quantile(0.98))
+    ohc_bias.plot_monthly_cell_maps(
+        fcm, VALUE, vmin=vlo, vmax=vhi,
+        title=f"Synthetic-Argo {VALUE} by month (deg={deg:.3g})")
+    ohc_bias.plot_monthly_cell_maps(
+        tcm, VALUE, vmin=vlo, vmax=vhi,
+        title=f"True (GLORYS) {VALUE} by month (deg={deg:.3g})")
+```
+
 # Bias diagnostics
 
 ## Bias vs estimator cell size
