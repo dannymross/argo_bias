@@ -405,6 +405,70 @@ def map_point_trajectories(
     return fig, ax
 
 
+def map_field(
+    da,
+    extent=None,
+    margin=1.5,
+    boxes=None,
+    cmap="viridis",
+    cbar_label=None,
+    title=None,
+    lon_name="longitude",
+    lat_name="latitude",
+    figsize=(9, 7),
+    save_path=None,
+    dpi=200,
+    show=True,
+):
+    """Plot a 2-D lat/lon field (e.g. an annual-mean OHC map) on a cartopy map.
+
+    ``da`` is a 2-D xarray DataArray with ``lat_name``/``lon_name`` coordinates.
+    Coastline and ``boxes`` (``(lat_min, lat_max, lon_min, lon_max, label)``) are
+    drawn on top; pass the same ``extent``/``boxes`` as the trajectory maps to
+    compare. Land is drawn over the field, so only ocean values show.
+    """
+    lons = da[lon_name].values
+    lats = da[lat_name].values
+
+    fig = plt.figure(figsize=figsize)
+    ax = plt.axes(projection=ccrs.PlateCarree())
+    mesh = ax.pcolormesh(lons, lats, da.values, cmap=cmap, shading="auto",
+                         transform=ccrs.PlateCarree(), zorder=1)
+    ax.add_feature(cfeature.LAND, facecolor="#ededed", edgecolor="none", zorder=2)
+    ax.add_feature(cfeature.COASTLINE, linewidth=0.5, edgecolor="grey", zorder=3)
+
+    for box in boxes or []:
+        la0, la1, lo0, lo1 = box[:4]
+        label = box[4] if len(box) > 4 else None
+        ax.plot([lo0, lo1, lo1, lo0, lo0], [la0, la0, la1, la1, la0],
+                lw=1.4, ls="--", color="k", alpha=0.85,
+                transform=ccrs.PlateCarree(), zorder=4, label=label)
+
+    cb = fig.colorbar(mesh, ax=ax, shrink=0.7, pad=0.02)
+    if cbar_label:
+        cb.set_label(cbar_label)
+
+    map_extent = extent if extent is not None else _auto_extent(lats, lons, margin)
+    ax.set_extent(map_extent, crs=ccrs.PlateCarree())
+    gl = ax.gridlines(draw_labels=True, linewidth=0.3, color="grey", alpha=0.4, linestyle=":")
+    gl.top_labels = gl.right_labels = False
+
+    if title:
+        ax.set_title(title, fontsize=11, pad=8)
+    if any(len(b) > 4 for b in (boxes or [])):
+        ax.legend(loc="upper left", fontsize=8, framealpha=0.9)
+    plt.tight_layout()
+
+    if save_path is not None:
+        fig.savefig(os.path.expanduser(save_path), dpi=dpi, bbox_inches="tight")
+        print(f"saved {save_path}")
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+    return fig, ax
+
+
 def map_positions_by_month(
     output,
     extent=None,

@@ -13,7 +13,7 @@ format:
     code-tools: true
     embed-resources: true
     fig-width: 9
-    fig-height: 5
+    fig-height: 4.5
     theme: default
 lightbox: true
 jupyter: python3
@@ -26,24 +26,15 @@ execute:
 
 **Reanalysis-based simulation study**
 
-1. Treat a complete-coverage reanalysis (**GLORYS12**) as the ground truth.
-2. Advect **virtual Argo floats** with the GLORYS velocity field at the ~1000 m
-   parking depth.
-3. "Observe" the temperature profile at each float's surfacing position.
-4. Estimate OHC from the virtual floats with the standard bin-and-average method
-   (mean of float OHC within grid cells).
-5. Compare to the **true** OHC integrated from the full GLORYS field.
-6. Quantify the bias and map its sensitivity to the estimator's resolution.
+1. Use the reanalysis **GLORYS12** for synthetic velocity and temperature data
+2. Advect **virtual Argo floats** with the GLORYS velocity field using the PARCELS `virtualfleet` package
+3. "Observe" the temperature profile at each float's surfacing position
+4. Estimate OHC from the virtual floats within grid cells
+5. Compare to the *true* OHC integrated from the full GLORYS field
+6. Quantify the bias directly
 
-**OHC definition.** For every profile, OHC is the integral
-$\text{OHC} = \int_0^{z} \rho\, c_p\, \theta\, dz$ with $c_p = 3989.411\ \mathrm{J\,kg^{-1}K^{-1}}$,
-$\rho = 1028.319\ \mathrm{kg\,m^{-3}}$, computed for $z = 700$ m and $z = 2000$ m and
-reported in GJ m⁻². 
 
-**This report.** We start with the cleanest sub-problem: the bias **only over the
-region where the floats are deployed** (a 4°×6° box in the Gulf Stream, lat 36–40°N
-/ lon −68 to −62°W), evaluated at three estimator cell sizes — **1/12° (GLORYS
-native), 1/2°, and 1°**.
+**This report.** Deploy a grid of virtual floats in the North Atlantic Current where there is a strong current and temperature gradient and compute bias at different grid sizes
 
 ```{python}
 #| label: setup
@@ -59,7 +50,7 @@ import ohc
 import ohc_bias
 from trajplots import (open_trajectories, map_trajectories_minimal,
                        map_positions_by_month, map_point_trajectories,
-                       plot_depth_profiles)
+                       plot_depth_profiles, map_field)
 
 # --- experiment configuration (mirrors code/configs/nac_gs_1yr_wide.json) ---
 TRAJ            = "../data/virtualfleet/nac_gs_1yr_wide_task*.zarr"  # batch trajectory zarrs
@@ -67,13 +58,12 @@ VELOCITY        = "../data/velocity_gs_wide/velocity_*.nc"          # GLORYS uo/
 TRUTH_BOUNDS    = (30, 48, -74, -49)    # advection domain (lat0, lat1, lon0, lon1)
 DEPLOY_BOUNDS   = (36, 40, -68, -62)    # float deployment box (4° lat × 6° lon) = analysis region
 ANALYSIS_BOUNDS = DEPLOY_BOUNDS
-#ANALYSIS_BOUNDS = (37, 39, -67, -63)
 DEGS            = [1/12, 0.5, 1.0]      # estimator cell sizes to compare
 MAP_DEG         = 0.5                   # cell size for the monthly maps
 DEPTHS          = ["ohc_700", "ohc_2000"]   # both depth layers, shown throughout
 ```
 
-# The simulation
+# Simulation
 
 The float advection is run by `code/run_trajsim.py`, driven by a JSON config.
 It deploys **one float per 1° analysis cell** tiling the deployment box with 24 floats 
@@ -122,7 +112,7 @@ print(f"{len(sim)} synthetic profiles inside the deployment box")
 ```
 
 Each float runs a standard Argo mission: descend to the ~1000 m parking depth,
-drift for ~10 days, dive to ~2000 m, then ascend to the surface and report a
+drift for 10 days, dive to ~2000m, then ascend to the surface and report a
 profile. We record the **profile position** at the shallowest point of each
 cycle (★ below; the deployment cycle is excluded, so the first profile is at the
 end of cycle 1 at the float's drifted position).
@@ -131,7 +121,7 @@ end of cycle 1 at the float's drifted position).
 #| label: fig-cycle-schematic
 #| fig-cap: "One float over two profiling cycles, coloured by phase; ★ = recorded profile position."
 _ = plot_depth_profiles(
-    TRAJ, floats=[0], max_days=22, mark_profiles=True, ncols=1, figsize=(9, 4.5),
+    TRAJ, floats=[23], max_days=22, mark_profiles=True, ncols=1, figsize=(9, 4.5),
     title="Float cycling: park at 1000 m, profile to ~2000 m, ascend & report",
     show=True,
 )
@@ -189,6 +179,27 @@ _ = map_point_trajectories(
 )
 ```
 
+The analysis domain sits on the **Gulf Stream / North Atlantic Current front** — a
+sharp north–south OHC gradient. The 2020-mean GLORYS OHC below (same extent) shows
+warm water (~90 GJ m⁻²) to the south and cool water (~45 GJ m⁻²) to the north, with
+the front cutting straight through the box. A few floats sampling slightly different
+sides of this front therefore see large OHC differences.
+
+```{python}
+#| label: fig-ohc-field-2020
+#| fig-cap: "GLORYS 1/12° 2020-mean OHC (0–700 m and 0–2000 m); dashed boxes as above."
+ohc_2020 = truth_field_full.mean("time")  # annual mean of the daily true OHC field
+for d in DEPTHS:
+    map_field(
+        ohc_2020[d] * ohc_bias.J_TO_GJ,
+        extent=[-76, -47, 28, 50],
+        boxes=[(*TRUTH_BOUNDS, "advection domain"),
+               (*ANALYSIS_BOUNDS, "analysis domain")],
+        cmap="viridis", cbar_label=f"{d} (GJ m$^{{-2}}$)",
+        title=f"GLORYS 1/12° 2020-mean {d}",
+    )
+```
+
 # Floats remaining in the observation area each month
 
 ```{python}
@@ -215,6 +226,11 @@ comp
 ```
 
 # Bias Summary
+
+**OHC definition.** For every profile, OHC is the integral
+$\text{OHC} = \int_0^{z} \rho\, c_p\, \theta\, dz$ with $c_p = 3989.411\ \mathrm{J\,kg^{-1}K^{-1}}$,
+$\rho = 1028.319\ \mathrm{kg\,m^{-3}}$, computed for $z = 700$ m and $z = 2000$ m and
+reported in GJ m⁻². 
 
 **Synthetic Argo** (blank = unsampled that
 month), the **GLORYS truth**, their **difference** (Grid bias per-cell error;
@@ -251,22 +267,17 @@ float_cells_map = float_by_deg[MAP_DEG]
 VLIM = {d: (float((truth_cells_map[d] * ohc_bias.J_TO_GJ).quantile(0.02)),
             float((truth_cells_map[d] * ohc_bias.J_TO_GJ).quantile(0.98))) for d in DEPTHS}
 
-def show_map(kind, d, deg=MAP_DEG):
-    """Render one monthly facet for a source (kind), depth d, and cell size deg.
 
-    All GLORYS sources (sim / truth / diff) are forced onto the **dense truth**
-    cell grid, so the truth panel shows every cell (no missing latitude bands),
-    the sim/diff panels show blanks only where unsampled, and -- because they all
-    share the same lats/lons -- every panel has an identical extent.
-    """
-    glats = np.sort(truth_by_deg[deg]["cell_lat"].unique())
-    glons = np.sort(truth_by_deg[deg]["cell_lon"].unique())
+def show_map(kind, d, deg=MAP_DEG, bounds=ANALYSIS_BOUNDS):
+    """Render one monthly facet for a source (kind), depth d, and cell size deg."""
+    glats = np.sort(truth_by_deg[deg]["cell_lat"].unique())[:-1]
+    glons = np.sort(truth_by_deg[deg]["cell_lon"].unique())[:-1]
     if kind == "sim":
         ohc_bias.plot_monthly_cell_maps(float_by_deg[deg], d, vmin=VLIM[d][0], vmax=VLIM[d][1],
             lats=glats, lons=glons, title=f"Synthetic-Argo {d} by month (deg={deg:.3g})")
     elif kind == "count":
         ohc_bias.plot_monthly_cell_maps(float_by_deg[deg], value_col="n", value_scale=1, discrete=True,
-            cmap="Dark2", cbar_label="profiles per cell", title=f"Synthetic-Argo profiles per cell (deg={MAP_DEG})")
+            cmap="Dark2", cbar_label="profiles per cell", title=f"Synthetic-Argo profiles per cell (deg={deg:.3g})")
     elif kind == "truth":
         ohc_bias.plot_monthly_cell_maps(truth_by_deg[deg], d, vmin=VLIM[d][0], vmax=VLIM[d][1],
             lats=glats, lons=glons, title=f"GLORYS truth {d} by month (deg={deg:.3g})")
