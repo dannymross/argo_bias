@@ -4,11 +4,11 @@ Given the gridded truth OHC (from :func:`ohc.coarsen_truth`) and the
 synthetic-float OHC binned to the same cells (from :func:`ohc.grid_cells`), this
 computes the two biases that matter for the preferential-sampling question:
 
-* **Representation error** -- in each cell a float actually sampled, how far is
+* **grid error** -- in each cell a float actually sampled, how far is
   the float estimate from the truth in that cell/month?
-* **Coverage / sampling bias** (the headline number) -- the domain-mean OHC you
+* **sampling bias** -- the domain-mean OHC you
   would report from the *float-sampled cells only*, minus the *true* domain mean
-  over *all* cells. Non-uniform float coverage makes these differ; that gap is
+  over *all* cells. Non-uniform float sampling makes these differ; that gap is
   the bias from preferential sampling.
 
 Also emits the sampled-cell fraction over time and simple diagnostic plots.
@@ -41,18 +41,18 @@ def compute_bias(
     true_domain_mean : DataFrame, optional
         Fixed per-month true domain mean (columns ``month`` + value_cols, J/m2)
         from :func:`ohc.truth_domain_mean`. If given, it is used as the truth
-        reference for total and coverage bias instead of the cell-mean over all
+        reference for total and sampling bias instead of the cell-mean over all
         truth cells -- which removes the resolution-dependent drift of the
-        reference across a cell-size sweep. The total = coverage + representation
+        reference across a cell-size sweep. The total = sampling + grid
         decomposition is preserved either way.
 
     Returns
     -------
     dict with:
-        ``cells`` -- per (month, cell) truth, float, and representation error
+        ``cells`` -- per (month, cell) truth, float, and grid error
             (float - truth), only where a float sampled the cell;
         ``domain`` -- per month: true domain mean (all truth cells), sampled
-            domain mean (float-sampled cells), the float estimate, the coverage
+            domain mean (float-sampled cells), the float estimate, the sampling
             bias (sampled estimate - true mean), and sampled-cell fraction.
     """
     keys = ["month", "cell_lat", "cell_lon"]
@@ -95,10 +95,10 @@ def compute_bias(
         domain[f"{c}_true_mean"] = true_mean
         domain[f"{c}_float_mean"] = float_mean
         domain[f"{c}_true_at_sampled"] = true_at_sampled
-        # Total bias splits into coverage (which cells) + representation (value error).
+        # Total bias splits into sampling (which cells) + grid (value error).
         domain[f"{c}_bias"] = float_mean - true_mean
-        domain[f"{c}_coverage_bias"] = true_at_sampled - true_mean
-        domain[f"{c}_repr_bias"] = float_mean - true_at_sampled
+        domain[f"{c}_sampling_bias"] = true_at_sampled - true_mean
+        domain[f"{c}_grid_bias"] = float_mean - true_at_sampled
 
     domain = domain.reset_index().sort_values("month").reset_index(drop=True)
 
@@ -114,12 +114,92 @@ def bias_summary(domain, value_cols=("ohc_700", "ohc_2000")):
                 "depth": c,
                 "mean_true_GJ": domain[f"{c}_true_mean"].mean() * J_TO_GJ,
                 "bias_GJ": domain[f"{c}_bias"].mean() * J_TO_GJ,
-                "coverage_bias_GJ": domain[f"{c}_coverage_bias"].mean() * J_TO_GJ,
-                "repr_bias_GJ": domain[f"{c}_repr_bias"].mean() * J_TO_GJ,
+                "sampling_bias_GJ": domain[f"{c}_sampling_bias"].mean() * J_TO_GJ,
+                "grid_bias_GJ": domain[f"{c}_grid_bias"].mean() * J_TO_GJ,
                 "mean_sampled_fraction": domain["sampled_fraction"].mean(),
             }
         )
     return pd.DataFrame(rows)
+
+
+def monthly_bias_table(float_cells, truth_cells, value_col, true_domain_mean=None):
+    """Per-month preferential-sampling summary for one depth + resolution.
+
+    Tells the full bias story for a single depth layer at the cell size implied
+    by ``float_cells``/``truth_cells``. OHC columns are in GJ/m2:
+
+    * ``samp_cells``     -- cells a float sampled that month
+    * ``profiles``       -- float profiles that month (sum of per-cell counts)
+    * ``prof_per_cell``  -- profiles / sampled cells
+    * ``true_ohc``       -- mean true OHC over **all** cells
+    * ``true_ohc_samp``  -- mean true OHC over the **sampled** cells
+    * ``synth_ohc_samp`` -- mean synthetic-Argo OHC over the sampled cells
+    * ``samp_bias``      -- true_ohc_samp - true_ohc  (sampling/coverage: which
+      cells get sampled, true values only)
+    * ``grid_bias``      -- synth_ohc_samp - true_ohc_samp  (within-cell estimate
+      error)
+
+    ``samp_bias + grid_bias`` is the total estimate error
+    (synth_ohc_samp - true_ohc). A final ``YEAR`` row summarises the year:
+    profiles are summed, everything else is the monthly mean (so the YEAR bias
+    terms are the time-averaged biases).
+    """
+    dom = compute_bias(
+        float_cells,
+        truth_cells,
+        value_cols=(value_col,),
+        true_domain_mean=true_domain_mean,
+    )["domain"]
+    prof = float_cells.groupby("month")["n"].sum()
+    g = J_TO_GJ
+    tbl = pd.DataFrame(
+        {
+            "month": pd.to_datetime(dom["month"]).dt.strftime("%Y-%m"),
+            "samp_cells": dom["n_sampled_cells"].to_numpy(),
+            "profiles": dom["month"].map(prof).to_numpy(),
+            "true_ohc": dom[f"{value_col}_true_mean"].to_numpy() * g,
+            "true_ohc_samp": dom[f"{value_col}_true_at_sampled"].to_numpy() * g,
+            "synth_ohc_samp": dom[f"{value_col}_float_mean"].to_numpy() * g,
+            "samp_bias": dom[f"{value_col}_sampling_bias"].to_numpy() * g,
+            "grid_bias": dom[f"{value_col}_grid_bias"].to_numpy() * g,
+        }
+    )
+    tbl["prof_per_cell"] = tbl["profiles"] / tbl["samp_cells"]
+    tbl["bias"] = tbl["samp_bias"] + tbl["grid_bias"]
+    tbl = tbl[
+        [
+            "month",
+            "samp_cells",
+            "profiles",
+            "prof_per_cell",
+            "true_ohc",
+            "true_ohc_samp",
+            "synth_ohc_samp",
+            "samp_bias",
+            "grid_bias",
+            "bias",
+        ]
+    ]
+
+    year = {"month": "YEAR", "profiles": tbl["profiles"].sum()}
+    for c in tbl.columns:
+        if c not in ("month", "profiles"):
+            year[c] = tbl[c].mean()
+    out = pd.concat([tbl, pd.DataFrame([year])], ignore_index=True)
+
+    out["profiles"] = out["profiles"].round().astype(int)
+    for c, n in {
+        "samp_cells": 1,
+        "prof_per_cell": 1,
+        "true_ohc": 3,
+        "true_ohc_samp": 3,
+        "synth_ohc_samp": 3,
+        "samp_bias": 3,
+        "grid_bias": 3,
+        "bias": 3,
+    }.items():
+        out[c] = out[c].round(n)
+    return out
 
 
 # ---- CELL-SIZE SWEEP -----------------------------------------------------
@@ -130,8 +210,8 @@ def sweep_resolution(
 
     The grid cell size is a parameter of the estimator (a box-kernel proxy for
     a Gaussian-process correlation length), not an intrinsic feature of the
-    ungridded float data. Coverage and representation bias both depend on it:
-    coarse cells -> small coverage bias but large representation/smoothing bias;
+    ungridded float data. sampling and grid bias both depend on it:
+    coarse cells -> small sampling bias but large grid/smoothing bias;
     fine cells -> the reverse. This traces that curve.
 
     The expensive pieces (truth OHC field and synthetic-float profiles) are
@@ -176,8 +256,8 @@ def sweep_resolution(
         "mean_sampled_fraction",
         "mean_true_GJ",
         "bias_GJ",
-        "coverage_bias_GJ",
-        "repr_bias_GJ",
+        "sampling_bias_GJ",
+        "grid_bias_GJ",
     ]
     return out[cols].sort_values(["depth", "deg"]).reset_index(drop=True)
 
@@ -189,7 +269,7 @@ def subset_region(truth_field, sim, bounds):
     ``bounds`` is ``(lat_min, lat_max, lon_min, lon_max)``. Used to evaluate the
     bias over a defined analysis region rather than the whole download domain --
     e.g. starting at the float deployment footprint and expanding outward, so
-    never-sampled shelf / far-field cells don't dominate the coverage term.
+    never-sampled shelf / far-field cells don't dominate the sampling term.
     """
     la0, la1, lo0, lo1 = bounds
     tf = truth_field.sel(latitude=slice(la0, la1), longitude=slice(lo0, lo1))
@@ -247,8 +327,8 @@ def sweep_region(
         "mean_sampled_fraction",
         "mean_true_GJ",
         "bias_GJ",
-        "coverage_bias_GJ",
-        "repr_bias_GJ",
+        "sampling_bias_GJ",
+        "grid_bias_GJ",
     ]
     return out[cols].reset_index(drop=True)
 
@@ -268,8 +348,14 @@ def monthly_float_counts(sim):
 
 
 # ---- PLOTS ---------------------------------------------------------------
-def plot_domain_timeseries(domain, value_col="ohc_2000", out_path=None):
-    """Truth vs synthetic-Argo domain-mean OHC over time, with coverage."""
+def plot_domain_timeseries(domain, value_col="ohc_2000", out_path=None, title=None):
+    """Domain-mean OHC over time: GLORYS truth (all cells), GLORYS truth (sampled
+    cells), and synthetic Argo (sampled cells), with the sampled-cell fraction below.
+
+    The gap between truth-all and truth-sampled is the **sampling bias** (which
+    cells get sampled); the gap between truth-sampled and synthetic Argo is the
+    **grid bias** (within-cell estimate error).
+    """
     import matplotlib.pyplot as plt
 
     fig, (ax, ax2) = plt.subplots(
@@ -281,7 +367,14 @@ def plot_domain_timeseries(domain, value_col="ohc_2000", out_path=None):
         domain[f"{value_col}_true_mean"] * J_TO_GJ,
         "-o",
         color="#1a4f8a",
-        label="truth (all cells)",
+        label="GLORYS truth (all cells)",
+    )
+    ax.plot(
+        m,
+        domain[f"{value_col}_true_at_sampled"] * J_TO_GJ,
+        "-^",
+        color="#4caf73",
+        label="GLORYS truth (sampled cells)",
     )
     ax.plot(
         m,
@@ -292,7 +385,7 @@ def plot_domain_timeseries(domain, value_col="ohc_2000", out_path=None):
     )
     ax.set_ylabel(f"{value_col}  (GJ m$^{{-2}}$)")
     ax.legend(frameon=False)
-    ax.set_title(f"Domain-mean OHC: truth vs synthetic Argo ({value_col})")
+    ax.set_title(title or f"Domain-mean OHC: truth vs synthetic Argo ({value_col})")
     ax.grid(alpha=0.2)
 
     ax2.bar(m, domain["sampled_fraction"], width=20, color="#4a90d9", alpha=0.7)
@@ -320,14 +413,14 @@ def plot_bias_vs_resolution(
     ax.axhline(0, color="0.6", lw=0.8)
     ax.plot(df["deg"], df["bias_GJ"], "-o", color="#1a1a1a", label="total bias")
     ax.plot(
-        df["deg"], df["coverage_bias_GJ"], "-s", color="#4a90d9", label="coverage bias"
+        df["deg"], df["sampling_bias_GJ"], "-s", color="#4a90d9", label="sampling bias"
     )
     ax.plot(
         df["deg"],
-        df["repr_bias_GJ"],
+        df["grid_bias_GJ"],
         "-^",
         color="#e07b39",
-        label="representation bias",
+        label="grid bias",
     )
     ax.set_ylabel(f"{value_col} bias  (GJ m$^{{-2}}$)")
     ax.set_xscale(xscale)
@@ -459,8 +552,8 @@ def plot_bias_vs_region(sweep, value_col="ohc_2000", out_path=None):
     )
     ax.axhline(0, color="0.6", lw=0.8)
     ax.plot(x, df["bias_GJ"], "-o", color="#1a1a1a", label="total bias")
-    ax.plot(x, df["coverage_bias_GJ"], "-s", color="#4a90d9", label="coverage bias")
-    ax.plot(x, df["repr_bias_GJ"], "-^", color="#e07b39", label="representation bias")
+    ax.plot(x, df["sampling_bias_GJ"], "-s", color="#4a90d9", label="sampling bias")
+    ax.plot(x, df["grid_bias_GJ"], "-^", color="#e07b39", label="grid bias")
     for xi, lab in zip(x, df["region"]):
         ax.annotate(
             lab,
@@ -489,7 +582,7 @@ def plot_bias_vs_region(sweep, value_col="ohc_2000", out_path=None):
 
 
 def plot_bias_map(cells, value_col="ohc_2000", month=None, out_path=None):
-    """Per-cell representation error (float - truth) as a scatter/heat map."""
+    """Per-cell grid error (float - truth) as a scatter/heat map."""
     import matplotlib.pyplot as plt
 
     df = cells if month is None else cells[cells["month"] == month]

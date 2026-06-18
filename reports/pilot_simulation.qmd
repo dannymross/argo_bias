@@ -1,14 +1,15 @@
 ---
-title: "Argo OHC Sampling-Bias Pilot — Gulf Stream"
-subtitle: "Perfect-model (OSSE) simulation: GLORYS12 as truth, virtual Argo floats as the sampler"
+title: "Argo OHC Sampling-Bias Pilot — North Atlantic Current"
+subtitle: "PARCELS Simulation Study with GLORYS12 Velocity Field and OHC"
 author: "Daniel Ross"
 date: today
 format:
   html:
+    page-layout: full
     toc: true
     toc-depth: 3
     number-sections: true
-    code-fold: show
+    code-fold: true
     code-tools: true
     embed-resources: true
     fig-width: 9
@@ -21,22 +22,9 @@ execute:
   cache: true
 ---
 
-<!--
-Render within the `virtualfleet` conda environment, which must have `ipykernel`
-installed (the Quarto Python engine uses a Jupyter kernel):
-
-    conda activate virtualfleet
-    pip install ipykernel        # one-time, if not present
-    quarto render reports/pilot_simulation.qmd
-
-All paths below are relative to this file (reports/), i.e. the repo root is "..".
--->
-
 # Goal and design
 
-We want to quantify the **bias in ocean heat content (OHC) caused by Argo floats'
-preferential sampling**. The strategy is a perfect-model / observing-system
-simulation experiment (OSSE):
+**Reanalysis-based simulation study**
 
 1. Treat a complete-coverage reanalysis (**GLORYS12**) as the ground truth.
 2. Advect **virtual Argo floats** with the GLORYS velocity field at the ~1000 m
@@ -47,11 +35,10 @@ simulation experiment (OSSE):
 5. Compare to the **true** OHC integrated from the full GLORYS field.
 6. Quantify the bias and map its sensitivity to the estimator's resolution.
 
-**OHC definition.** For every profile, OHC is the depth integral
+**OHC definition.** For every profile, OHC is the integral
 $\text{OHC} = \int_0^{z} \rho\, c_p\, \theta\, dz$ with $c_p = 3989.411\ \mathrm{J\,kg^{-1}K^{-1}}$,
 $\rho = 1028.319\ \mathrm{kg\,m^{-3}}$, computed for $z = 700$ m and $z = 2000$ m and
-reported in GJ m⁻². Because OHC is linear in temperature, time- and space-averages
-commute with the depth integration.
+reported in GJ m⁻². 
 
 **This report.** We start with the cleanest sub-problem: the bias **only over the
 region where the floats are deployed** (a 4°×6° box in the Gulf Stream, lat 36–40°N
@@ -70,7 +57,9 @@ import xarray as xr
 
 import ohc
 import ohc_bias
-from trajplots import open_trajectories, map_trajectories_minimal, map_positions_by_month
+from trajplots import (open_trajectories, map_trajectories_minimal,
+                       map_positions_by_month, map_point_trajectories,
+                       plot_depth_profiles)
 
 # --- experiment configuration (mirrors code/configs/nac_gs_1yr_wide.json) ---
 TRAJ            = "../data/virtualfleet/nac_gs_1yr_wide_task*.zarr"  # batch trajectory zarrs
@@ -78,6 +67,7 @@ VELOCITY        = "../data/velocity_gs_wide/velocity_*.nc"          # GLORYS uo/
 TRUTH_BOUNDS    = (30, 48, -74, -49)    # advection domain (lat0, lat1, lon0, lon1)
 DEPLOY_BOUNDS   = (36, 40, -68, -62)    # float deployment box (4° lat × 6° lon) = analysis region
 ANALYSIS_BOUNDS = DEPLOY_BOUNDS
+#ANALYSIS_BOUNDS = (37, 39, -67, -63)
 DEGS            = [1/12, 0.5, 1.0]      # estimator cell sizes to compare
 MAP_DEG         = 0.5                   # cell size for the monthly maps
 DEPTHS          = ["ohc_700", "ohc_2000"]   # both depth layers, shown throughout
@@ -86,14 +76,10 @@ DEPTHS          = ["ohc_700", "ohc_2000"]   # both depth layers, shown throughou
 # The simulation
 
 The float advection is run by `code/run_trajsim.py`, driven by a JSON config.
-It deploys **one float per 0.5° analysis cell** tiling the deployment box (96
-floats; cell centres lie exactly on the GLORYS 1/12° grid, so there is no
-deployment-vs-analysis grid mismatch) and advects them with daily GLORYS
-velocities at the parking depth for 365 days (2020), writing 6-hourly
-trajectories to a `.zarr` file. Following real Argo, a float reports its **first
-profile at the end of its first ~10-day cycle** (at its drifted position), not at
-the deployment site. The chunk below documents the command; it is **not executed
-here** (the output already exists).
+It deploys **one float per 1° analysis cell** tiling the deployment box with 24 floats 
+and advects them with daily GLORYS velocities at the 1000m parking depth for 365 days (2020),
+writing 6-hourly trajectories to a `.zarr` file. 
+
 
 ```{python}
 #| label: run_trajsim_cli
@@ -106,18 +92,16 @@ here** (the output already exists).
 #
 # Config highlights (code/configs/nac_gs_1yr_wide.json):
 #   deployment box lat 36–40°N / lon −68 to −62°W,
-#   cell_deg=0.5 -> one float per 0.5° cell (96), on the GLORYS 1/12° grid,
+#   cell_deg=1 -> one float per 1° cell (24), on the GLORYS 1/12° grid,
 #   365 days from 2020-01-01, step=300 s, record=21600 s (6-hourly),
 #   velocity = GLORYS12 daily uo/vo/thetao, 0–2300 m, over the extended
-#   advection domain (lat 30–48°N, lon −74 to −49°W) so floats stay
-#   in-bounds longer. Run on a single core: the velocity field is loaded
-#   lazily per process, so one process avoids redundant field I/O.
+#   advection domain (lat 30–48°N, lon −74 to −49°W) 
 # Output: data/virtualfleet/nac_gs_1yr_wide_task000.zarr
 ```
 
 We now load the trajectories and the velocity/temperature field, compute the
 **true OHC field** on the native grid, and the **synthetic-Argo OHC** at each
-float's surfacing position. These two heavy steps are computed once.
+float's surfacing position.
 
 ```{python}
 #| label: load-and-compute
@@ -137,59 +121,82 @@ truth_field, sim = ohc_bias.subset_region(truth_field_full, sim_full, ANALYSIS_B
 print(f"{len(sim)} synthetic profiles inside the deployment box")
 ```
 
+Each float runs a standard Argo mission: descend to the ~1000 m parking depth,
+drift for ~10 days, dive to ~2000 m, then ascend to the surface and report a
+profile. We record the **profile position** at the shallowest point of each
+cycle (★ below; the deployment cycle is excluded, so the first profile is at the
+end of cycle 1 at the float's drifted position).
+
+```{python}
+#| label: fig-cycle-schematic
+#| fig-cap: "One float over two profiling cycles, coloured by phase; ★ = recorded profile position."
+_ = plot_depth_profiles(
+    TRAJ, floats=[0], max_days=22, mark_profiles=True, ncols=1, figsize=(9, 4.5),
+    title="Float cycling: park at 1000 m, profile to ~2000 m, ascend & report",
+    show=True,
+)
+```
+
 # Float advection trajectories
 
-The deployment box is small (5°), but the floats spread far downstream along the
-Gulf Stream over the year. The dashed boxes mark the full GLORYS truth domain (15°)
-and the deployment region (5°).
 
 ```{python}
 #| label: fig-trajectories
-#| fig-cap: "All 96 float trajectories (2020). deployment positions."
+#| fig-cap: "GLORYS advected float trajectories (2020). deployment positions."
 _ = map_trajectories_minimal(
     TRAJ,
     extent=[-76, -47, 28, 50],
     boxes=[(*TRUTH_BOUNDS, "advection domain"),
-           (*DEPLOY_BOUNDS, "deployment (4°×6°)")],
-    title="Pilot: Argo floats advected by GLORYS, 2020 (1000 m park)",
+           (*ANALYSIS_BOUNDS, "analysis domain")],
+    title="Argo floats advected by GLORYS, 2020",
     show=True,
+    cmap = "Dark2"
 )
 ```
 
 ```{python}
 #| label: fig-trajectories-month
-#| fig-cap: "All 96 float trajectories (2020). end of month positions."
+#| fig-cap: "GLORYS advected end of month float positions"
 _ = map_positions_by_month(
     TRAJ,
     extent=[-76, -47, 28, 50],
     boxes=[(*TRUTH_BOUNDS, "advection domain"),
-           (*DEPLOY_BOUNDS, "deployment (4°×6°)")],
-    title="Pilot: Argo floats advected by GLORYS, 2020 (1000 m park)"
+           (*ANALYSIS_BOUNDS, "analysis domain")],
+    title="Pilot: Argo floats advected by GLORYS, 2020 end of month positions",
+    cmap = "Dark2"
+)
+```
+
+For comparison, the **real** Argo floats: every float in `data/argo_ohc.csv` that
+entered the analysis domain at any point in 2020, drawn as its full 2020 track
+(same map extent as the simulation above).
+
+```{python}
+#| label: fig-real-argo-traj
+#| fig-cap: "Real Argo tracks (2020) for floats that entered the analysis domain."
+argo_all = pd.read_csv("../data/argo_ohc.csv", usecols=["float_id", "lat", "lon", "date"])
+argo_all["date"] = pd.to_datetime(argo_all["date"], format="ISO8601")
+argo_all = argo_all[argo_all["date"].dt.year == 2020]
+la0, la1, lo0, lo1 = ANALYSIS_BOUNDS
+ids = argo_all.loc[argo_all.lat.between(la0, la1) & argo_all.lon.between(lo0, lo1),
+                   "float_id"].unique()
+_ = map_point_trajectories(
+    argo_all[argo_all.float_id.isin(ids)],
+    extent=[-76, -47, 28, 50],
+    boxes=[(*TRUTH_BOUNDS, "advection domain"),
+           (*ANALYSIS_BOUNDS, "analysis domain")],
+    title=f"Real Argo tracks, 2020 ({len(ids)} floats that entered the analysis domain)",
 )
 ```
 
 # Floats remaining in the observation area each month
 
-Because floats advect out of the deployment box, the number sampling our analysis
-region falls steeply through the year — the first sign that a fixed region (and a
-one-year deployment) under-samples late in the record.
-
-```{python}
-#| label: fig-float-counts
-#| fig-cap: "Distinct floats and profiles inside the deployment box, per month."
-counts = ohc_bias.monthly_float_counts(sim)
-```
-
-## Comparison with the real Argo array
-
-Is the pilot's sampling density realistic? We filter the **real** Argo OHC
-observations (`data/argo_ohc.csv`) to the *same* observation box and count
-distinct floats and profiles per month. The table below is the climatological
-monthly mean over all available years; the printout gives the per-year context.
-
 ```{python}
 #| label: fig-sim-vs-real-argo
-#| fig-cap: "Profiles per month in the box: this simulation (2020) vs real Argo (log scale)."
+#| fig-cap: "Profiles per month in the analysis domain box"
+
+sim_counts = ohc_bias.monthly_float_counts(sim)
+
 la0, la1, lo0, lo1 = ANALYSIS_BOUNDS
 argo = pd.read_csv("../data/argo_ohc.csv", usecols=["float_id", "lat", "lon", "date"])
 argo["date"] = pd.to_datetime(argo["date"], format="ISO8601")
@@ -197,29 +204,42 @@ argo["year"] = argo["date"].dt.year
 argo = argo[argo.lat.between(la0, la1) & argo.lon.between(lo0, lo1)]
 argo = argo[argo["year"] == 2020]
 
-counts = ohc_bias.monthly_float_counts(argo)
-counts
+real_counts = ohc_bias.monthly_float_counts(argo).rename(
+    columns={
+        "n_floats": "n_floats_real",
+        "n_profiles": "n_profiles_real",
+    }
+)
+comp = sim_counts.merge(real_counts, on="month", how="outer")
+comp
 ```
 
-# Monthly OHC maps — flip tabs to compare
+# Bias Summary
 
-Pick a **depth**, then a **cell size**, then flip the inner **source** tabs to
-swap the field *in place* on a shared colour scale and identical months, so
-differences jump out as you switch: **Synthetic Argo** (blank = unsampled that
-month), the **GLORYS truth**, their **difference** (Argo − truth per-cell error;
+**Synthetic Argo** (blank = unsampled that
+month), the **GLORYS truth**, their **difference** (Grid bias per-cell error;
 red = float over-estimate, blue = under-estimate), and — at 1° only — **EN4**
-(independent reference, native 1°, cells offset 0.5° from GLORYS). The 1/12°, ½°,
-and 1° tabs are the three estimator cell sizes from the sweep: at 1/12° each
-profile sits in its own tiny cell (float panels nearly empty); at 1° the box is
-only ~24 cells and coverage looks far fuller.
+(independent reference, native 1°, cells offset 0.5° from GLORYS).
+
+ **monthly summary table** Columns (OHC in GJ m⁻²): `samp_cells` (cells a float sampled), `profiles`,
+`prof_per_cell`, `true_ohc` (mean over **all** cells), `true_ohc_samp` (mean over
+**sampled** cells), `synth_ohc_samp` (synthetic-Argo mean over sampled cells),
+**`samp_bias`** = `true_ohc_samp − true_ohc` (sampling/coverage — which cells get
+sampled, true values only), and **`grid_bias`** = `synth_ohc_samp − true_ohc_samp`
+(within-cell estimate error). The total float-estimate error is
+`samp_bias + grid_bias = synth_ohc_samp − true_ohc`.
 
 ```{python}
 #| label: maps-prep
 #| code-summary: "Grid truth / floats / difference at every resolution; load EN4"
+ref = ohc.truth_domain_mean(truth_field, weighted=True)
 truth_by_deg = {deg: ohc.coarsen_truth(truth_field, deg=deg) for deg in DEGS}
 float_by_deg = {deg: ohc.grid_cells(sim, ["ohc_700", "ohc_2000"], deg=deg) for deg in DEGS}
-diff_by_deg  = {deg: ohc_bias.compute_bias(float_by_deg[deg], truth_by_deg[deg])["cells"]
-                for deg in DEGS}
+# Bias against the fixed area-weighted reference, once per resolution; reuse its
+# per-cell grid error (diff) and per-month domain table (timeseries).
+bias_by_deg  = {deg: ohc_bias.compute_bias(float_by_deg[deg], truth_by_deg[deg],
+                                           true_domain_mean=ref) for deg in DEGS}
+diff_by_deg  = {deg: bias_by_deg[deg]["cells"] for deg in DEGS}
 en4_cells    = ohc.load_en4_cells(
     "../data/ohc_en4_gridded_nwatlantic.csv", bounds=ANALYSIS_BOUNDS, year=2020)
 
@@ -234,14 +254,19 @@ VLIM = {d: (float((truth_cells_map[d] * ohc_bias.J_TO_GJ).quantile(0.02)),
 def show_map(kind, d, deg=MAP_DEG):
     """Render one monthly facet for a source (kind), depth d, and cell size deg.
 
-    The GLORYS sources (sim / truth / diff) are forced onto the truth cell grid
-    so the panels share an identical extent and line up when flipping tabs.
+    All GLORYS sources (sim / truth / diff) are forced onto the **dense truth**
+    cell grid, so the truth panel shows every cell (no missing latitude bands),
+    the sim/diff panels show blanks only where unsampled, and -- because they all
+    share the same lats/lons -- every panel has an identical extent.
     """
     glats = np.sort(truth_by_deg[deg]["cell_lat"].unique())
     glons = np.sort(truth_by_deg[deg]["cell_lon"].unique())
     if kind == "sim":
         ohc_bias.plot_monthly_cell_maps(float_by_deg[deg], d, vmin=VLIM[d][0], vmax=VLIM[d][1],
             lats=glats, lons=glons, title=f"Synthetic-Argo {d} by month (deg={deg:.3g})")
+    elif kind == "count":
+        ohc_bias.plot_monthly_cell_maps(float_by_deg[deg], value_col="n", value_scale=1, discrete=True,
+            cmap="Dark2", cbar_label="profiles per cell", title=f"Synthetic-Argo profiles per cell (deg={MAP_DEG})")
     elif kind == "truth":
         ohc_bias.plot_monthly_cell_maps(truth_by_deg[deg], d, vmin=VLIM[d][0], vmax=VLIM[d][1],
             lats=glats, lons=glons, title=f"GLORYS truth {d} by month (deg={deg:.3g})")
@@ -250,11 +275,21 @@ def show_map(kind, d, deg=MAP_DEG):
         bmax = float((dc[f"{d}_bias"].abs() * ohc_bias.J_TO_GJ).quantile(0.95))
         ohc_bias.plot_monthly_cell_maps(dc, value_col=f"{d}_bias", vmin=-bmax, vmax=bmax,
             cmap="RdBu_r", cbar_label=f"{d} bias (GJ m$^{{-2}}$)",
-            lats=glats, lons=glons, title=f"Argo − truth, {d} (deg={deg:.3g})")
+            lats=glats, lons=glons, title=f"Grid bias, {d} (deg={deg:.3g})")
     elif kind == "en4":
         ohc_bias.plot_monthly_cell_maps(en4_cells, d, vmin=VLIM[d][0], vmax=VLIM[d][1],
             title=f"EN4 {d} by month, 2020 (1°)")
+
+def show_table(d, deg):
+    """Monthly preferential-sampling summary table for depth d at cell size deg."""
+    return ohc_bias.monthly_bias_table(float_by_deg[deg], truth_by_deg[deg], d, ref)
+
+def show_timeseries(d, deg):
+    """Domain-mean OHC over time (truth all / truth sampled / synthetic Argo)."""
+    ohc_bias.plot_domain_timeseries(bias_by_deg[deg]["domain"], value_col=d,
+                                    title=f"Domain-mean {d} over time (deg={deg:.3g})")
 ```
+
 
 ::: {.panel-tabset}
 
@@ -263,7 +298,14 @@ def show_map(kind, d, deg=MAP_DEG):
 ::: {.panel-tabset}
 
 ### 1/12°
+```{python}
+show_table("ohc_700", 1/12)
+```
 ::: {.panel-tabset}
+#### Synthetic Argo Profiles
+```{python}
+show_map("count", "ohc_700", 1/12)
+```
 #### Synthetic Argo
 ```{python}
 show_map("sim", "ohc_700", 1/12)
@@ -272,14 +314,25 @@ show_map("sim", "ohc_700", 1/12)
 ```{python}
 show_map("truth", "ohc_700", 1/12)
 ```
-#### Argo − truth
+#### Grid bias
 ```{python}
 show_map("diff", "ohc_700", 1/12)
 ```
 :::
 
+```{python}
+show_timeseries("ohc_700", 1/12)
+```
+
 ### ½°
+```{python}
+show_table("ohc_700", 0.5)
+```
 ::: {.panel-tabset}
+#### Synthetic Argo Profiles
+```{python}
+show_map("count", "ohc_700", 0.5)
+```
 #### Synthetic Argo
 ```{python}
 show_map("sim", "ohc_700", 0.5)
@@ -288,14 +341,25 @@ show_map("sim", "ohc_700", 0.5)
 ```{python}
 show_map("truth", "ohc_700", 0.5)
 ```
-#### Argo − truth
+#### Grid bias
 ```{python}
 show_map("diff", "ohc_700", 0.5)
 ```
 :::
 
+```{python}
+show_timeseries("ohc_700", 0.5)
+```
+
 ### 1°
+```{python}
+show_table("ohc_700", 1.0)
+```
 ::: {.panel-tabset}
+#### Synthetic Argo Profiles
+```{python}
+show_map("count", "ohc_700", 1.0)
+```
 #### Synthetic Argo
 ```{python}
 show_map("sim", "ohc_700", 1.0)
@@ -304,7 +368,7 @@ show_map("sim", "ohc_700", 1.0)
 ```{python}
 show_map("truth", "ohc_700", 1.0)
 ```
-#### Argo − truth
+#### Grid bias
 ```{python}
 show_map("diff", "ohc_700", 1.0)
 ```
@@ -314,6 +378,10 @@ show_map("en4", "ohc_700", 1.0)
 ```
 :::
 
+```{python}
+show_timeseries("ohc_700", 1.0)
+```
+
 :::
 
 ## 0–2000 m
@@ -321,7 +389,14 @@ show_map("en4", "ohc_700", 1.0)
 ::: {.panel-tabset}
 
 ### 1/12°
+```{python}
+show_table("ohc_2000", 1/12)
+```
 ::: {.panel-tabset}
+#### Synthetic Argo Profiles
+```{python}
+show_map("count", "ohc_2000", 1/12)
+```
 #### Synthetic Argo
 ```{python}
 show_map("sim", "ohc_2000", 1/12)
@@ -330,14 +405,25 @@ show_map("sim", "ohc_2000", 1/12)
 ```{python}
 show_map("truth", "ohc_2000", 1/12)
 ```
-#### Argo − truth
+#### Grid bias
 ```{python}
 show_map("diff", "ohc_2000", 1/12)
 ```
 :::
 
+```{python}
+show_timeseries("ohc_2000", 1/12)
+```
+
 ### ½°
+```{python}
+show_table("ohc_2000", 0.5)
+```
 ::: {.panel-tabset}
+#### Synthetic Argo Profiles
+```{python}
+show_map("count", "ohc_2000", 0.5)
+```
 #### Synthetic Argo
 ```{python}
 show_map("sim", "ohc_2000", 0.5)
@@ -346,14 +432,25 @@ show_map("sim", "ohc_2000", 0.5)
 ```{python}
 show_map("truth", "ohc_2000", 0.5)
 ```
-#### Argo − truth
+#### Grid bias
 ```{python}
 show_map("diff", "ohc_2000", 0.5)
 ```
 :::
 
+```{python}
+show_timeseries("ohc_2000", 0.5)
+```
+
 ### 1°
+```{python}
+show_table("ohc_2000", 1.0)
+```
 ::: {.panel-tabset}
+#### Synthetic Argo Profiles
+```{python}
+show_map("count", "ohc_2000", 1.0)
+```
 #### Synthetic Argo
 ```{python}
 show_map("sim", "ohc_2000", 1.0)
@@ -362,7 +459,7 @@ show_map("sim", "ohc_2000", 1.0)
 ```{python}
 show_map("truth", "ohc_2000", 1.0)
 ```
-#### Argo − truth
+#### Grid bias
 ```{python}
 show_map("diff", "ohc_2000", 1.0)
 ```
@@ -372,110 +469,52 @@ show_map("en4", "ohc_2000", 1.0)
 ```
 :::
 
-:::
-
-:::
-
-## Profiles per cell each month
-
-The companion to the OHC maps: how many synthetic-Argo profiles fall in each cell
-each month. Early on a cell may hold several profiles (multiple floats, or one
-float profiling several times); as floats disperse, most sampled cells hold just
-one, and the bin-mean rests on a single observation.
-
 ```{python}
-#| label: fig-float-count-maps
-#| fig-cap: "Number of synthetic-Argo profiles per cell, by month (blank = none)."
-_ = ohc_bias.plot_monthly_cell_maps(
-    float_cells_map, value_col="n", value_scale=1, discrete=True,
-    cmap="magma", cbar_label="profiles per cell",
-    title=f"Synthetic-Argo profiles per cell (deg={MAP_DEG})",
-)
+show_timeseries("ohc_2000", 1.0)
 ```
 
+:::
+
+:::
 
 # Bias diagnostics
 
 ## Bias vs estimator cell size
 
-The grid cell size is a parameter of the estimator (a box-kernel proxy for a
-Gaussian-process correlation length), not a property of the float data. We compare
-**1/12°, 1/2°, 1°**, measuring bias against the **fixed cos(lat) area-weighted true
+Compare **1/12°, 1/2°, 1°**, measuring bias against the **fixed cos(lat) area-weighted true
 domain mean** so only the estimator changes across the sweep. Total bias decomposes
-into a **coverage** term (which cells get sampled) and a **representation** term
-(value error within sampled cells).
+into a **sampling** term and a **grid** term (value error within sampled cells).
 
 ```{python}
 #| label: tbl-sweep
-#| code-summary: "Cell-size sweep over the deployment box"
+#| code-summary: "Cell-size sweep over the analysis domain"
 sweep = ohc_bias.sweep_resolution(truth_field, sim, DEGS, weighted_reference=True)
 sweep.round(3)
 ```
 
 ```{python}
 #| label: fig-sweep
-#| fig-cap: "OHC sampling bias vs analysis cell size (deployment box), both depth layers."
+#| fig-cap: "OHC sampling bias vs analysis cell size"
 for d in DEPTHS:
     ohc_bias.plot_bias_vs_resolution(sweep, value_col=d)
 ```
 
-## Domain-mean OHC over time (1° estimator)
-
-Truth (area-weighted) vs the synthetic-Argo estimate over the sampled cells, with
-the sampled-cell fraction below — for both depth layers.
-
-```{python}
-#| label: fig-timeseries
-#| fig-cap: "Domain-mean OHC: truth vs synthetic Argo, with monthly coverage (both depths)."
-ref = ohc.truth_domain_mean(truth_field, weighted=True)
-tc  = ohc.coarsen_truth(truth_field, deg=1.0)
-fc  = ohc.grid_cells(sim, ["ohc_700", "ohc_2000"], deg=1.0)
-res = ohc_bias.compute_bias(fc, tc, true_domain_mean=ref)
-
-for d in DEPTHS:
-    ohc_bias.plot_domain_timeseries(res["domain"], value_col=d)
-```
-
-## Headline bias table (0.5° and 1° estimators)
-
+<!--
 Time-averaged bias terms in GJ m⁻², for both depth layers, at the 0.5° and 1°
 estimator resolutions. **`coverage_bias_GJ`** = (mean *true* OHC over the cells
 the floats sampled) − (the fixed area-weighted *true* domain mean): the effect of
 *which* cells get sampled, using true values only. **`repr_bias_GJ`** = (float
 estimate − truth) within those sampled cells. The two sum to **`bias_GJ`**.
+-->
 
+<!--
 **`mean_true_GJ`** is the true domain-average
 OHC, computed **once on GLORYS's own native 1/12° grid** as the cos(lat)
 area-weighted mean over every native cell *i* (`ohc.truth_domain_mean`):
 
 $$\overline{\text{OHC}}_{\text{true}}=\frac{\sum_i A_i\,\text{OHC}_i}{\sum_i A_i},
 \qquad A_i \propto \cos(\text{lat}_i).$$
+-->
 
 
-```{python}
-#| label: tbl-summary
-ref = ohc.truth_domain_mean(truth_field, weighted=True)
-summ = []
-for deg in DEGS:
-    tcd = ohc.coarsen_truth(truth_field, deg=deg)
-    fcd = ohc.grid_cells(sim, ["ohc_700", "ohc_2000"], deg=deg)
-    s = ohc_bias.bias_summary(
-        ohc_bias.compute_bias(fcd, tcd, true_domain_mean=ref)["domain"])
-    s.insert(0, "deg", deg)
-    summ.append(s)
-pd.concat(summ, ignore_index=True).round(3)
-```
-
-*(The per-cell representation-error maps are now the "Argo − truth" tab in the
-[Monthly OHC maps](#monthly-ohc-maps-flip-tabs-to-compare) comparison above.)*
-
-# Notes and next steps
-
-- **Truth reference.** Bias is measured against the fixed cos(lat) area-weighted
-  GLORYS domain mean (see `ohc.truth_domain_mean`); the per-cell truth uses an
-  unweighted cell mean. Gridding assumptions are documented in
-  `docs/ohc_gridding_assumptions.md`.
-- **Toward a Gaussian-process estimator.** The cell-size axis is the discrete
-  stand-in for a GP correlation length; the GP will also provide a posterior
-  variance that flags where coverage is weak.
 

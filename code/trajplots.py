@@ -333,6 +333,78 @@ def map_trajectories_minimal(
     return fig, ax
 
 
+def map_point_trajectories(
+    df,
+    lat_col="lat",
+    lon_col="lon",
+    id_col="float_id",
+    date_col="date",
+    extent=None,
+    margin=1.5,
+    boxes=None,
+    cmap="tab10",
+    figsize=(8, 8),
+    save_path=None,
+    dpi=200,
+    title=None,
+    show=True,
+):
+    """Map float tracks from a LONG-format DataFrame (one row per observation).
+
+    Unlike :func:`map_trajectories_minimal` (which reads a Parcels/VirtualFleet
+    trajectory zarr), this plots real Argo-style point observations: it groups
+    ``df`` by ``id_col``, sorts each float by ``date_col``, and draws its track
+    as a lon/lat line with a start dot, one colour per float. Pass the same
+    ``extent``/``boxes`` as the simulated-trajectory map for comparison.
+    """
+    floats = list(df.groupby(id_col))
+    colors = plt.get_cmap(cmap)(np.linspace(0, 1, max(len(floats), 1)))
+
+    fig = plt.figure(figsize=figsize)
+    ax = plt.axes(projection=ccrs.PlateCarree())
+    ax.add_feature(cfeature.LAND, facecolor="#ededed", edgecolor="none", zorder=1)
+    ax.add_feature(cfeature.COASTLINE, linewidth=0.5, edgecolor="grey", zorder=2)
+
+    all_lat, all_lon = [], []
+    for (fid, g), color in zip(floats, colors):
+        g = g.sort_values(date_col)
+        lon, lat = g[lon_col].to_numpy(), g[lat_col].to_numpy()
+        all_lat.append(lat)
+        all_lon.append(lon)
+        ax.plot(lon, lat, lw=0.9, color=color, alpha=0.8,
+                transform=ccrs.PlateCarree(), zorder=3)
+        ax.scatter(lon[0], lat[0], s=20, color=color, edgecolors="k", linewidths=0.4,
+                   transform=ccrs.PlateCarree(), zorder=5)
+
+    for box in boxes or []:
+        la0, la1, lo0, lo1 = box[:4]
+        label = box[4] if len(box) > 4 else None
+        ax.plot([lo0, lo1, lo1, lo0, lo0], [la0, la0, la1, la1, la0],
+                lw=1.2, ls="--", color="k", alpha=0.7,
+                transform=ccrs.PlateCarree(), zorder=4, label=label)
+
+    lat_arr = np.concatenate(all_lat) if all_lat else np.array([np.nan])
+    lon_arr = np.concatenate(all_lon) if all_lon else np.array([np.nan])
+    map_extent = extent if extent is not None else _auto_extent(lat_arr, lon_arr, margin)
+    ax.set_extent(map_extent, crs=ccrs.PlateCarree())
+    gl = ax.gridlines(draw_labels=True, linewidth=0.3, color="grey", alpha=0.4, linestyle=":")
+    gl.top_labels = gl.right_labels = False
+
+    ax.set_title(title or f"{len(floats)} float tracks", fontsize=11, pad=8)
+    if any(len(b) > 4 for b in (boxes or [])):
+        ax.legend(loc="upper left", fontsize=8, framealpha=0.9)
+    plt.tight_layout()
+
+    if save_path is not None:
+        fig.savefig(os.path.expanduser(save_path), dpi=dpi, bbox_inches="tight")
+        print(f"saved {save_path}")
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+    return fig, ax
+
+
 def map_positions_by_month(
     output,
     extent=None,
@@ -459,6 +531,9 @@ def plot_depth_profiles(
     save_path=None,
     dpi=300,
     show=True,
+    floats=None,
+    max_days=None,
+    mark_profiles=False,
 ):
     """Plot float depth vs days since deployment, coloured by cycle phase.
 
@@ -476,6 +551,15 @@ def plot_depth_profiles(
         Width of the depth profile line.
     save_path : str, optional
         Directory to save the figure (as <stem>_depth.png).
+    floats : list of int, optional
+        Trajectory indices to plot (default: all floats).
+    max_days : float, optional
+        Crop the x-axis to the first ``max_days`` days (e.g. ~22 for two cycles).
+    mark_profiles : bool
+        Overlay a star at each **recorded** profile position -- the shallowest
+        point of each cycle, excluding the deployment cycle, matching
+        :func:`ohc._one_position_per_cycle` (the point whose lat/lon/time become
+        the synthetic Argo observation).
     """
     from matplotlib.collections import LineCollection
 
@@ -483,9 +567,12 @@ def plot_depth_profiles(
     stem = _zarr_stem(output)
 
     z = ds.z.values.astype(float)  # (trajectory, obs)
-    phase = ds.cycle_phase.values.astype(int)
+    phase = ds.cycle_phase.values.astype(float)  # may contain NaN
     cyc_num = ds.cycle_number.values
     times = ds.time.values  # datetime64, (trajectory, obs)
+
+    sel = list(range(z.shape[0])) if floats is None else list(floats)
+    z, phase, cyc_num, times = z[sel], phase[sel], cyc_num[sel], times[sel]
 
     # Days since the start of each float's own deployment.
     t0_ns = times[:, 0:1].astype("i8")  # (trajectory, 1), nanoseconds
@@ -507,7 +594,8 @@ def plot_depth_profiles(
     def _phase_lines(days_i, z_i, phase_i):
         pts = np.stack([days_i, z_i], axis=1)  # (obs, 2)
         segs = np.stack([pts[:-1], pts[1:]], axis=1)  # (obs-1, 2, 2)
-        colors = [PHASE_COLORS[p] for p in phase_i[:-1]]
+        colors = [PHASE_COLORS.get(int(p), "#dddddd") if np.isfinite(p) else "#dddddd"
+                  for p in phase_i[:-1]]
         return LineCollection(segs, colors=colors, linewidth=linewidth, zorder=3)
 
     fig, axes = plt.subplots(
@@ -516,7 +604,6 @@ def plot_depth_profiles(
         figsize=figsize,
         sharex=False,
         sharey=True,
-        constrained_layout=True,
     )
     axes = np.array(axes).ravel()
 
@@ -529,23 +616,39 @@ def plot_depth_profiles(
 
         ax.add_collection(_phase_lines(days_i, zi, pi))
 
-        # Cycle boundary markers.
-        for c in np.unique(ci)[1:]:
+        finite_cycles = np.unique(ci[np.isfinite(ci)])
+        # Cycle boundary markers (skip the first/deployment cycle boundary).
+        for c in finite_cycles[1:]:
             first_obs = np.where(ci == c)[0][0]
             xb = days_i[first_obs]
+            if max_days and xb > max_days:  # don't place artists outside the crop
+                continue
             ax.axvline(xb, color="#aaaaaa", linewidth=0.7, linestyle="--", zorder=2)
             ax.text(
                 xb + 0.3,
-                zi.max() * 0.97,
+                np.nanmax(zi) * 0.97,
                 f"C{int(c)}",
                 fontsize=6.5,
                 color="#888888",
                 va="top",
             )
 
-        ax.set_xlim(days_i[0], days_i[-1])
-        ax.set_ylim(zi.max() * 1.05, -zi.max() * 0.02)  # inverted, with headroom
-        ax.set_title(f"Float {i + 1}", fontsize=10)
+        # Recorded profile positions: shallowest point of each cycle, excluding
+        # the deployment cycle (matches ohc._one_position_per_cycle).
+        if mark_profiles and finite_cycles.size > 1:
+            for c in finite_cycles[1:]:
+                idxs = np.where((ci == c) & np.isfinite(zi))[0]
+                if idxs.size:
+                    j = idxs[np.argmin(zi[idxs])]
+                    if max_days and days_i[j] > max_days:
+                        continue
+                    ax.scatter(days_i[j], zi[j], marker="*", s=160, color="k",
+                               edgecolors="white", linewidths=0.5, zorder=6)
+
+        ax.set_xlim(0, max_days) if max_days else ax.set_xlim(days_i[0], days_i[-1])
+        zmax = np.nanmax(zi)
+        ax.set_ylim(zmax * 1.05, -zmax * 0.02)  # inverted, with headroom
+        ax.set_title(f"Float {sel[i]}", fontsize=10)
         ax.set_xlabel("Days since deployment", fontsize=8)
         ax.set_ylabel("Depth (m)", fontsize=8)
         ax.tick_params(labelsize=8)
@@ -564,16 +667,24 @@ def plot_depth_profiles(
         plt.Line2D([0], [0], color=PHASE_COLORS[ph], linewidth=2, label=label)
         for ph, label in PHASE_LABELS.items()
     ]
+    if mark_profiles:
+        legend_handles.append(
+            plt.Line2D([0], [0], marker="*", color="k", markeredgecolor="white",
+                       linestyle="none", markersize=11, label="profile recorded")
+        )
     fig.legend(
         handles=legend_handles,
         loc="lower center",
-        ncol=len(PHASE_LABELS),
+        bbox_to_anchor=(0.5, 0.0),
+        ncol=len(legend_handles),
         fontsize=9,
         frameon=False,
-        bbox_to_anchor=(0.5, -0.02),
     )
 
-    fig.suptitle(title, fontsize=12, y=1.01)
+    fig.suptitle(title, fontsize=12, y=0.99)
+    # Reserve space for the suptitle (top) and the shared legend (bottom); robust
+    # for a single panel where constrained_layout would collapse the axes.
+    fig.tight_layout(rect=[0, 0.07, 1, 0.95])
 
     if save_path is not None:
         save_path = os.path.expanduser(save_path)

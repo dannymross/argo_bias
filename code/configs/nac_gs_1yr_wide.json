@@ -14,11 +14,10 @@
   },
 
   "nfloats": null,
-  "cell_deg": 0.5,
+  "cell_deg": 1,
   "top_left": [40, -68],
   "bottom_right": [36, -62],
   "deploy_time": "2020-01-01",
-  "snap_deg": 0.08333333333333333,
 
   "years": null,
   "days": 365,
