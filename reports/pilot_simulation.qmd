@@ -206,37 +206,12 @@ monthly mean over all available years; the printout gives the per-year context.
 la0, la1, lo0, lo1 = ANALYSIS_BOUNDS
 argo = pd.read_csv("../data/argo_ohc.csv", usecols=["float_id", "lat", "lon", "date"])
 argo["date"] = pd.to_datetime(argo["date"], format="ISO8601")
-argo = argo[argo.lat.between(la0, la1) & argo.lon.between(lo0, lo1)].copy()
 argo["year"] = argo["date"].dt.year
-argo["mon"] = argo["date"].dt.month
+argo = argo[argo.lat.between(la0, la1) & argo.lon.between(lo0, lo1)]
+argo = argo[argo["year"] == 2020]
 
-# Real Argo: per-year totals, and the climatological monthly mean over years.
-annual = argo.groupby("year").agg(profiles=("float_id", "size"), floats=("float_id", "nunique"))
-permon = (argo.groupby(["year", "mon"])
-              .agg(profiles=("float_id", "size"), floats=("float_id", "nunique")).reset_index())
-clim = (permon.groupby("mon")
-              .agg(real_profiles=("profiles", "mean"), real_floats=("floats", "mean"))
-              .round(1).reindex(range(1, 13)).fillna(0))
-
-print(f"Real Argo in box, {int(argo.year.min())}-{int(argo.year.max())}: "
-      f"median {annual.profiles.median():.0f} profiles/yr from {annual.floats.median():.0f} "
-      f"distinct floats/yr (2020: {int(annual.profiles.get(2020, 0))} profiles).")
-print(f"This simulation (2020): {len(sim)} profiles from {sim.float_id.nunique()} floats "
-      f"-- the pilot over-samples the box by ~1-2 orders of magnitude.")
-
-sim_mon = counts.set_index(counts["month"].dt.month)["n_profiles"]
-mons = list(range(1, 13))
-fig, ax = plt.subplots(figsize=(9, 3.6))
-ax.bar(mons, [clim["real_profiles"].get(m, 0) for m in mons], color="#4a90d9",
-       alpha=0.8, label="real Argo (climatological mean)")
-ax.plot(mons, [sim_mon.get(m, 0) for m in mons], "-o", color="#e07b39",
-        label="simulation (2020)")
-ax.set_yscale("log")
-ax.set_xlabel("month"); ax.set_ylabel("profiles per month (log)")
-ax.set_title("Profiles per month in the box: simulation vs real Argo")
-ax.legend(frameon=False); ax.grid(alpha=0.2, which="both")
-plt.tight_layout()
-clim
+counts = ohc_bias.monthly_float_counts(argo)
+counts
 ```
 
 # Monthly maps of synthetic-Argo OHC
@@ -369,6 +344,30 @@ estimator resolutions. **`coverage_bias_GJ`** = (mean *true* OHC over the cells
 the floats sampled) − (the fixed area-weighted *true* domain mean): the effect of
 *which* cells get sampled, using true values only. **`repr_bias_GJ`** = (float
 estimate − truth) within those sampled cells. The two sum to **`bias_GJ`**.
+
+::: {.callout-note collapse="true"}
+## Why `mean_true_GJ` is identical at every cell size
+
+There are two *separate* grids here. **`mean_true_GJ`** is the true domain-average
+OHC, computed **once on GLORYS's own native 1/12° grid** as the cos(lat)
+area-weighted mean over every native cell *i* (`ohc.truth_domain_mean`):
+
+$$\overline{\text{OHC}}_{\text{true}}=\frac{\sum_i A_i\,\text{OHC}_i}{\sum_i A_i},
+\qquad A_i \propto \cos(\text{lat}_i).$$
+
+The **estimator's** cell size (1/12°, ½°, 1°) is a separate grid — it only governs
+how the *float observations* are binned to form the *estimate*. It never enters the
+sum above, so it cannot move the reference. (Analogy: the true average height of
+people in a room is a fixed number; grouping them into 5 cm vs 10 cm height bins
+changes your *estimate*, not the actual average.) We made the reference fixed *on
+purpose*: sweeping cell size then moves only the estimate (and the coverage /
+sampled fraction), not the target it is compared against — so the bias-vs-resolution
+signal reflects the estimator alone. An earlier version compared against the
+unweighted mean of the *coarsened* truth cells, which drifted ~2.4 GJ m⁻² from
+1/12° to 1° and confounded the sweep (see `docs/ohc_gridding_assumptions.md`).
+That is why `mean_true_GJ` below is the same in both rows; only `coverage_bias_GJ`
+and `mean_sampled_fraction` change with cell size.
+:::
 
 ```{python}
 #| label: tbl-summary
