@@ -212,6 +212,38 @@ def coarsen_truth(truth_ds, deg=1, value_cols=None):
     return grid_cells(df, value_cols, deg=deg)
 
 
+def load_en4_cells(path, bounds=None, year=None):
+    """Load EN4 gridded OHC (monthly 1-deg) into the cell format used here.
+
+    Reads the CSV produced by ``code/convert_en4.R`` and returns columns
+    ``month, cell_lat, cell_lon, ohc_700, ohc_2000`` (+ ``cell_area_m2``) in
+    J/m2, matching :func:`coarsen_truth` / :func:`grid_cells` output so EN4 can
+    be mapped and compared the same way as the GLORYS truth.
+
+    Note EN4 cells are centred on integer degrees, i.e. offset 0.5 deg from the
+    floor-binned GLORYS 1-deg cells (``cell_centres at x.5``); keep that in mind
+    before differencing EN4 against GLORYS cell-by-cell.
+
+    Parameters
+    ----------
+    path : str
+        CSV path (columns lon, lat, year, month, date, ohc_700, ohc_2000, ...).
+    bounds : tuple, optional
+        (lat_min, lat_max, lon_min, lon_max) to subset.
+    year : int, optional
+        Restrict to a single calendar year.
+    """
+    df = pd.read_csv(path, parse_dates=["date"])
+    if bounds is not None:
+        la0, la1, lo0, lo1 = bounds
+        df = df[df["lat"].between(la0, la1) & df["lon"].between(lo0, lo1)]
+    if year is not None:
+        df = df[df["year"] == year]
+    # Drop the integer year/month columns (the latter collides with the renamed date).
+    df = df.drop(columns=[c for c in ("year", "month") if c in df.columns])
+    return df.rename(columns={"lat": "cell_lat", "lon": "cell_lon", "date": "month"})
+
+
 # ---- SYNTHETIC FLOAT SAMPLING -------------------------------------------
 def _one_position_per_cycle(traj, traj_dim="trajectory"):
     """Reduce a trajectory dataset to one (float, cycle) surfacing position.

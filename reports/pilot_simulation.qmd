@@ -177,20 +177,7 @@ one-year deployment) under-samples late in the record.
 ```{python}
 #| label: fig-float-counts
 #| fig-cap: "Distinct floats and profiles inside the deployment box, per month."
-import matplotlib.pyplot as plt
-
 counts = ohc_bias.monthly_float_counts(sim)
-
-fig, ax = plt.subplots(figsize=(9, 3.5))
-ax.bar(counts["month"], counts["n_floats"], width=20, color="#4a90d9",
-       alpha=0.85, label="distinct floats")
-ax.plot(counts["month"], counts["n_profiles"], "-o", color="#e07b39",
-        label="profiles")
-ax.set_ylabel("count"); ax.set_xlabel("month"); ax.legend(frameon=False)
-ax.set_title("Floats / profiles in the deployment box per month")
-ax.grid(alpha=0.2)
-plt.tight_layout()
-counts
 ```
 
 ## Comparison with the real Argo array
@@ -269,6 +256,7 @@ for d in DEPTHS:
         title=f"True (GLORYS) {d} by month (deg={MAP_DEG})")
 ```
 
+
 # Monthly maps at the other resolutions (1/12° and 1°)
 
 The same synthetic-Argo and true OHC maps at the other two estimator cell sizes
@@ -293,6 +281,29 @@ for deg in [d for d in DEGS if d != MAP_DEG]:
         ohc_bias.plot_monthly_cell_maps(
             tcm, d, vmin=vlo, vmax=vhi,
             title=f"True (GLORYS) {d} by month (deg={deg:.3g})")
+```
+
+# Monthly maps of EN4 gridded OHC (independent reference)
+
+A second, independent gridded OHC product — **EN4.2.2** (Gouretski & Reseghetti
+2010 corrections), objectively analysed to monthly **1° cells** (`data/ohc_en4_gridded.rds`,
+subset to CSV by `code/convert_en4.R`). These maps use the **same colour scale**
+as the GLORYS truth maps above, so they can be read side by side. EN4 cells are
+centred on integer degrees (offset 0.5° from the GLORYS 1° cells), and EN4 is a
+smoothed objective analysis, so expect the same large-scale front but without
+GLORYS's eddy detail. (Eventually we will also compute float-sampling bias
+against EN4; here we only compare the fields.) Over this box in 2020 the
+domain-mean OHC agrees closely with GLORYS (≈71 GJ m⁻² at 0–2000 m for both).
+
+```{python}
+#| label: fig-en4-maps
+#| fig-cap: "EN4 gridded OHC by month, 2020 (top: 0–700 m, bottom: 0–2000 m)."
+en4_cells = ohc.load_en4_cells(
+    "../data/ohc_en4_gridded_nwatlantic.csv", bounds=ANALYSIS_BOUNDS, year=2020)
+for d in DEPTHS:
+    ohc_bias.plot_monthly_cell_maps(
+        en4_cells, d, vmin=VLIM[d][0], vmax=VLIM[d][1],
+        title=f"EN4 {d} by month, 2020 (1°)")
 ```
 
 # Bias diagnostics
@@ -345,35 +356,19 @@ the floats sampled) − (the fixed area-weighted *true* domain mean): the effect
 *which* cells get sampled, using true values only. **`repr_bias_GJ`** = (float
 estimate − truth) within those sampled cells. The two sum to **`bias_GJ`**.
 
-::: {.callout-note collapse="true"}
-## Why `mean_true_GJ` is identical at every cell size
-
-There are two *separate* grids here. **`mean_true_GJ`** is the true domain-average
+**`mean_true_GJ`** is the true domain-average
 OHC, computed **once on GLORYS's own native 1/12° grid** as the cos(lat)
 area-weighted mean over every native cell *i* (`ohc.truth_domain_mean`):
 
 $$\overline{\text{OHC}}_{\text{true}}=\frac{\sum_i A_i\,\text{OHC}_i}{\sum_i A_i},
 \qquad A_i \propto \cos(\text{lat}_i).$$
 
-The **estimator's** cell size (1/12°, ½°, 1°) is a separate grid — it only governs
-how the *float observations* are binned to form the *estimate*. It never enters the
-sum above, so it cannot move the reference. (Analogy: the true average height of
-people in a room is a fixed number; grouping them into 5 cm vs 10 cm height bins
-changes your *estimate*, not the actual average.) We made the reference fixed *on
-purpose*: sweeping cell size then moves only the estimate (and the coverage /
-sampled fraction), not the target it is compared against — so the bias-vs-resolution
-signal reflects the estimator alone. An earlier version compared against the
-unweighted mean of the *coarsened* truth cells, which drifted ~2.4 GJ m⁻² from
-1/12° to 1° and confounded the sweep (see `docs/ohc_gridding_assumptions.md`).
-That is why `mean_true_GJ` below is the same in both rows; only `coverage_bias_GJ`
-and `mean_sampled_fraction` change with cell size.
-:::
 
 ```{python}
 #| label: tbl-summary
 ref = ohc.truth_domain_mean(truth_field, weighted=True)
 summ = []
-for deg in [MAP_DEG, 1.0]:
+for deg in DEGS:
     tcd = ohc.coarsen_truth(truth_field, deg=deg)
     fcd = ohc.grid_cells(sim, ["ohc_700", "ohc_2000"], deg=deg)
     s = ohc_bias.bias_summary(
@@ -409,11 +404,6 @@ for d in DEPTHS:
   GLORYS domain mean (see `ohc.truth_domain_mean`); the per-cell truth uses an
   unweighted cell mean. Gridding assumptions are documented in
   `docs/ohc_gridding_assumptions.md`.
-- **Coverage decay.** Floats leave the deployment box within months, so a fixed
-  region and a one-year deployment under-sample late in the record. Two planned
-  fixes: (i) an extended advection domain so floats are not lost
-  (`code/configs/nac_gs_1yr_wide.json`); (ii) expanding / coverage-following
-  analysis regions (`ohc_bias.sweep_region`).
 - **Toward a Gaussian-process estimator.** The cell-size axis is the discrete
   stand-in for a GP correlation length; the GP will also provide a posterior
   variance that flags where coverage is weak.
