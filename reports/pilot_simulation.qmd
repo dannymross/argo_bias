@@ -263,6 +263,18 @@ float_cells_map = float_by_deg[MAP_DEG]
 VLIM = {d: (float((truth_cells_map[d] * ohc_bias.J_TO_GJ).quantile(0.02)),
             float((truth_cells_map[d] * ohc_bias.J_TO_GJ).quantile(0.98))) for d in DEPTHS}
 
+# Per-depth y-range for the domain-mean timeseries, shared across resolutions
+# (min/max of the three lines over every deg) so the tabs line up when flipped.
+def _ylim(d):
+    cols = [f"{d}_true_mean", f"{d}_true_at_sampled", f"{d}_float_mean"]
+    v = np.concatenate([bias_by_deg[deg]["domain"][cols].to_numpy().ravel()
+                        for deg in DEGS]) * ohc_bias.J_TO_GJ
+    lo, hi = np.nanmin(v), np.nanmax(v)
+    pad = 0.05 * (hi - lo)
+    return (lo - pad, hi + pad)
+
+YLIM = {d: _ylim(d) for d in DEPTHS}
+
 
 def show_map(kind, d, deg=MAP_DEG):
     """Return one monthly-facet figure for a source (kind), depth d, cell size deg."""
@@ -294,6 +306,7 @@ def show_table(d, deg):
 def show_timeseries(d, deg):
     """Return the domain-mean OHC timeseries figure (truth all / sampled / virtual Argo)."""
     return ohc_bias.plot_domain_timeseries(bias_by_deg[deg]["domain"], value_col=d,
+                                           ylim=YLIM[d],
                                            title=f"Domain-mean {d} over time (deg={deg:.3g})")
 
 # --- source maps shown in each resolution tab; EN4 only exists at its native 1° ---

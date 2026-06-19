@@ -348,13 +348,15 @@ def monthly_float_counts(sim):
 
 
 # ---- PLOTS ---------------------------------------------------------------
-def plot_domain_timeseries(domain, value_col="ohc_2000", out_path=None, title=None):
+def plot_domain_timeseries(domain, value_col="ohc_2000", out_path=None, title=None,
+                           ylim=None):
     """Domain-mean OHC over time: GLORYS truth (all cells), GLORYS truth (sampled
     cells), and synthetic Argo (sampled cells), with the sampled-cell fraction below.
 
     The gap between truth-all and truth-sampled is the **sampling bias** (which
     cells get sampled); the gap between truth-sampled and synthetic Argo is the
-    **grid bias** (within-cell estimate error).
+    **grid bias** (within-cell estimate error). Pass ``ylim=(lo, hi)`` (GJ/m2) to
+    fix the OHC axis -- e.g. a shared range across resolutions for one depth.
     """
     import matplotlib.pyplot as plt
 
@@ -384,6 +386,8 @@ def plot_domain_timeseries(domain, value_col="ohc_2000", out_path=None, title=No
         label="synthetic Argo (sampled cells)",
     )
     ax.set_ylabel(f"{value_col}  (GJ m$^{{-2}}$)")
+    if ylim is not None:
+        ax.set_ylim(ylim)
     ax.legend(frameon=False)
     ax.set_title(title or f"Domain-mean OHC: truth vs synthetic Argo ({value_col})")
     ax.grid(alpha=0.2)
