@@ -263,7 +263,9 @@ _real = pd.read_csv("../data/argo_ohc.csv",
 _real["date"] = pd.to_datetime(_real["date"], format="ISO8601", utc=True).dt.tz_localize(None)
 _real = _real[(_real["date"].dt.year == 2020)
               & _real["lat"].between(_la0, _la1) & _real["lon"].between(_lo0, _lo1)]
-real_by_deg = {deg: ohc.grid_cells(_real, ["ohc_700", "ohc_2000"], deg=deg)
+real_cells_by_deg = {deg: ohc.grid_cells(_real, ["ohc_700", "ohc_2000"], deg=deg)
+                     for deg in DEGS}
+real_by_deg = {deg: real_cells_by_deg[deg]
                     .groupby("month", as_index=False)[["ohc_700", "ohc_2000"]].mean()
                for deg in DEGS}
 
@@ -299,6 +301,12 @@ def show_map(kind, d, deg=MAP_DEG):
     if kind == "count":
         return ohc_bias.plot_monthly_cell_maps(float_by_deg[deg], value_col="n", value_scale=1, discrete=True,
             cmap="Dark2", cbar_label="profiles per cell", title=f"virtual-Argo profiles per cell (deg={deg:.3g})")
+    if kind == "real":
+        return ohc_bias.plot_monthly_cell_maps(real_cells_by_deg[deg], d, vmin=VLIM[d][0], vmax=VLIM[d][1],
+            lats=glats, lons=glons, title=f"real-Argo {d} by month (deg={deg:.3g})")
+    if kind == "real_count":
+        return ohc_bias.plot_monthly_cell_maps(real_cells_by_deg[deg], value_col="n", value_scale=1, discrete=True,
+            cmap="Dark2", cbar_label="profiles per cell", title=f"real-Argo profiles per cell (deg={deg:.3g})")
     if kind == "truth":
         return ohc_bias.plot_monthly_cell_maps(truth_by_deg[deg], d, vmin=VLIM[d][0], vmax=VLIM[d][1],
             lats=glats, lons=glons, title=f"GLORYS truth {d} by month (deg={deg:.3g})")
@@ -325,6 +333,7 @@ def show_timeseries(d, deg):
 # --- source maps shown in each resolution tab; EN4 only exists at its native 1° ---
 DEPTH_LABEL = {"ohc_700": "0–700 m", "ohc_2000": "0–2000 m"}
 SOURCES = [("count", "virtual Argo Profiles"), ("sim", "virtual Argo"),
+           ("real_count", "real Argo Profiles"), ("real", "real Argo"),
            ("truth", "GLORYS truth"), ("diff", "Grid bias"), ("en4", "EN4")]
 
 def _deg_label(deg):
@@ -356,7 +365,7 @@ for d in DEPTHS:
     for deg in DEGS:
         _emit(f"### {_deg_label(deg)}")
         _show_fig(show_timeseries(d, deg))
-        display(show_table(d, deg))
+        #display(show_table(d, deg))
         _emit("::: {.panel-tabset}")
         for kind, label in SOURCES:
             if kind == "en4" and deg != 1.0:
@@ -364,6 +373,7 @@ for d in DEPTHS:
             _emit(f"#### {label}")
             _show_fig(show_map(kind, d, deg))
         _emit(":::")   # close source tabset
+        display(show_table(d, deg))
     _emit(":::")       # close resolution tabset
 _emit(":::")           # close depth tabset
 ```
