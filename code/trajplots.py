@@ -411,6 +411,8 @@ def map_field(
     margin=1.5,
     boxes=None,
     cmap="viridis",
+    vmin=None,
+    vmax=None,
     cbar_label=None,
     title=None,
     lon_name="longitude",
@@ -419,21 +421,29 @@ def map_field(
     save_path=None,
     dpi=200,
     show=True,
+    ax=None,
 ):
     """Plot a 2-D lat/lon field (e.g. an annual-mean OHC map) on a cartopy map.
 
     ``da`` is a 2-D xarray DataArray with ``lat_name``/``lon_name`` coordinates.
     Coastline and ``boxes`` (``(lat_min, lat_max, lon_min, lon_max, label)``) are
     drawn on top; pass the same ``extent``/``boxes`` as the trajectory maps to
-    compare. Land is drawn over the field, so only ocean values show.
+    compare. Land is drawn over the field, so only ocean values show. Pass an
+    existing cartopy ``ax`` (with a PlateCarree projection) to draw into a panel
+    of a larger figure (e.g. via :func:`map_fields_row`).
     """
     lons = da[lon_name].values
     lats = da[lat_name].values
 
-    fig = plt.figure(figsize=figsize)
-    ax = plt.axes(projection=ccrs.PlateCarree())
+    owns_fig = ax is None
+    if owns_fig:
+        fig = plt.figure(figsize=figsize)
+        ax = plt.axes(projection=ccrs.PlateCarree())
+    else:
+        fig = ax.figure
+
     mesh = ax.pcolormesh(lons, lats, da.values, cmap=cmap, shading="auto",
-                         transform=ccrs.PlateCarree(), zorder=1)
+                         vmin=vmin, vmax=vmax, transform=ccrs.PlateCarree(), zorder=1)
     ax.add_feature(cfeature.LAND, facecolor="#ededed", edgecolor="none", zorder=2)
     ax.add_feature(cfeature.COASTLINE, linewidth=0.5, edgecolor="grey", zorder=3)
 
@@ -457,8 +467,41 @@ def map_field(
         ax.set_title(title, fontsize=11, pad=8)
     if any(len(b) > 4 for b in (boxes or [])):
         ax.legend(loc="upper left", fontsize=8, framealpha=0.9)
-    plt.tight_layout()
 
+    if owns_fig:
+        plt.tight_layout()
+        if save_path is not None:
+            fig.savefig(os.path.expanduser(save_path), dpi=dpi, bbox_inches="tight")
+            print(f"saved {save_path}")
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+    return fig, ax
+
+
+def map_fields_row(das, titles=None, cmaps=None, cbar_labels=None, vmin=None, vmax=None,
+                   extent=None, margin=1.5, boxes=None, figsize=None, suptitle=None,
+                   save_path=None, dpi=200, show=True):
+    """Plot several 2-D fields side by side (one cartopy panel each).
+
+    Reuses :func:`map_field` per panel. ``titles``/``cmaps``/``cbar_labels`` are
+    per-field lists; ``vmin``/``vmax`` (and ``extent``/``boxes``) are shared.
+    """
+    n = len(das)
+    if figsize is None:
+        figsize = (6.5 * n, 6)
+    fig, axes = plt.subplots(1, n, figsize=figsize,
+                             subplot_kw={"projection": ccrs.PlateCarree()})
+    axes = np.atleast_1d(axes).ravel()
+    for i, da in enumerate(das):
+        map_field(da, extent=extent, margin=margin, boxes=boxes,
+                  cmap=(cmaps[i] if cmaps else "viridis"), vmin=vmin, vmax=vmax,
+                  cbar_label=(cbar_labels[i] if cbar_labels else None),
+                  title=(titles[i] if titles else None), ax=axes[i])
+    if suptitle:
+        fig.suptitle(suptitle, fontsize=13)
+    fig.tight_layout()
     if save_path is not None:
         fig.savefig(os.path.expanduser(save_path), dpi=dpi, bbox_inches="tight")
         print(f"saved {save_path}")
@@ -466,7 +509,7 @@ def map_field(
         plt.show()
     else:
         plt.close(fig)
-    return fig, ax
+    return fig, axes
 
 
 def map_positions_by_month(

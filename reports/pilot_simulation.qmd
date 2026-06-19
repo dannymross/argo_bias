@@ -13,7 +13,7 @@ format:
     code-tools: true
     embed-resources: true
     fig-width: 9
-    fig-height: 4.5
+    fig-height: 6
     theme: default
 lightbox: true
 jupyter: python3
@@ -50,7 +50,7 @@ import ohc
 import ohc_bias
 from trajplots import (open_trajectories, map_trajectories_minimal,
                        map_positions_by_month, map_point_trajectories,
-                       plot_depth_profiles, map_field)
+                       plot_depth_profiles, map_field, map_fields_row)
 
 # --- experiment configuration (mirrors code/configs/nac_gs_1yr_wide.json) ---
 TRAJ            = "../data/virtualfleet/nac_gs_1yr_wide_task*.zarr"  # batch trajectory zarrs
@@ -58,7 +58,7 @@ VELOCITY        = "../data/velocity_gs_wide/velocity_*.nc"          # GLORYS uo/
 TRUTH_BOUNDS    = (30, 48, -74, -49)    # advection domain (lat0, lat1, lon0, lon1)
 DEPLOY_BOUNDS   = (36, 40, -68, -62)    # float deployment box (4° lat × 6° lon) = analysis region
 ANALYSIS_BOUNDS = DEPLOY_BOUNDS
-DEGS            = [1/12, 0.5, 1.0]      # estimator cell sizes to compare
+DEGS            = [1.0, 0.5, 1/12]      # estimator cell sizes to compare
 MAP_DEG         = 0.5                   # cell size for the monthly maps
 DEPTHS          = ["ohc_700", "ohc_2000"]   # both depth layers, shown throughout
 ```
@@ -137,6 +137,31 @@ _ = map_field(
          (*ANALYSIS_BOUNDS, "analysis domain")],
   cmap="viridis", cbar_label=f"{d} (GJ m$^{{-2}}$)",
   title=f"GLORYS 1/12° 2020-mean {d}"
+)
+```
+
+The floats are advected by the GLORYS velocity at the ~1000 m parking depth. The
+2020-mean `uo`/`vo` near 1000 m below show the Gulf Stream's eastward jet (`uo`)
+and its meanders (`vo`) running through the analysis box.
+
+```{python}
+#| label: fig-velocity-1000
+#| fig-cap: "GLORYS 2020-mean horizontal velocity near the 1000 m parking depth."
+u1000 = theta["uo"].sel(depth=1000, method="nearest")
+v1000 = theta["vo"].sel(depth=1000, method="nearest")
+zlev = float(u1000.depth)
+u1000, v1000 = u1000.mean("time"), v1000.mean("time")
+vlim = float(np.nanpercentile(
+    np.abs(np.concatenate([u1000.values.ravel(), v1000.values.ravel()])), 99))
+_ = map_fields_row(
+    [u1000, v1000],
+    titles=[f"uo (eastward), ~{zlev:.0f} m", f"vo (northward), ~{zlev:.0f} m"],
+    cmaps=["RdBu_r", "RdBu_r"], cbar_labels=["m s$^{-1}$", "m s$^{-1}$"],
+    vmin=-vlim, vmax=vlim,
+    extent=[-76, -47, 28, 50],
+    boxes=[(*TRUTH_BOUNDS, "advection domain"),
+           (*ANALYSIS_BOUNDS, "analysis domain")],
+    suptitle="GLORYS 2020-mean velocity near the 1000 m parking depth",
 )
 ```
 
@@ -332,12 +357,9 @@ def show_timeseries(d, deg):
 
 # --- source maps shown in each resolution tab; EN4 only exists at its native 1° ---
 DEPTH_LABEL = {"ohc_700": "0–700 m", "ohc_2000": "0–2000 m"}
-SOURCES = [("count", "virtual Argo Profiles"), ("sim", "virtual Argo"),
-           ("real_count", "real Argo Profiles"), ("real", "real Argo"),
-           ("truth", "GLORYS truth"), ("diff", "Grid bias"), ("en4", "EN4")]
-
-def _deg_label(deg):
-    return "1/12°" if deg < 0.1 else f"{deg:g}°"
+SOURCES = [("count", "Virtual Argo Profiles"),("real_count", "Real Argo Profiles"), 
+           ("sim", "Virtual Argo ohc"),("real", "Real Argo ohc"),
+           ("truth", "GLORYS ohc"), ("diff", "Grid Bias"), ("en4", "EN4")]
 ```
 
 
@@ -348,6 +370,8 @@ def _deg_label(deg):
 from IPython.display import display
 import matplotlib.pyplot as plt
 
+def _deg_label(deg):
+    return "1/12°" if deg < 0.1 else f"{deg:g}°"
 
 def _emit(md):
     print("\n" + md + "\n")
