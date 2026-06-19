@@ -255,6 +255,18 @@ diff_by_deg  = {deg: bias_by_deg[deg]["cells"] for deg in DEGS}
 en4_cells    = ohc.load_en4_cells(
     "../data/ohc_en4_gridded_nwatlantic.csv", bounds=ANALYSIS_BOUNDS, year=2020)
 
+# Real Argo OHC in the analysis box (2020), gridded like the synthetic floats;
+# monthly mean over the cells the real floats sampled, per resolution.
+_la0, _la1, _lo0, _lo1 = ANALYSIS_BOUNDS
+_real = pd.read_csv("../data/argo_ohc.csv",
+                    usecols=["float_id", "lat", "lon", "date", "ohc_700", "ohc_2000"])
+_real["date"] = pd.to_datetime(_real["date"], format="ISO8601", utc=True).dt.tz_localize(None)
+_real = _real[(_real["date"].dt.year == 2020)
+              & _real["lat"].between(_la0, _la1) & _real["lon"].between(_lo0, _lo1)]
+real_by_deg = {deg: ohc.grid_cells(_real, ["ohc_700", "ohc_2000"], deg=deg)
+                    .groupby("month", as_index=False)[["ohc_700", "ohc_2000"]].mean()
+               for deg in DEGS}
+
 # float/truth at the map resolution, handy for the profiles-per-cell section below.
 truth_cells_map = truth_by_deg[MAP_DEG]
 float_cells_map = float_by_deg[MAP_DEG]
@@ -267,8 +279,9 @@ VLIM = {d: (float((truth_cells_map[d] * ohc_bias.J_TO_GJ).quantile(0.02)),
 # (min/max of the three lines over every deg) so the tabs line up when flipped.
 def _ylim(d):
     cols = [f"{d}_true_mean", f"{d}_true_at_sampled", f"{d}_float_mean"]
-    v = np.concatenate([bias_by_deg[deg]["domain"][cols].to_numpy().ravel()
-                        for deg in DEGS]) * ohc_bias.J_TO_GJ
+    parts = [bias_by_deg[deg]["domain"][cols].to_numpy().ravel() for deg in DEGS]
+    parts += [real_by_deg[deg][d].to_numpy() for deg in DEGS]  # include real Argo line
+    v = np.concatenate(parts) * ohc_bias.J_TO_GJ
     lo, hi = np.nanmin(v), np.nanmax(v)
     pad = 0.05 * (hi - lo)
     return (lo - pad, hi + pad)
@@ -306,7 +319,7 @@ def show_table(d, deg):
 def show_timeseries(d, deg):
     """Return the domain-mean OHC timeseries figure (truth all / sampled / virtual Argo)."""
     return ohc_bias.plot_domain_timeseries(bias_by_deg[deg]["domain"], value_col=d,
-                                           ylim=YLIM[d],
+                                           ylim=YLIM[d], real=real_by_deg[deg],
                                            title=f"Domain-mean {d} over time (deg={deg:.3g})")
 
 # --- source maps shown in each resolution tab; EN4 only exists at its native 1° ---

@@ -349,7 +349,7 @@ def monthly_float_counts(sim):
 
 # ---- PLOTS ---------------------------------------------------------------
 def plot_domain_timeseries(domain, value_col="ohc_2000", out_path=None, title=None,
-                           ylim=None):
+                           ylim=None, real=None):
     """Domain-mean OHC over time: GLORYS truth (all cells), GLORYS truth (sampled
     cells), and synthetic Argo (sampled cells), with the sampled-cell fraction below.
 
@@ -357,6 +357,10 @@ def plot_domain_timeseries(domain, value_col="ohc_2000", out_path=None, title=No
     cells get sampled); the gap between truth-sampled and synthetic Argo is the
     **grid bias** (within-cell estimate error). Pass ``ylim=(lo, hi)`` (GJ/m2) to
     fix the OHC axis -- e.g. a shared range across resolutions for one depth.
+
+    ``real`` optionally adds a fourth line for the **real** Argo array: a
+    DataFrame with a ``month`` column and a ``value_col`` column (J/m2), e.g. the
+    monthly mean of ``data/argo_ohc.csv`` over the cells real floats sampled.
     """
     import matplotlib.pyplot as plt
 
@@ -385,6 +389,15 @@ def plot_domain_timeseries(domain, value_col="ohc_2000", out_path=None, title=No
         color="#e07b39",
         label="synthetic Argo (sampled cells)",
     )
+    if real is not None and value_col in real:
+        ax.plot(
+            real["month"],
+            real[value_col] * J_TO_GJ,
+            "-D",
+            color="#9467bd",
+            markersize=5,
+            label="real Argo (sampled cells)",
+        )
     ax.set_ylabel(f"{value_col}  (GJ m$^{{-2}}$)")
     if ylim is not None:
         ax.set_ylim(ylim)
