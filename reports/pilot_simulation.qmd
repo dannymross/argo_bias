@@ -78,7 +78,7 @@ The float advection is run by `code/run_trajsim.py` with a JSON config using the
 
 For this report I deployed one float per 1° cell (24), on the GLORYS 1/12° grid over the box lat 36 to 40°N / lon −68 to −62°W on 2020-01-01. The floats were advecting with **daily** GLORYS velocities at the 1000m parking depth for all of 2020. The simulation computation time step was set to the default of 300s and new float positions were recorded to `NetCDF` files every 6 hours.
 
-I downloaded the velocity and temperature data from the GLORYS12V1 CMEMS product `{"dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1D-m", "variables": ["uo", "vo", "thetao"], "lon_bounds": [-74, -49], "lat_bounds": [30, 48],"depth_bounds": [0, 2300], "time": "2020-01-01 to 2020-12-31 (daily)"` which is **5.88GB**
+I downloaded the velocity and temperature data using the `copernicusmarine` python api from the GLORYS12V1 CMEMS product `{"dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1D-m", "variables": ["uo", "vo", "thetao"], "lon_bounds": [-74, -49], "lat_bounds": [30, 48],"depth_bounds": [0, 2300], "time": "2020-01-01 to 2020-12-31 (daily)"` which is **5.88GB**
 
 I used the default Argo mission parameters: full cycle duration of 10 days, descend to the 1000m parking depth,
 drift for ~9 days, dive to 2000m, then ascend to the surface and report a profile, recording the **profile position** at the shallowest point of each cycle.
@@ -435,6 +435,12 @@ _emit(":::")           # close depth tabset
 Monthly bias averaged to the yearly level for comparison against grid resolution
 
 ```{python}
+#| label: tbl-sweep-build
+#| code-summary: "build grid resolution sweep over the analysis domain"
+sweep = ohc_bias.sweep_resolution(truth_field, sim, DEGS, weighted_reference=True)
+```
+
+```{python}
 #| label: fig-sweep
 #| output: asis
 #| fig-cap: "ohc bias vs analysis cell size"
@@ -447,9 +453,8 @@ _emit(":::")
 ```
 
 ```{python}
-#| label: tbl-sweep
-#| code-summary: "grid resolution sweep over the analysis domain"
-sweep = ohc_bias.sweep_resolution(truth_field, sim, DEGS, weighted_reference=True)
+#| label: tbl-sweep-show
+#| code-summary: "show grid resolution sweep over the analysis domain"
 sweep.round(3)
 ```
 
