@@ -94,11 +94,32 @@ def _auto_extent(lat_vals, lon_vals, margin=3):
     ]
 
 
+def _add_boxes(ax, boxes, lw=1, alpha=1, zorder=4):
+    for box in boxes or []:
+        la0, la1, lo0, lo1, *opts = box
+
+        label = opts[0] if len(opts) > 0 else None
+        color = opts[1] if len(opts) > 1 else "k"
+        ls = opts[2] if len(opts) > 2 else "--"
+
+        ax.plot(
+            [lo0, lo1, lo1, lo0, lo0],
+            [la0, la0, la1, la1, la0],
+            lw=lw,
+            ls=ls,
+            color=color,
+            alpha=alpha,
+            transform=ccrs.PlateCarree(),
+            zorder=zorder,
+            label=label,
+        )
+
+
 def map_trajectories(
     output,
     lon="lon",
     lat="lat",
-    figsize=(13, 8),
+    figsize=None,
     linewidth=1.0,
     title=None,
     extent=None,
@@ -229,7 +250,7 @@ def map_trajectories_minimal(
     line_color="#1a4f8a",
     color_by="lat",
     cmap="viridis",
-    figsize=(8, 8),
+    figsize=None,
     save_path=None,
     dpi=200,
     title=None,
@@ -291,20 +312,7 @@ def map_trajectories_minimal(
         cb = fig.colorbar(sm, ax=ax, shrink=0.6, pad=0.02, ticks=ticks)
         cb.set_label(_color_by_label(color_by))
 
-    for box in boxes or []:
-        la0, la1, lo0, lo1 = box[:4]
-        label = box[4] if len(box) > 4 else None
-        ax.plot(
-            [lo0, lo1, lo1, lo0, lo0],
-            [la0, la0, la1, la1, la0],
-            lw=1.2,
-            ls="--",
-            color="k",
-            alpha=0.7,
-            transform=ccrs.PlateCarree(),
-            zorder=4,
-            label=label,
-        )
+    _add_boxes(ax, boxes)
 
     map_extent = (
         extent if extent is not None else _auto_extent(lat_vals, lon_vals, margin)
@@ -343,7 +351,7 @@ def map_point_trajectories(
     margin=1.5,
     boxes=None,
     cmap="tab10",
-    figsize=(8, 8),
+    figsize=None,
     save_path=None,
     dpi=200,
     title=None,
@@ -371,23 +379,37 @@ def map_point_trajectories(
         lon, lat = g[lon_col].to_numpy(), g[lat_col].to_numpy()
         all_lat.append(lat)
         all_lon.append(lon)
-        ax.plot(lon, lat, lw=0.9, color=color, alpha=0.8,
-                transform=ccrs.PlateCarree(), zorder=3)
-        ax.scatter(lon[0], lat[0], s=20, color=color, edgecolors="k", linewidths=0.4,
-                   transform=ccrs.PlateCarree(), zorder=5)
+        ax.plot(
+            lon,
+            lat,
+            lw=0.9,
+            color=color,
+            alpha=0.8,
+            transform=ccrs.PlateCarree(),
+            zorder=3,
+        )
+        ax.scatter(
+            lon[0],
+            lat[0],
+            s=20,
+            color=color,
+            edgecolors="k",
+            linewidths=0.4,
+            transform=ccrs.PlateCarree(),
+            zorder=5,
+        )
 
-    for box in boxes or []:
-        la0, la1, lo0, lo1 = box[:4]
-        label = box[4] if len(box) > 4 else None
-        ax.plot([lo0, lo1, lo1, lo0, lo0], [la0, la0, la1, la1, la0],
-                lw=1.2, ls="--", color="k", alpha=0.7,
-                transform=ccrs.PlateCarree(), zorder=4, label=label)
+    _add_boxes(ax, boxes)
 
     lat_arr = np.concatenate(all_lat) if all_lat else np.array([np.nan])
     lon_arr = np.concatenate(all_lon) if all_lon else np.array([np.nan])
-    map_extent = extent if extent is not None else _auto_extent(lat_arr, lon_arr, margin)
+    map_extent = (
+        extent if extent is not None else _auto_extent(lat_arr, lon_arr, margin)
+    )
     ax.set_extent(map_extent, crs=ccrs.PlateCarree())
-    gl = ax.gridlines(draw_labels=True, linewidth=0.3, color="grey", alpha=0.4, linestyle=":")
+    gl = ax.gridlines(
+        draw_labels=True, linewidth=0.3, color="grey", alpha=0.4, linestyle=":"
+    )
     gl.top_labels = gl.right_labels = False
 
     ax.set_title(title or f"{len(floats)} float tracks", fontsize=11, pad=8)
@@ -417,7 +439,7 @@ def map_field(
     title=None,
     lon_name="longitude",
     lat_name="latitude",
-    figsize=(9, 7),
+    figsize=None,
     save_path=None,
     dpi=200,
     show=True,
@@ -442,17 +464,21 @@ def map_field(
     else:
         fig = ax.figure
 
-    mesh = ax.pcolormesh(lons, lats, da.values, cmap=cmap, shading="auto",
-                         vmin=vmin, vmax=vmax, transform=ccrs.PlateCarree(), zorder=1)
+    mesh = ax.pcolormesh(
+        lons,
+        lats,
+        da.values,
+        cmap=cmap,
+        shading="auto",
+        vmin=vmin,
+        vmax=vmax,
+        transform=ccrs.PlateCarree(),
+        zorder=1,
+    )
     ax.add_feature(cfeature.LAND, facecolor="#ededed", edgecolor="none", zorder=2)
     ax.add_feature(cfeature.COASTLINE, linewidth=0.5, edgecolor="grey", zorder=3)
 
-    for box in boxes or []:
-        la0, la1, lo0, lo1 = box[:4]
-        label = box[4] if len(box) > 4 else None
-        ax.plot([lo0, lo1, lo1, lo0, lo0], [la0, la0, la1, la1, la0],
-                lw=1.4, ls="--", color="k", alpha=0.85,
-                transform=ccrs.PlateCarree(), zorder=4, label=label)
+    _add_boxes(ax, boxes)
 
     cb = fig.colorbar(mesh, ax=ax, shrink=0.7, pad=0.02)
     if cbar_label:
@@ -460,7 +486,9 @@ def map_field(
 
     map_extent = extent if extent is not None else _auto_extent(lats, lons, margin)
     ax.set_extent(map_extent, crs=ccrs.PlateCarree())
-    gl = ax.gridlines(draw_labels=True, linewidth=0.3, color="grey", alpha=0.4, linestyle=":")
+    gl = ax.gridlines(
+        draw_labels=True, linewidth=0.3, color="grey", alpha=0.4, linestyle=":"
+    )
     gl.top_labels = gl.right_labels = False
 
     if title:
@@ -480,9 +508,22 @@ def map_field(
     return fig, ax
 
 
-def map_fields_row(das, titles=None, cmaps=None, cbar_labels=None, vmin=None, vmax=None,
-                   extent=None, margin=1.5, boxes=None, figsize=None, suptitle=None,
-                   save_path=None, dpi=200, show=True):
+def map_fields_row(
+    das,
+    titles=None,
+    cmaps=None,
+    cbar_labels=None,
+    vmin=None,
+    vmax=None,
+    extent=None,
+    margin=1.5,
+    boxes=None,
+    figsize=None,
+    suptitle=None,
+    save_path=None,
+    dpi=200,
+    show=True,
+):
     """Plot several 2-D fields side by side (one cartopy panel each).
 
     Reuses :func:`map_field` per panel. ``titles``/``cmaps``/``cbar_labels`` are
@@ -490,15 +531,27 @@ def map_fields_row(das, titles=None, cmaps=None, cbar_labels=None, vmin=None, vm
     """
     n = len(das)
     if figsize is None:
-        figsize = (6.5 * n, 6)
-    fig, axes = plt.subplots(1, n, figsize=figsize,
-                             subplot_kw={"projection": ccrs.PlateCarree()})
+        # Height follows quarto's fig-height (rcParams); width scales with
+        # panel count at the same per-panel aspect ratio as before (6.5:6).
+        height = plt.rcParams["figure.figsize"][1]
+        figsize = (height * (6.5 / 6) * n, height)
+    fig, axes = plt.subplots(
+        1, n, figsize=figsize, subplot_kw={"projection": ccrs.PlateCarree()}
+    )
     axes = np.atleast_1d(axes).ravel()
     for i, da in enumerate(das):
-        map_field(da, extent=extent, margin=margin, boxes=boxes,
-                  cmap=(cmaps[i] if cmaps else "viridis"), vmin=vmin, vmax=vmax,
-                  cbar_label=(cbar_labels[i] if cbar_labels else None),
-                  title=(titles[i] if titles else None), ax=axes[i])
+        map_field(
+            da,
+            extent=extent,
+            margin=margin,
+            boxes=boxes,
+            cmap=(cmaps[i] if cmaps else "viridis"),
+            vmin=vmin,
+            vmax=vmax,
+            cbar_label=(cbar_labels[i] if cbar_labels else None),
+            title=(titles[i] if titles else None),
+            ax=axes[i],
+        )
     if suptitle:
         fig.suptitle(suptitle, fontsize=13)
     fig.tight_layout()
@@ -569,33 +622,38 @@ def map_positions_by_month(
     if extent is None:
         extent = _auto_extent(lat, lon, margin)
     nrows = int(np.ceil(len(months) / ncols))
-    fig = plt.figure(figsize=(2.8 * ncols, 2.8 * nrows))
+    # Width follows quarto's fig-width (rcParams); height keeps panels square.
+    width = plt.rcParams["figure.figsize"][0]
+    fig = plt.figure(figsize=(width, width / ncols * nrows))
     for k, m in enumerate(months):
         ax = fig.add_subplot(nrows, ncols, k + 1, projection=ccrs.PlateCarree())
         ax.add_feature(cfeature.LAND, facecolor="#ededed", edgecolor="none", zorder=1)
         ax.add_feature(cfeature.COASTLINE, linewidth=0.4, edgecolor="grey", zorder=2)
         d = snap[snap["month"] == m]
-        for box in boxes or []:
-            la0, la1, lo0, lo1 = box[:4]
-            ax.plot(
-                [lo0, lo1, lo1, lo0, lo0],
-                [la0, la0, la1, la1, la0],
-                lw=0.8,
-                ls="--",
-                color="k",
-                alpha=0.6,
-                transform=ccrs.PlateCarree(),
-                zorder=3,
-            )
+        _add_boxes(ax, boxes, lw=0.8, alpha=0.6, zorder=3)
         if cvals is not None:
             ax.scatter(
-                d["lon"], d["lat"], c=d["cval"], cmap=cmap_obj, norm=norm, s=7,
-                alpha=0.85, edgecolors="none", transform=ccrs.PlateCarree(), zorder=4,
+                d["lon"],
+                d["lat"],
+                c=d["cval"],
+                cmap=cmap_obj,
+                norm=norm,
+                s=7,
+                alpha=0.85,
+                edgecolors="none",
+                transform=ccrs.PlateCarree(),
+                zorder=4,
             )
         else:
             ax.scatter(
-                d["lon"], d["lat"], s=7, color=color, alpha=0.75,
-                edgecolors="none", transform=ccrs.PlateCarree(), zorder=4,
+                d["lon"],
+                d["lat"],
+                s=7,
+                color=color,
+                alpha=0.75,
+                edgecolors="none",
+                transform=ccrs.PlateCarree(),
+                zorder=4,
             )
         ax.set_extent(extent, crs=ccrs.PlateCarree())
         ax.set_title(f"{m}  (n={len(d)})", fontsize=8)
@@ -689,7 +747,10 @@ def plot_depth_profiles(
     nrows = int(np.ceil(n_traj / ncols))
 
     if figsize is None:
-        figsize = (ncols * 7, nrows * 3.2)
+        # Width follows quarto's fig-width (rcParams); height keeps the
+        # original per-panel aspect ratio (7:3.2).
+        width = plt.rcParams["figure.figsize"][0]
+        figsize = (width, width / ncols * (3.2 / 7) * nrows)
 
     if title is None:
         t_start = np.datetime_as_string(times[:, 0].min(), unit="D")
@@ -701,8 +762,10 @@ def plot_depth_profiles(
     def _phase_lines(days_i, z_i, phase_i):
         pts = np.stack([days_i, z_i], axis=1)  # (obs, 2)
         segs = np.stack([pts[:-1], pts[1:]], axis=1)  # (obs-1, 2, 2)
-        colors = [PHASE_COLORS.get(int(p), "#dddddd") if np.isfinite(p) else "#dddddd"
-                  for p in phase_i[:-1]]
+        colors = [
+            PHASE_COLORS.get(int(p), "#dddddd") if np.isfinite(p) else "#dddddd"
+            for p in phase_i[:-1]
+        ]
         return LineCollection(segs, colors=colors, linewidth=linewidth, zorder=3)
 
     fig, axes = plt.subplots(
@@ -749,8 +812,16 @@ def plot_depth_profiles(
                     j = idxs[np.argmin(zi[idxs])]
                     if max_days and days_i[j] > max_days:
                         continue
-                    ax.scatter(days_i[j], zi[j], marker="*", s=160, color="k",
-                               edgecolors="white", linewidths=0.5, zorder=6)
+                    ax.scatter(
+                        days_i[j],
+                        zi[j],
+                        marker="*",
+                        s=160,
+                        color="k",
+                        edgecolors="white",
+                        linewidths=0.5,
+                        zorder=6,
+                    )
 
         ax.set_xlim(0, max_days) if max_days else ax.set_xlim(days_i[0], days_i[-1])
         zmax = np.nanmax(zi)
@@ -776,8 +847,16 @@ def plot_depth_profiles(
     ]
     if mark_profiles:
         legend_handles.append(
-            plt.Line2D([0], [0], marker="*", color="k", markeredgecolor="white",
-                       linestyle="none", markersize=11, label="profile recorded")
+            plt.Line2D(
+                [0],
+                [0],
+                marker="*",
+                color="k",
+                markeredgecolor="white",
+                linestyle="none",
+                markersize=11,
+                label="profile recorded",
+            )
         )
     fig.legend(
         handles=legend_handles,
@@ -809,7 +888,7 @@ def plot_depth_profiles(
 
 
 def plot_deployment_plan(
-    plan, title="Float Deployment Plan", figsize=(12, 8), margin=3
+    plan, title="Float Deployment Plan", figsize=None, margin=3
 ):
     lats = plan["lat"]
     lons = plan["lon"]

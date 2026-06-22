@@ -28,8 +28,8 @@ import xarray as xr
 _trapz = getattr(np, "trapezoid", None) or np.trapz
 
 # Advisor's seawater constants (specific heat, reference density).
-CP = 3989.411       # J / (kg K)
-RHO = 1028.319      # kg / m^3
+CP = 3989.411  # J / (kg K)
+RHO = 1028.319  # kg / m^3
 
 J_TO_GJ = 1e-9
 
@@ -62,7 +62,9 @@ def profile_ohc(depth, theta, zmax):
     in_range = depth <= zmax
     n_in = int(in_range.sum())
     if n_in == 0:
-        raise ValueError(f"No levels at or above zmax={zmax} m (shallowest {depth[0]} m).")
+        raise ValueError(
+            f"No levels at or above zmax={zmax} m (shallowest {depth[0]} m)."
+        )
 
     d_in = depth[in_range]
     t_in = theta[..., in_range]
@@ -77,7 +79,7 @@ def profile_ohc(depth, theta, zmax):
     # Bottom segment (d_lo, zmax] interpolating T to zmax, if a deeper level exists.
     if n_in < depth.size and d_in[-1] < zmax:
         d_lo = d_in[-1]
-        d_hi = depth[n_in]            # first level deeper than zmax
+        d_hi = depth[n_in]  # first level deeper than zmax
         t_lo = t_in[..., -1]
         t_hi = theta[..., n_in]
         t_zmax = t_lo + (t_hi - t_lo) * (zmax - d_lo) / (d_hi - d_lo)

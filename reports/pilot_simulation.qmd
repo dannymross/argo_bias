@@ -271,20 +271,20 @@ The *true* ohc from the GLORYS re-analysis was similarly aggregated from daily 1
 
 **Sampling Bias** is defined as the difference in true GLORYS ohc for the virtually sampled cells and true GLORYS ohc across all cells in the analysis domain.
 
-*Difference between the `GLORYS truth (sampled cells)` and `GLORYS truth (all cells)` series below*
+  - *Difference between the `GLORYS truth (sampled cells)` and `GLORYS truth (all cells)` series below*
 
-*Captures the bias from preferentially sampling regions in the analysis domain*
+  - *Captures the bias from preferentially sampling regions in the analysis domain*
 
 **Grid Bias** is defined as the difference in the synthetic ohc aggregated from the virtual floats profiling positions and the true GLORYS ohc for the virtuall sampled cells.
 
-**Difference between the `synthetic Argo (sampled cells)` and `GLORYS truth (sampled cells)` series below*
+  - *Difference between the `synthetic Argo (sampled cells)` and `GLORYS truth (sampled cells)` series below*
 
-*Captures the bias from averaging from the daily 1/12° level to the monthly $x$° level*
+  - *Captures the bias from averaging from the daily 1/12° level to the monthly $x$° level*
 
 **Total OHC Bias** is the sum of **Sampling Bias** and **Grid Bias**
 
-*As cells get finer, grid bias is traded for sampling bias.* 
-*At the 1/12° level, grid bias is due to cells not being observed every day in a month*
+  - *As cells get finer, grid bias is traded for sampling bias.* 
+  - *At the 1/12° level, grid bias is due to cells not being observed every day in a month*
 
 ```{python}
 #| label: maps-prep
@@ -378,7 +378,7 @@ def show_timeseries(d, deg):
     """Return the domain-mean OHC timeseries figure (truth all / sampled / virtual Argo)."""
     return ohc_bias.plot_domain_timeseries(bias_by_deg[deg]["domain"], value_col=d,
                                            ylim=YLIM[d], real=real_by_deg[deg],
-                                           figsize=(TABSET_FIGW, TABSET_FIGH),
+                                           figsize=(TABSET_FIGW, TABSET_FIGH+4),
                                            title=f"Domain-mean {d} over time (deg={deg:.3g})")
 
 # --- source maps shown in each resolution tab; EN4 only exists at its native 1° ---
@@ -430,20 +430,26 @@ for d in DEPTHS:
 _emit(":::")           # close depth tabset
 ```
 
-## Summary
+## OHC Bias vs Grid Resolution
 
-```{python}
-#| label: tbl-sweep
-#| code-summary: "Cell-size sweep over the analysis domain"
-sweep = ohc_bias.sweep_resolution(truth_field, sim, DEGS, weighted_reference=True)
-sweep.round(3)
-```
+Monthly bias averaged to the yearly level for comparison against grid resolution
 
 ```{python}
 #| label: fig-sweep
-#| fig-cap: "OHC sampling bias vs analysis cell size"
+#| output: asis
+#| fig-cap: "ohc bias vs analysis cell size"
+
+_emit("::: {.panel-tabset}")
 for d in DEPTHS:
-    ohc_bias.plot_bias_vs_resolution(sweep, value_col=d)
+    _emit(f"## {DEPTH_LABEL[d]}")
+    _show_fig(ohc_bias.plot_bias_vs_resolution(sweep, value_col=d))
+_emit(":::")
 ```
 
+```{python}
+#| label: tbl-sweep
+#| code-summary: "grid resolution sweep over the analysis domain"
+sweep = ohc_bias.sweep_resolution(truth_field, sim, DEGS, weighted_reference=True)
+sweep.round(3)
+```
 
