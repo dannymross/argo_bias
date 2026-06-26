@@ -143,8 +143,16 @@ sim_full         = ohc.float_ohc(traj, theta)
 
 # Restrict the analysis to the deployment region (where the floats start).
 truth_field, sim = ohc_bias.subset_region(truth_field_full, sim_full, ANALYSIS_BOUNDS)
-```
 
+ref = ohc.truth_domain_mean(truth_field, weighted=True)
+truth_by_deg = {deg: ohc.coarsen_truth(truth_field, deg=deg) for deg in DEGS}
+float_by_deg = {deg: ohc.grid_cells(sim, ["ohc_700", "ohc_2000"], deg=deg) for deg in DEGS}
+
+# Per-depth colour limits (from the ½° truth), shared across all OHC tabs.
+VLIM = {d: (float((truth_by_deg[0.5][d] * ohc_bias.J_TO_GJ).quantile(0.02)),
+            float((truth_by_deg[0.5][d] * ohc_bias.J_TO_GJ).quantile(0.98))) for d in DEPTHS}
+
+```
 
 # Analysis region
 
@@ -246,6 +254,14 @@ la0, la1, lo0, lo1 = ANALYSIS_BOUNDS
 ids = argo_all.loc[argo_all.lat.between(la0, la1) & argo_all.lon.between(lo0, lo1),
                    "float_id"].unique()
 argo_a = argo_all[argo_all.float_id.isin(ids)]
+
+# Real Argo OHC in the analysis box (2020), gridded like the synthetic floats;
+real_cells_by_deg = {deg: ohc.grid_cells(argo_a, ["ohc_700", "ohc_2000"], deg=deg)
+                     for deg in DEGS}
+real_by_deg = {deg: real_cells_by_deg[deg]
+                    .groupby("month", as_index=False)[["ohc_700", "ohc_2000"]].mean()
+               for deg in DEGS}
+
 _ = map_point_trajectories(
     argo_a, 
     extent=[-76, -47, 28, 50],
@@ -342,7 +358,7 @@ truth_anom_cells = ohc_clim.to_cells_table(truth_anom)
 ANOM_VLIM = {d: float(truth_anom_cells[d].abs().quantile(0.98)) * ohc_bias.J_TO_GJ for d in DEPTHS}
 ```
 
-![Published RG Climatology global-mean temperature time series (source: sio-argo.ucsd.edu)](../data/rg_climatology/Temperature_2019.png){width=100%}
+![Published RG Climatology global-mean temperature time series (source: sio-argo.ucsd.edu)](../data/rg_climatology/Temperature_2019.png){width=90%}
 
 ```{python}
 #| label: fig-rg-timeseries-check
@@ -397,16 +413,14 @@ _smooth  = pd.Series(
 _sm_dates = np.array(list(_dates_main) + _ext_dates, dtype="datetime64[ns]")
 _sm_ok    = ~np.isnan(_smooth)
 
-fig, ax = plt.subplots(figsize=(10, 4))
+fig, ax = plt.subplots(figsize=(9, 4))
 ax.plot(_dates_main, _tmean_main, color="black", lw=0.8, label="2004–2018 (mean + anom)")
 ax.plot(_all_dates, _all_vals, color="red", lw=0.8,
         label=f"2019–{_ext_dates[-1].year} extensions")
-ax.plot(_sm_dates[_sm_ok], _smooth[_sm_ok], color="limegreen", lw=1.8,
+ax.plot(_sm_dates[_sm_ok], _smooth[_sm_ok], color="limegreen", lw=1,
         label="12-month running mean")
 ax.set_ylabel("Potential Temperature (°C)")
-ax.set_title("RG Argo Climatology — global-mean 0–1975 dbar potential temperature\n"
-             "reconstructed from ARGO_TEMPERATURE_MEAN + monthly extension anomalies")
-ax.legend(fontsize=9, frameon=False)
+ax.set_xlim(_dates_main[0], _all_dates[-1])
 ax.xaxis.set_major_locator(mdates.YearLocator(2))
 ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
 ax.grid(alpha=0.2)
@@ -549,183 +563,6 @@ for d in DEPTHS:
 _emit(":::")
 ```
 
-# OHC Bias for Sampled Cells
-
-*For this initial analysis no interpolation of ohc was done for cells without profiles*
-
-**OHC for virtual floats.**
-For the profiling position of each virtual float, the full vertical column of potential temperature at the corresponding 1/12° grid cell was used to calculate the observed synthetic ohc for a given day.
-
-The ohc was than averaged to the monthly 1/12°, 1/2°, 1° grid cell level by cosine latitude weighted averages of daily 1/12° cell means.
-
-The *true* ohc from the GLORYS re-analysis was similarly aggregated from daily 1/12° to the monthly 1/2° and 1° grid cell level.
-
-**Sampling Bias** is defined as the difference in true GLORYS ohc for the virtually sampled cells and true GLORYS ohc across all cells in the analysis domain.
-
-  - *Difference between the `GLORYS truth (sampled cells)` and `GLORYS truth (all cells)` series below*
-
-  - *Captures the bias from preferentially sampling regions in the analysis domain*
-
-**Grid Bias** is defined as the difference in the synthetic ohc aggregated from the virtual floats profiling positions and the true GLORYS ohc for the virtuall sampled cells.
-
-  - *Difference between the `synthetic Argo (sampled cells)` and `GLORYS truth (sampled cells)` series below*
-
-  - *Captures the bias from averaging from the daily 1/12° level to the monthly $x$° level*
-
-**Total OHC Bias** is the sum of **Sampling Bias** and **Grid Bias**
-
-  - *As cells get finer, grid bias is traded for sampling bias.* 
-  - *At the 1/12° level, grid bias is due to cells not being observed every day in a month*
-
-```{python}
-#| label: maps-prep
-#| code-summary: "Grid truth / floats / difference at every resolution; load EN4"
-ref = ohc.truth_domain_mean(truth_field, weighted=True)
-truth_by_deg = {deg: ohc.coarsen_truth(truth_field, deg=deg) for deg in DEGS}
-float_by_deg = {deg: ohc.grid_cells(sim, ["ohc_700", "ohc_2000"], deg=deg) for deg in DEGS}
-# Bias against the fixed area-weighted reference, once per resolution; reuse its
-# per-cell grid error (diff) and per-month domain table (timeseries).
-bias_by_deg  = {deg: ohc_bias.compute_bias(float_by_deg[deg], truth_by_deg[deg],
-                                           true_domain_mean=ref) for deg in DEGS}
-diff_by_deg  = {deg: bias_by_deg[deg]["cells"] for deg in DEGS}
-en4_cells    = ohc.load_en4_cells(
-    "../data/ohc_en4_gridded_nwatlantic.csv", bounds=ANALYSIS_BOUNDS, year=2020)
-en4_series   = en4_cells.groupby("month", as_index=False)[["ohc_700", "ohc_2000"]].mean()
-
-# Real Argo OHC in the analysis box (2020), gridded like the synthetic floats;
-real_cells_by_deg = {deg: ohc.grid_cells(argo_a, ["ohc_700", "ohc_2000"], deg=deg)
-                     for deg in DEGS}
-real_by_deg = {deg: real_cells_by_deg[deg]
-                    .groupby("month", as_index=False)[["ohc_700", "ohc_2000"]].mean()
-               for deg in DEGS}
-
-# Per-depth colour limits (from the ½° truth), shared across all OHC tabs.
-VLIM = {d: (float((truth_by_deg[0.5][d] * ohc_bias.J_TO_GJ).quantile(0.02)),
-            float((truth_by_deg[0.5][d] * ohc_bias.J_TO_GJ).quantile(0.98))) for d in DEPTHS}
-
-# Per-depth y-range for the domain-mean timeseries, shared across resolutions
-# (min/max of the three lines over every deg) so the tabs line up when flipped.
-def _ylim(d):
-    cols = [f"{d}_true_mean", f"{d}_true_at_sampled", f"{d}_float_mean"]
-    parts = [bias_by_deg[deg]["domain"][cols].to_numpy().ravel() for deg in DEGS]
-    parts += [real_by_deg[deg][d].to_numpy() for deg in DEGS]  # include real Argo line
-    v = np.concatenate(parts) * ohc_bias.J_TO_GJ
-    lo, hi = np.nanmin(v), np.nanmax(v)
-    pad = 0.05 * (hi - lo)
-    return (lo - pad, hi + pad)
-
-YLIM = {d: _ylim(d) for d in DEPTHS}
-
-
-# Figures here are emitted via display() inside an `output: asis` cell, so
-# quarto's chunk-level fig-width/fig-height (set below in ohc-tabset) never
-# reaches matplotlib.rcParams -- pass the intended size through explicitly.
-
-def show_map(kind, d, deg=MAP_DEG):
-    """Return one monthly-facet figure for a source (kind), depth d, cell size deg."""
-    glats = np.sort(truth_by_deg[deg]["cell_lat"].unique())[:-1]
-    glons = np.sort(truth_by_deg[deg]["cell_lon"].unique())[:-1]
-    dots = deg < 0.1
-    if kind == "sim":
-        return ohc_bias.plot_monthly_cell_maps(float_by_deg[deg], d, vmin=VLIM[d][0], vmax=VLIM[d][1],
-            lats=glats, lons=glons, scatter_dots=dots, width=TABSET_FIGW, title=f"virtual-Argo {d} by month (deg={deg:.3g})")
-    if kind == "count":
-        return ohc_bias.plot_monthly_cell_maps(float_by_deg[deg], value_col="n", value_scale=1, discrete=True,lats=glats, lons=glons,
-            cmap="Dark2", cbar_label="profiles per cell", scatter_dots=dots, width=TABSET_FIGW, title=f"virtual-Argo profiles per cell (deg={deg:.3g})")
-    if kind == "real":
-        return ohc_bias.plot_monthly_cell_maps(real_cells_by_deg[deg], d, vmin=VLIM[d][0], vmax=VLIM[d][1],
-            lats=glats, lons=glons, scatter_dots=dots, width=TABSET_FIGW, title=f"real-Argo {d} by month (deg={deg:.3g})", year=2020)
-    if kind == "real_count":
-        return ohc_bias.plot_monthly_cell_maps(real_cells_by_deg[deg], value_col="n", value_scale=1, discrete=True,lats=glats, lons=glons,
-            cmap="Dark2", cbar_label="profiles per cell", scatter_dots=dots, width=TABSET_FIGW, title=f"real-Argo profiles per cell (deg={deg:.3g})", year=2020)
-    if kind == "truth":
-        return ohc_bias.plot_monthly_cell_maps(truth_by_deg[deg], d, vmin=VLIM[d][0], vmax=VLIM[d][1],
-            lats=glats, lons=glons, width=TABSET_FIGW, title=f"GLORYS truth {d} by month (deg={deg:.3g})")
-    if kind == "diff":
-        dc = diff_by_deg[deg]
-        bmax = float((dc[f"{d}_bias"].abs() * ohc_bias.J_TO_GJ).quantile(0.95))
-        return ohc_bias.plot_monthly_cell_maps(dc, value_col=f"{d}_bias", vmin=-bmax, vmax=bmax,
-            cmap="RdBu_r", cbar_label=f"{d} bias (GJ m$^{{-2}}$)",
-            lats=glats, lons=glons, scatter_dots=dots, width=TABSET_FIGW, title=f"Grid bias, {d} (deg={deg:.3g})")
-    if kind == "en4":
-        return ohc_bias.plot_monthly_cell_maps(en4_cells, d, vmin=VLIM[d][0], vmax=VLIM[d][1],
-            width=TABSET_FIGW, title=f"EN4 {d} by month, 2020 (1°)")
-
-def show_table(d, deg):
-    """Monthly preferential-sampling summary table for depth d at cell size deg."""
-    return ohc_bias.monthly_bias_table(float_by_deg[deg], truth_by_deg[deg], d, ref)
-
-def show_timeseries(d, deg):
-    """Return the domain-mean OHC timeseries figure (truth all / sampled / virtual Argo)."""
-    return ohc_bias.plot_domain_timeseries(bias_by_deg[deg]["domain"], value_col=d,
-                                           ylim=YLIM[d], real=real_by_deg[deg],
-                                           en4=en4_series if deg == 1.0 else None,
-                                           figsize=(TABSET_FIGW, TABSET_FIGH+4),
-                                           title=f"Domain-mean {d} over time (deg={deg:.3g})")
-
-# --- source maps shown in each resolution tab; EN4 only exists at its native 1° ---
-SOURCES = [("count", "Virtual Argo Profiles"),("real_count", "Real Argo Profiles"), 
-           ("sim", "Virtual Argo ohc"),("real", "Real Argo ohc"),
-           ("truth", "GLORYS ohc"), ("diff", "Grid Bias"), ("en4", "EN4")]
-```
-
-
-```{python}
-#| label: ohc-tabset
-#| output: asis
-#| code-summary: "Build the depth -> resolution -> source tabset programmatically"
-from IPython.display import display
-import matplotlib.pyplot as plt
-
-def _deg_label(deg):
-    return "1/12°" if deg < 0.1 else f"{deg:g}°"
-
-
-_emit("::: {.panel-tabset}")
-for d in DEPTHS:
-    _emit(f"## {DEPTH_LABEL[d]}")
-    _emit("::: {.panel-tabset}")
-    for deg in DEGS:
-        _emit(f"### {_deg_label(deg)}")
-        _show_fig(show_timeseries(d, deg))
-        #display(show_table(d, deg))
-        _emit("::: {.panel-tabset}")
-        for kind, label in SOURCES:
-            if kind == "en4" and deg != 1.0:
-                continue  # EN4 only at its native 1 deg
-            _emit(f"#### {label}")
-            _show_fig(show_map(kind, d, deg))
-        _emit(":::")   # close source tabset
-        display(show_table(d, deg))
-    _emit(":::")       # close resolution tabset
-_emit(":::")           # close depth tabset
-```
-
-Monthly bias averaged to the yearly level for comparison against grid resolution
-
-```{python}
-#| label: tbl-sweep-build
-#| code-summary: "build grid resolution sweep over the analysis domain"
-sweep = ohc_bias.sweep_resolution(truth_field, sim, DEGS, weighted_reference=True)
-```
-
-```{python}
-#| label: fig-sweep
-#| output: asis
-#| fig-cap: "ohc bias vs analysis cell size"
-
-_emit("::: {.panel-tabset}")
-for d in DEPTHS:
-    _emit(f"## {DEPTH_LABEL[d]}")
-    _show_fig(ohc_bias.plot_bias_vs_resolution(sweep, value_col=d))
-_emit(":::")
-```
-
-```{python}
-#| label: tbl-sweep-show
-#| code-summary: "show grid resolution sweep over the analysis domain"
-sweep.round(3)
-```
 
 # GP interpolation (Vecchia / GpGp)
 
@@ -1006,39 +843,40 @@ gp_fit_summary.groupby("depth")[["loglik", "converged", "n_obs"]].first()
 
 def make_gp_map(c, kind, d, res_label):
     """Render one map panel from a resolution context dict c."""
+    dots = "1/12" in res_label
     if kind == "gp_mean":
         return ohc_bias.plot_monthly_cell_maps(
-            c["mean_cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], width=TABSET_FIGW,
+            c["mean_cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], scatter_dots=dots, width=TABSET_FIGW,
             title=f"Climatological mean field, {d} by month ({res_label})")
     if kind == "obs_anom":
         return ohc_bias.plot_monthly_cell_maps(
             c["obs_anom_cells"], f"{d}_anom", vmin=-ANOM_VLIM[d], vmax=ANOM_VLIM[d], cmap="RdBu_r",
-            cbar_label=f"{d} anomaly (GJ m$^{{-2}}$)", width=TABSET_FIGW,
+            cbar_label=f"{d} anomaly (GJ m$^{{-2}}$)", scatter_dots=dots, width=TABSET_FIGW,
             title=f"Observed Argo {d} anomaly by month ({res_label})")
     if kind == "gp":
         return ohc_bias.plot_monthly_cell_maps(
-            c["cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], width=TABSET_FIGW,
+            c["cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], scatter_dots=dots, width=TABSET_FIGW,
             title=f"GP-interpolated {d} by month ({res_label})")
     if kind == "gp_anom":
         return ohc_bias.plot_monthly_cell_maps(
             c["anom_cells"], f"{d}_anom", vmin=-ANOM_VLIM[d], vmax=ANOM_VLIM[d], cmap="RdBu_r",
-            cbar_label=f"{d} anomaly (GJ m$^{{-2}}$)", width=TABSET_FIGW,
+            cbar_label=f"{d} anomaly (GJ m$^{{-2}}$)", scatter_dots=dots, width=TABSET_FIGW,
             title=f"GP-interpolated {d} anomaly by month ({res_label})")
     if kind == "gp_se":
         return ohc_bias.plot_monthly_cell_maps(
-            c["se_cells"], f"{d}_se", vmin=0, cmap="viridis", width=TABSET_FIGW,
+            c["se_cells"], f"{d}_se", vmin=0, cmap="viridis", scatter_dots=dots, width=TABSET_FIGW,
             cbar_label=f"{d} GP standard error (GJ m$^{{-2}}$)",
             title=f"GP standard error, {d} ({res_label})")
     if kind == "truth_native":
         return ohc_bias.plot_monthly_cell_maps(
-            c["truth_cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], width=TABSET_FIGW,
+            c["truth_cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], scatter_dots=dots, width=TABSET_FIGW,
             title=f"GLORYS truth {d} by month ({res_label})")
     if kind == "gp_bias":
         bcol = f"{d}_bias"
         bmax = float(c["bias_cells"][bcol].abs().max()) * ohc_bias.J_TO_GJ
         return ohc_bias.plot_monthly_cell_maps(
             c["bias_cells"], bcol, vmin=-bmax, vmax=bmax, cmap="RdBu_r",
-            cbar_label=f"{d} bias (GJ m$^{{-2}}$)", width=TABSET_FIGW,
+            cbar_label=f"{d} bias (GJ m$^{{-2}}$)", scatter_dots=dots, width=TABSET_FIGW,
             title=f"GP - truth bias, {d} ({res_label})")
 
 GP_MAP_KINDS = [("gp_mean", "Mean field (climatology)"),
@@ -1523,5 +1361,169 @@ for d in DEPTHS:
         title=f"{d} anomaly: Pooled Levitus bias vs SE",
     ))
 _emit(":::")
+```
+
+# OHC Bias for Sampled Cells
+
+*For this initial analysis no interpolation of ohc was done for cells without profiles*
+
+**OHC for virtual floats.**
+For the profiling position of each virtual float, the full vertical column of potential temperature at the corresponding 1/12° grid cell was used to calculate the observed synthetic ohc for a given day.
+
+The ohc was than averaged to the monthly 1/12°, 1/2°, 1° grid cell level by cosine latitude weighted averages of daily 1/12° cell means.
+
+The *true* ohc from the GLORYS re-analysis was similarly aggregated from daily 1/12° to the monthly 1/2° and 1° grid cell level.
+
+**Sampling Bias** is defined as the difference in true GLORYS ohc for the virtually sampled cells and true GLORYS ohc across all cells in the analysis domain.
+
+  - *Difference between the `GLORYS truth (sampled cells)` and `GLORYS truth (all cells)` series below*
+
+  - *Captures the bias from preferentially sampling regions in the analysis domain*
+
+**Grid Bias** is defined as the difference in the synthetic ohc aggregated from the virtual floats profiling positions and the true GLORYS ohc for the virtuall sampled cells.
+
+  - *Difference between the `synthetic Argo (sampled cells)` and `GLORYS truth (sampled cells)` series below*
+
+  - *Captures the bias from averaging from the daily 1/12° level to the monthly $x$° level*
+
+**Total OHC Bias** is the sum of **Sampling Bias** and **Grid Bias**
+
+  - *As cells get finer, grid bias is traded for sampling bias.* 
+  - *At the 1/12° level, grid bias is due to cells not being observed every day in a month*
+
+```{python}
+#| label: maps-prep
+#| code-summary: "Grid truth / floats / difference at every resolution; load EN4"
+
+# Bias against the fixed area-weighted reference, once per resolution; reuse its
+# per-cell grid error (diff) and per-month domain table (timeseries).
+bias_by_deg  = {deg: ohc_bias.compute_bias(float_by_deg[deg], truth_by_deg[deg],
+                                           true_domain_mean=ref) for deg in DEGS}
+diff_by_deg  = {deg: bias_by_deg[deg]["cells"] for deg in DEGS}
+en4_cells    = ohc.load_en4_cells(
+    "../data/ohc_en4_gridded_nwatlantic.csv", bounds=ANALYSIS_BOUNDS, year=2020)
+en4_series   = en4_cells.groupby("month", as_index=False)[["ohc_700", "ohc_2000"]].mean()
+
+# Per-depth y-range for the domain-mean timeseries, shared across resolutions
+# (min/max of the three lines over every deg) so the tabs line up when flipped.
+def _ylim(d):
+    cols = [f"{d}_true_mean", f"{d}_true_at_sampled", f"{d}_float_mean"]
+    parts = [bias_by_deg[deg]["domain"][cols].to_numpy().ravel() for deg in DEGS]
+    parts += [real_by_deg[deg][d].to_numpy() for deg in DEGS]  # include real Argo line
+    v = np.concatenate(parts) * ohc_bias.J_TO_GJ
+    lo, hi = np.nanmin(v), np.nanmax(v)
+    pad = 0.05 * (hi - lo)
+    return (lo - pad, hi + pad)
+
+YLIM = {d: _ylim(d) for d in DEPTHS}
+
+# Figures here are emitted via display() inside an `output: asis` cell, so
+# quarto's chunk-level fig-width/fig-height (set below in ohc-tabset) never
+# reaches matplotlib.rcParams -- pass the intended size through explicitly.
+
+def show_map(kind, d, deg=MAP_DEG):
+    """Return one monthly-facet figure for a source (kind), depth d, cell size deg."""
+    glats = np.sort(truth_by_deg[deg]["cell_lat"].unique())[:-1]
+    glons = np.sort(truth_by_deg[deg]["cell_lon"].unique())[:-1]
+    dots = deg < 0.1
+    if kind == "sim":
+        return ohc_bias.plot_monthly_cell_maps(float_by_deg[deg], d, vmin=VLIM[d][0], vmax=VLIM[d][1],
+            lats=glats, lons=glons, scatter_dots=dots, width=TABSET_FIGW, title=f"virtual-Argo {d} by month (deg={deg:.3g})")
+    if kind == "count":
+        return ohc_bias.plot_monthly_cell_maps(float_by_deg[deg], value_col="n", value_scale=1, discrete=True,lats=glats, lons=glons,
+            cmap="Dark2", cbar_label="profiles per cell", scatter_dots=dots, width=TABSET_FIGW, title=f"virtual-Argo profiles per cell (deg={deg:.3g})")
+    if kind == "real":
+        return ohc_bias.plot_monthly_cell_maps(real_cells_by_deg[deg], d, vmin=VLIM[d][0], vmax=VLIM[d][1],
+            lats=glats, lons=glons, scatter_dots=dots, width=TABSET_FIGW, title=f"real-Argo {d} by month (deg={deg:.3g})", year=2020)
+    if kind == "real_count":
+        return ohc_bias.plot_monthly_cell_maps(real_cells_by_deg[deg], value_col="n", value_scale=1, discrete=True,lats=glats, lons=glons,
+            cmap="Dark2", cbar_label="profiles per cell", scatter_dots=dots, width=TABSET_FIGW, title=f"real-Argo profiles per cell (deg={deg:.3g})", year=2020)
+    if kind == "truth":
+        return ohc_bias.plot_monthly_cell_maps(truth_by_deg[deg], d, vmin=VLIM[d][0], vmax=VLIM[d][1],
+            lats=glats, lons=glons, width=TABSET_FIGW, title=f"GLORYS truth {d} by month (deg={deg:.3g})")
+    if kind == "diff":
+        dc = diff_by_deg[deg]
+        bmax = float((dc[f"{d}_bias"].abs() * ohc_bias.J_TO_GJ).quantile(0.95))
+        return ohc_bias.plot_monthly_cell_maps(dc, value_col=f"{d}_bias", vmin=-bmax, vmax=bmax,
+            cmap="RdBu_r", cbar_label=f"{d} bias (GJ m$^{{-2}}$)",
+            lats=glats, lons=glons, scatter_dots=dots, width=TABSET_FIGW, title=f"Grid bias, {d} (deg={deg:.3g})")
+    if kind == "en4":
+        return ohc_bias.plot_monthly_cell_maps(en4_cells, d, vmin=VLIM[d][0], vmax=VLIM[d][1],
+            width=TABSET_FIGW, title=f"EN4 {d} by month, 2020 (1°)")
+
+def show_table(d, deg):
+    """Monthly preferential-sampling summary table for depth d at cell size deg."""
+    return ohc_bias.monthly_bias_table(float_by_deg[deg], truth_by_deg[deg], d, ref)
+
+def show_timeseries(d, deg):
+    """Return the domain-mean OHC timeseries figure (truth all / sampled / virtual Argo)."""
+    return ohc_bias.plot_domain_timeseries(bias_by_deg[deg]["domain"], value_col=d,
+                                           ylim=YLIM[d], real=real_by_deg[deg],
+                                           en4=en4_series if deg == 1.0 else None,
+                                           figsize=(TABSET_FIGW, TABSET_FIGH+4),
+                                           title=f"Domain-mean {d} over time (deg={deg:.3g})")
+
+# --- source maps shown in each resolution tab; EN4 only exists at its native 1° ---
+SOURCES = [("count", "Virtual Argo Profiles"),("real_count", "Real Argo Profiles"), 
+           ("sim", "Virtual Argo ohc"),("real", "Real Argo ohc"),
+           ("truth", "GLORYS ohc"), ("diff", "Grid Bias"), ("en4", "EN4")]
+```
+
+
+```{python}
+#| label: ohc-tabset
+#| output: asis
+#| code-summary: "Build the depth -> resolution -> source tabset programmatically"
+from IPython.display import display
+import matplotlib.pyplot as plt
+
+def _deg_label(deg):
+    return "1/12°" if deg < 0.1 else f"{deg:g}°"
+
+
+_emit("::: {.panel-tabset}")
+for d in DEPTHS:
+    _emit(f"## {DEPTH_LABEL[d]}")
+    _emit("::: {.panel-tabset}")
+    for deg in DEGS:
+        _emit(f"### {_deg_label(deg)}")
+        _show_fig(show_timeseries(d, deg))
+        #display(show_table(d, deg))
+        _emit("::: {.panel-tabset}")
+        for kind, label in SOURCES:
+            if kind == "en4" and deg != 1.0:
+                continue  # EN4 only at its native 1 deg
+            _emit(f"#### {label}")
+            _show_fig(show_map(kind, d, deg))
+        _emit(":::")   # close source tabset
+        display(show_table(d, deg))
+    _emit(":::")       # close resolution tabset
+_emit(":::")           # close depth tabset
+```
+
+Monthly bias averaged to the yearly level for comparison against grid resolution
+
+```{python}
+#| label: tbl-sweep-build
+#| code-summary: "build grid resolution sweep over the analysis domain"
+sweep = ohc_bias.sweep_resolution(truth_field, sim, DEGS, weighted_reference=True)
+```
+
+```{python}
+#| label: fig-sweep
+#| output: asis
+#| fig-cap: "ohc bias vs analysis cell size"
+
+_emit("::: {.panel-tabset}")
+for d in DEPTHS:
+    _emit(f"## {DEPTH_LABEL[d]}")
+    _show_fig(ohc_bias.plot_bias_vs_resolution(sweep, value_col=d))
+_emit(":::")
+```
+
+```{python}
+#| label: tbl-sweep-show
+#| code-summary: "show grid resolution sweep over the analysis domain"
+sweep.round(3)
 ```
 
