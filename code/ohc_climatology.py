@@ -334,8 +334,9 @@ def write_profile_csv(anom_df, path, value_cols=("ohc_700", "ohc_2000")):
 
     The temporal coordinate written is the actual observation ``date`` (YYYY-MM-DD),
     not the calendar month. The R script converts this to day-of-year for the
-    spatio-temporal GP fit and uses the last day of each calendar month as the
-    prediction temporal coordinate.
+    spatio-temporal GP fit and uses a configurable day within each calendar month
+    (first/middle/last, controlled by :func:`run_gp_interp`'s ``month_day``
+    argument) as the prediction temporal coordinate.
     """
     out = anom_df[["date", "lon", "lat"] + [f"{c}_anom" for c in value_cols]].copy()
     out["date"] = pd.to_datetime(out["date"]).dt.strftime("%Y-%m-%d")
@@ -348,6 +349,7 @@ def run_gp_interp(
     out_csv,
     fit_summary_csv,
     model_cache=None,
+    month_day="middle",
     r_script=GP_INTERP_SCRIPT,
 ):
     """Shell out to ``code/ohc_gp_interp.R`` to fit/predict the Vecchia GP.
@@ -356,10 +358,16 @@ def run_gp_interp(
     Pass ``model_cache`` (path to a ``.rds`` file) to save the fitted model on
     the first call and reload it on subsequent calls -- so predicting at a
     second grid (e.g. 1°) skips the expensive fit entirely.
+
+    ``month_day`` controls the temporal prediction point within each month:
+    ``"first"`` (1st), ``"middle"`` (15th, default), or ``"last"`` (last day).
     """
+    if month_day not in ("first", "middle", "last"):
+        raise ValueError(f"month_day must be 'first', 'middle', or 'last'; got {month_day!r}")
     cmd = ["Rscript", r_script, profiles_csv, grid_csv, out_csv, fit_summary_csv]
     if model_cache is not None:
         cmd.append(model_cache)
+    cmd.append(month_day)
     subprocess.run(cmd, check=True)
 
 

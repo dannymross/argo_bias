@@ -1,20 +1,3 @@
-"""Quantify OHC sampling bias: synthetic-Argo estimate vs GLORYS truth.
-
-Given the gridded truth OHC (from :func:`ohc.coarsen_truth`) and the
-synthetic-float OHC binned to the same cells (from :func:`ohc.grid_cells`), this
-computes the two biases that matter for the preferential-sampling question:
-
-* **grid error** -- in each cell a float actually sampled, how far is
-  the float estimate from the truth in that cell/month?
-* **sampling bias** -- the domain-mean OHC you
-  would report from the *float-sampled cells only*, minus the *true* domain mean
-  over *all* cells. Non-uniform float sampling makes these differ; that gap is
-  the bias from preferential sampling.
-
-Also emits the sampled-cell fraction over time and simple diagnostic plots.
-All OHC in J/m2 unless converted to GJ/m2 for display.
-"""
-
 import numpy as np
 import pandas as pd
 
@@ -746,9 +729,16 @@ def plot_bias_map(cells, value_col="ohc_2000", month=None, out_path=None):
 
 
 def plot_bias_se_violin(
-    bias_cells, se_cells, bias_col, se_col,
-    se_labels=None, se_colors=None,
-    title=None, figsize=None, out_path=None
+    bias_cells,
+    se_cells,
+    bias_col,
+    se_col,
+    quantiles=[0.05,.25,.75, 0.95],
+    se_labels=None,
+    se_colors=None,
+    title=None,
+    figsize=None,
+    out_path=None,
 ):
     """Side-by-side horizontal violins per month: a bias distribution vs one or more SE distributions.
 
@@ -817,7 +807,7 @@ def plot_bias_se_violin(
     offsets = np.linspace(-span / 2, span / 2, n_total)
     width = (span / (n_total - 1)) * 0.80 if n_total > 1 else span
 
-    quantiles = [[0.05, 0.95]] * len(months)
+    quantiles = [quantiles] * len(months)
     fig, ax = plt.subplots(figsize=figsize or (7, 8))
 
     parts_bias = ax.violinplot(
@@ -835,7 +825,9 @@ def plot_bias_se_violin(
         body.set_alpha(0.5)
     for key in ("cmedians", "cmeans", "cquantiles"):
         parts_bias[key].set_color("black")
-        parts_bias[key].set_linewidth(1)
+        parts_bias[key].set_linewidth(0.5)
+
+    parts_bias["cquantiles"].set_color("gray")
     parts_bias["cmeans"].set_linestyle(":")
 
     for i, (se_data, color) in enumerate(zip(se_data_list, se_colors)):
@@ -854,8 +846,10 @@ def plot_bias_se_violin(
             body.set_alpha(0.5)
         for key in ("cmedians", "cmeans", "cquantiles"):
             parts_se[key].set_color("black")
-            parts_se[key].set_linewidth(1)
+            parts_se[key].set_linewidth(0.5)
+
         parts_se["cmeans"].set_linestyle(":")
+        parts_se["cquantiles"].set_color("gray")
 
     ax.axvline(0, color="0.6", lw=0.8, zorder=0)
     ax.set_yticks(positions)

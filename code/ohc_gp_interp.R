@@ -3,59 +3,7 @@
 #
 # Input is per-profile OHC *anomalies* (profile OHC minus the RG climatological
 # seasonal-mean OHC for that location/month) -- see code/ohc_climatology.py for
-# how the anomaly is constructed. Because the seasonal cycle is already removed,
-# different calendar months' anomalies are treated as (not necessarily
-# independent) draws from one underlying spatio-temporal process, rather than
-# fitting a separate spatial GP per month.
-#
-# One spatio-temporal GP per depth, pooling all ~150 profiles across the year
-# (`matern_spheretime`, locs = (lon, lat, calendar_month)). This replaces an
-# earlier per-month design: fitting matern_sphere independently on each
-# month's 3-41 profiles let the (range, smoothness) MLE run away to wildly
-# implausible values in roughly half the months (e.g. a fitted spatial range
-# >100x the analysis box's own size, or =0) -- the classic small-sample
-# range/smoothness confounding problem in Matern covariance estimation. The
-# visible symptom was a near-uniform SE map for those months (degenerate range
-# means the whole 4x6 deg box looks "equally correlated" to the fit, killing the
-# expected close-to-data/far-from-data SE pattern). Pooling across the year
-# fixes this by giving the covariance-shape estimate ~150 points instead of a
-# handful; the temporal range comes out of the fit too (~0.13 calendar months in
-# practice), rather than being assumed -- if different months turned out to
-# carry real information about each other, this model would show it; here it
-# mostly doesn't, validating the original "treat months independently" instinct
-# while still estimating the spatial shape far more stably than per-month fits
-# could.
-#
-# Mean and SE: GpGp::predictions()'s strategy -- combine obs+pred into one
-# Vecchia ordering and let later prediction points condition on *earlier
-# prediction points* -- is fine when there's enough data, but breaks down once
-# data is sparse relative to the (much denser) prediction grid: prediction
-# points end up conditioning almost entirely on each other, not on data,
-# producing a salt-and-pepper SE (and, faintly, mean) artifact. `kriging_predict`
-# avoids this by conditioning every prediction point *independently* on all
-# n_obs observations (pooled across the year, so n_obs is a few hundred --
-# cheap for an exact, non-approximated GP) -- exact ordinary kriging, computed
-# via GpGp's Vecchia machinery (vecchia_Linv) purely as the computational
-# engine. A single vecchia_Linv call's output row for a prediction point i is
-# [1/sigma_i, -b_1/sigma_i, ..., -b_n/sigma_i], where b = K_obs^-1 k_0 are the
-# kriging weights and sigma_i is the conditional SD -- so both the mean
-# (beta + b^T(y_obs - beta)) and the SE (sigma_i) come straight off that one
-# row, with no need for Linv_mult/L_mult. Validated against a brute-force
-# dense-GP posterior mean/variance for matern_spheretime -- matches to ~1e-15.
-#
-# `<col>_pred_gpgp` is GpGp::predictions()'s own mean (same pooled fit), kept
-# alongside as a reference/comparison column (not used elsewhere in this
-# project).
-#
-# Smoothness is fixed at 1.5 (a conventional Matern choice) rather than
-# estimated jointly: letting it float, the MLE doesn't converge at all (Fisher
-# scoring still hadn't met its tolerance after 100+ iterations, and pushing
-# further triggers a Bessel-function overflow as smoothness drifts toward
-# infinity) -- smoothness and range are notoriously confounded, and unlike the
-# spatial range, pooling more data across months didn't fix this one. Fixing
-# it gives a properly converged fit (small gradient, well-conditioned Fisher
-# information) for the other four parameters, which is what the "Fit summary"
-# tables in the report are built from.
+# how the anomaly is constructed. 
 #
 # Usage (from the repo root):
 #   Rscript code/ohc_gp_interp.R <profiles.csv> <pred_grid.csv> <out.csv> <fit_summary.csv>
@@ -73,13 +21,20 @@ suppressMessages(library(GpGp))
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 4) {
-  stop("usage: Rscript code/ohc_gp_interp.R <profiles.csv> <pred_grid.csv> <out.csv> <fit_summary.csv> [model_cache.rds]")
+  stop("usage: Rscript code/ohc_gp_interp.R <profiles.csv> <pred_grid.csv> <out.csv> <fit_summary.csv> [model_cache.rds] [first|middle|last]")
 }
-profiles_path    <- args[1]
-pred_grid_path   <- args[2]
-out_path         <- args[3]
+profiles_path <- args[1]
+pred_grid_path <- args[2]
+out_path <- args[3]
 fit_summary_path <- args[4]
-model_cache_path <- if (length(args) >= 5) args[5] else NULL
+# Optional args 5+: detect by value so model_cache and month_day can appear in
+# either order.
+month_day        <- "middle"
+model_cache_path <- NULL
+for (opt in args[seq_len(max(0, length(args) - 4)) + 4]) {
+  if (opt %in% c("first", "middle", "last")) month_day <- opt
+  else model_cache_path <- opt
+}
 
 FIXED_SMOOTHNESS <- 1.5
 
@@ -87,21 +42,23 @@ profiles <- fread(profiles_path)
 grid <- fread(pred_grid_path)
 
 depth_cols <- intersect(c("ohc_700_anom", "ohc_2000_anom"), names(profiles))
-# Day-of-year (1-366) as the temporal GP coordinate -- finer-grained than
-# calendar month (1-12) and lets each profile's actual observation day inform
-# the temporal covariance directly. The anomaly subtracted the climatological
-# mean for the calendar month of each profile (see ohc_climatology.py), so
-# the GP still sees de-seasonalized residuals.
 profiles[, day_num := as.integer(format(as.Date(date), "%j"))]
 profiles[, month_str := format(as.Date(date), "%Y-%m-01")]
 months_first <- sort(unique(profiles$month_str))
-# Last day of each calendar month as the prediction temporal coordinate so
-# predictions land at the end of each month (matching the report's monthly maps).
-last_day_yday <- function(first_of_month) {
+
+pred_yday <- function(first_of_month, position) {
   d <- as.Date(first_of_month)
-  as.integer(format(as.Date(format(d + 32, "%Y-%m-01")) - 1, "%j"))
+  target <- switch(position,
+    first  = d,
+    middle = as.Date(format(d, "%Y-%m-15")),
+    last   = as.Date(format(d + 32, "%Y-%m-01")) - 1
+  )
+  as.integer(format(target, "%j"))
 }
-last_day_of <- setNames(vapply(months_first, last_day_yday, integer(1)), months_first)
+month_pred_yday <- setNames(
+  vapply(months_first, pred_yday, integer(1), position = month_day),
+  months_first
+)
 
 # Exact kriging mean + SE at locs_pred, every prediction point conditioned
 # independently on *all* n_obs observations (pooled across the year -- see the
@@ -176,7 +133,7 @@ fit_summary_table <- function(fit, depth) {
     error = function(e) rep(NA_real_, length(free_idx))
   )
   se_nat <- rep(NA_real_, 5)
-  se_nat[free_idx] <- fit$covparms[free_idx] * se_log_free
+  se_nat[free_idx] <- fit$covparms[free_idx] * se_log_free # delta method
 
   out <- data.table(
     depth = depth,
@@ -236,7 +193,7 @@ cat("wrote", nrow(fit_summary), "rows ->", fit_summary_path, "\n")
 rows <- vector("list", length(months_first))
 for (i in seq_along(months_first)) {
   mo <- months_first[i]
-  day_pred <- last_day_of[[mo]]
+  day_pred <- month_pred_yday[[mo]]
   out_row <- list(month = mo, lon = grid$lon, lat = grid$lat)
   any_too_few <- FALSE
   for (col in depth_cols) {
@@ -266,10 +223,10 @@ for (i in seq_along(months_first)) {
   out_row$too_few_profiles <- any_too_few
   out_row$n_profiles <- sum(is.finite(profiles[month_str == mo][[depth_cols[1]]]))
   rows[[i]] <- as.data.table(out_row)
-  cat(sprintf(
-    "month %s (prediction day-of-year=%d): predicted %d depth(s), n_profiles_this_month=%d\n",
-    mo, day_pred, length(depth_cols), out_row$n_profiles
-  ))
+  # cat(sprintf(
+  #  "month %s (prediction day-of-year=%d): predicted %d depth(s), n_profiles_this_month=%d\n",
+  #  mo, day_pred, length(depth_cols), out_row$n_profiles
+  # ))
 }
 
 out <- rbindlist(rows)

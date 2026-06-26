@@ -100,8 +100,7 @@ For this report I deployed one float per 1° cell (24), on the GLORYS 1/12° gri
 
 I downloaded the velocity and temperature data using the `copernicusmarine` python api from the GLORYS12V1 CMEMS product `{"dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1D-m", "variables": ["uo", "vo", "thetao"], "lon_bounds": [-74, -49], "lat_bounds": [30, 48],"depth_bounds": [0, 2300], "time": "2020-01-01 to 2020-12-31 (daily)"` which is **5.88GB**
 
-I used the default Argo mission parameters: full cycle duration of 10 days, descend to the 1000m parking depth,
-drift for ~9 days, dive to 2000m, then ascend to the surface and report a profile, recording the **profile position** at the shallowest point of each cycle.
+I used the default Argo mission parameters: full cycle duration of 10 days, descend to the 1000m parking depth, drift for ~9 days, dive to 2000m, then ascend to the surface and report a profile, recording the **profile position** at the shallowest point of each cycle.
 
 Below is the profiling behavior of one of the virtual floats over its first cycles. Note, because the position of the virtual floats is written every 6 hours of simulation time the virtual float's record that is at 2000m is not recorded, this does not affect the ohc 0-2000m computation.
 
@@ -159,15 +158,8 @@ VLIM = {d: (float((truth_by_deg[0.5][d] * ohc_bias.J_TO_GJ).quantile(0.02)),
 The analysis domain sits on the **Gulf Stream / North Atlantic Current front** — a sharp north–south OHC gradient.
 The 2020-mean GLORYS OHC below  shows high ohc (~90 GJ m⁻²) to the south and low ohc (~45 GJ m⁻²) to the north.
 
-**OHC definition.** For every 1/12° grid cell, OHC (GJ m⁻²) is the integral
-$\text{OHC} = \int_0^{z} \rho\, c_p\, T\, dz$ computed using the trapezoidal rule for $z = 700$ m and $z = 2000$ m where $T$ is the sea water potential temperature in °C reported at 50 standard depth levels (41 levels from 0m-2250m: 0.41m, 1.54m, ..., 644m, 763m, ..., 1942m, 2225m).
-Unlike Levitus et al. [2012], which computed $\rho$ and $c_p$ from annual
-climatological T/S fields, here both are fixed constants -- adequate at this
-study's scope (a single year, a $4°\times6°$ region, and a *bias* between two
-estimators computed the same way, so most of the T/S-dependence common to both
-cancels) but worth revisiting if the analysis later targets absolute OHC
-magnitudes or multi-year trends, where Levitus-style climatological $\rho,c_p$
-would matter more.
+**OHC definition.** For every 1/12° grid cell, OHC (GJ m⁻²) is the integral $\text{OHC} = \int_0^{z} \rho\, c_p\, T\, dz$ computed using the trapezoidal rule for $z = 700$ m and $z = 2000$ m where $T$ is the sea water potential temperature in °C reported at 50 standard depth levels (41 levels from 0m-2250m: 0.41m, 1.54m, ..., 644m, 763m, ..., 1942m, 2225m).
+Unlike Levitus et al. [2012], which computed $\rho$ and $c_p$ from annual climatological T/S fields, here both are fixed constants -- adequate at this study's scope (a single year, a $4°\times6°$ region, and a *bias* between two estimators computed the same way, so most of the T/S-dependence common to both cancels) but worth revisiting if the analysis later targets absolute OHC magnitudes or multi-year trends, where Levitus-style climatological $\rho,c_p$ would matter more.
 
 ```{python}
 #| label: fig-ohc-field-2020
@@ -184,8 +176,8 @@ _ = map_fields_row(
 )
 ```
 
-The floats are advected by the GLORYS velocity at the ~1000 m parking depth. The
-2020-mean `uo`/`vo` near 1000 m below show the strong North Atlantic Gulf Stream current
+The floats are advected by the GLORYS velocity at the ~1000 m parking depth.
+The 2020-mean `uo`/`vo` near 1000 m below show the strong North Atlantic Gulf Stream current
 
 ```{python}
 #| label: fig-velocity-1000
@@ -296,44 +288,18 @@ comp
 
 # OHC Anomaly
 
-Before interpolating, OHC is converted to an **anomaly**: observed OHC minus a
-fixed climatological-mean OHC, so the GP only has to explain deviations from a
-known background state rather than the large-scale Gulf Stream front itself.
+**Climatology source.** `data/rg_climatology/RG_ArgoClim_Temperature_2019.nc` (the [RG Argo Climatology](https://sio-argo.ucsd.edu/RG_Climatology.html)) contains `ARGO_TEMPERATURE_MEAN`: a single **static** mean temperature field (Jan 2004 -- Dec 2018, no seasonal/monthly dimension) on a 1° lat/lon grid and 58 pressure levels (2.5--1975 dbar).
+Its longitude is 0--360°E and is converted to -180..180° on load.
 
-**Climatology source.** `data/rg_climatology/RG_ArgoClim_Temperature_2019.nc`
-(the [RG Argo Climatology](https://sio-argo.ucsd.edu/RG_Climatology.html))
-contains `ARGO_TEMPERATURE_MEAN`: a single **static** mean temperature field
-(Jan 2004 -- Dec 2018, no seasonal/monthly dimension) on a 1° lat/lon grid and
-58 pressure levels (2.5--1975 dbar). Its longitude is 0--360°E and is converted
-to -180..180° on load.
+The twelve monthly extension files `RG_ArgoClim_2020{01-12}_2019.nc` each contain the observed `ARGO_TEMPERATURE_ANOMALY` from the 2004--208 mean for each calendar month of 2020.
 
-The twelve monthly extension files `RG_ArgoClim_2020{01-12}_2019.nc` each
-contain the **actual observed** `ARGO_TEMPERATURE_ANOMALY` for one calendar month
-of 2020, expressed as a departure from that same 2004--2018 mean. **Option A**
-(default) adds each month's extension anomaly back to the static mean,
-giving the actual 2020 RG temperature field for each of the 12 months
-(`ohc_climatology.py:load_rg_extensions`). This directly replicates the observed
-RG OHC time series visible at the data source. **Option B** uses only the static
-2004--2018 mean (no seasonal or interannual variation), kept below for comparison.
+**Climatological OHC field.** Either mean-temperature field is integrated over depth with the same trapezoidal rule used for GLORYS (`ohc.profile_ohc`, treating RG's pressure in dbar as meters, the same approximation already used throughout this report), giving an `ohc_700`/`ohc_2000` field on RG's native 1° grid.
 
-**Climatological OHC field.** Either mean-temperature field is integrated over
-depth with the *same* trapezoidal rule used for GLORYS (`ohc.profile_ohc`,
-treating RG's pressure in dbar as metres, the same approximation already used
-throughout this report), giving an `ohc_700`/`ohc_2000` field on RG's native 1°
-grid -- static for Option B, 12-month for Option A
-(`code/ohc_climatology.py:climatological_ohc_field`, which doesn't care which).
+**Linear interpolation from 1° to 1/12°.** Because the true GLORYS temperature field is on a 1/12° grid, `code/ohc_climatology.py` bilinearly interpolates the climatological ohc to the 1/12° grid for each month.
 
-**Anomaly.** For a profile or grid cell at `(lat, lon)`, in calendar month $m$:
+**Anomaly.** For a profile or grid cell at $x = (x_{lat}, x_{lon})$ observed at day $t$, the OHC anomaly is calculated by subtracting the spatially interpolated OHC to the matching calendar month that grid cell was observed in from the observed daily OHC value.
 
-$$\text{OHC anomaly} = \text{OHC}_{\text{obs}}(\text{lat, lon}) - \text{OHC}_{\text{clim}}(\text{lat, lon}\,[,\, m])$$
-
-where $\text{OHC}_{\text{clim}}$ is bilinearly interpolated (RG's 1° grid is
-much coarser than the analysis grid) onto the same `(lat, lon)` as the
-observation -- the virtual-float profile position for the synthetic-Argo
-anomaly, or the native 1/12° GLORYS grid for the truth anomaly below -- and, for
-Option A, indexed to the matching calendar month $m$. The same anomaly is added
-back to the climatology after GP interpolation (see below) to recover an
-absolute-OHC field.
+The same anomaly is added back to the climatology after GP interpolation (see below) to recover an absolute-OHC field.
 
 ```{python}
 #| label: climatology-prep
@@ -343,8 +309,8 @@ import ohc_climatology as ohc_clim
 mean_da = ohc_clim.load_rg_mean()
 ext_da  = ohc_clim.load_rg_extensions(year=2020)   # 12 monthly 2020 anomalies vs 2004-2018 mean
 
-clim_field_A = ohc_clim.climatological_ohc_field(mean_da + ext_da).compute()  # Option A: actual 2020 (default)
-clim_field_B = ohc_clim.climatological_ohc_field(mean_da)                     # Option B: static 2004-2018 mean
+clim_field_A = ohc_clim.climatological_ohc_field(mean_da + ext_da).compute() 
+clim_field_B = ohc_clim.climatological_ohc_field(mean_da) # static 2004-2018 mean
 
 clim_field = clim_field_A  # used throughout the rest of the report
 
@@ -352,13 +318,13 @@ clim_field = clim_field_A  # used throughout the rest of the report
 truth_anom = ohc_clim.truth_ohc_anomaly(truth_field, clim_field)
 truth_anom_cells = ohc_clim.to_cells_table(truth_anom)
 
-# Shared diverging colour range for every *anomaly* map below (truth, GP, and
-# Levitus), so they're visually comparable -- anchored to the truth anomaly's
-# own spread since that's the reference both estimators are trying to recover.
+# Shared diverging colour range for every *anomaly* map below
 ANOM_VLIM = {d: float(truth_anom_cells[d].abs().quantile(0.98)) * ohc_bias.J_TO_GJ for d in DEPTHS}
 ```
 
-![Published RG Climatology global-mean temperature time series (source: sio-argo.ucsd.edu)](../data/rg_climatology/Temperature_2019.png){width=90%}
+Below is comparison of the RG climatology published temperature trend and my recreation
+
+![Published RG Climatology global-mean temperature time series (source: sio-argo.ucsd.edu)](../data/rg_climatology/Temperature_2019.png){width=50%}
 
 ```{python}
 #| label: fig-rg-timeseries-check
@@ -428,43 +394,9 @@ fig.tight_layout()
 ```
 
 ```{python}
-#| label: fig-climatology-seasonality
-#| fig-cap: "RG climatological OHC, area-mean over the analysis region: seasonal (Option A) vs static (Option B)"
-
-def _box_mean(field, bounds=ANALYSIS_BOUNDS, value_cols=DEPTHS):
-    la0, la1, lo0, lo1 = bounds
-    sub = field.sel(latitude=slice(la0, la1), longitude=slice(lo0, lo1))
-    w = np.cos(np.deg2rad(sub["latitude"]))
-    return sub[list(value_cols)].weighted(w).mean(dim=("latitude", "longitude"))
-
-box_A = _box_mean(clim_field_A)  # dims: month
-box_B = _box_mean(clim_field_B)  # scalar
-
-fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharex=True)
-months = np.arange(1, 13)
-for ax, d in zip(axes, DEPTHS):
-    ax.plot(months, box_A[d] * ohc_bias.J_TO_GJ, "-o", label="Option A (actual 2020)")
-    ax.axhline(float(box_B[d]) * ohc_bias.J_TO_GJ, color="0.4", ls="--", label="Option B (static 2004-2018 mean)")
-    ax.set_title(f"{d} background OHC, analysis-region mean")
-    ax.set_xlabel("calendar month")
-    ax.set_xticks(months)
-    ax.grid(alpha=0.2)
-axes[0].set_ylabel("OHC (GJ m$^{-2}$)")
-axes[0].legend(frameon=False, fontsize="small")
-fig.tight_layout()
-```
-
-The time series above area-averages over the analysis box, hiding how the
-climatology varies spatially -- it sits on the same Gulf Stream front as the
-GLORYS truth field, just on RG's much coarser native 1° grid.
-
-```{python}
 #| label: fig-climatology-map-static
 #| code-summary: "RG climatology (static), native 1° grid vs interpolated to 1/12°"
 
-# Bilinearly interpolated onto the *full* advection-domain 1/12° grid (not just
-# the analysis box) so both tabs cover the same wider extent and are directly
-# comparable -- see the "From 1° to 1/12°" note above.
 _clim_B_interp = ohc_clim.climatology_on_grid(
     clim_field_B, truth_field_full["latitude"].values, truth_field_full["longitude"].values
 )
@@ -487,27 +419,12 @@ _ = map_fields_row(
 )
 ```
 
-**From 1° to 1/12°.** Every map elsewhere in this report that uses the
-climatology (the GP/Levitus "mean field" tabs, the truth/float anomalies) needs
-it on the native 1/12° grid, not RG's native 1°. `climatology_on_grid`
-(`code/ohc_climatology.py`) does this with a single `xarray.Dataset.interp()`
-call, which defaults to **linear interpolation** -- bilinear, for a regular 2D
-lat/lon grid: each 1/12° target point is a distance-weighted blend of the four
-surrounding 1° climatology cells. This is plain upsampling, not a model -- it
-can only ever produce smooth in-between values, never new structure finer than
-the original 1° grid, so any fine-scale-looking detail in the interpolated map
-below is a smoothing artifact of the four-corner blend, not real climatological
-structure RG actually resolves. The two tabs below show this directly: a
-"Native 1°" map (blocky, the real resolution) and an "Interpolated to 1/12°"
-map (smooth gradients between the same blocks, no new information added).
 
 ```{python}
 #| label: fig-climatology-map-seasonal
 #| output: asis
 #| code-summary: "RG climatology (Option A, seasonal) by month, native 1° grid vs interpolated to 1/12°"
 
-# Fake 2020 calendar dates on the integer 1-12 month coordinate so this reuses
-# plot_monthly_cell_maps like every other monthly facet in the report.
 _clim_A_months = [pd.Timestamp(2020, m, 1) for m in clim_field_A["month"].values]
 _clim_A_plot = clim_field_A.sel(
     latitude=slice(TRUTH_BOUNDS[0] - 2, TRUTH_BOUNDS[1] + 2),
@@ -515,10 +432,6 @@ _clim_A_plot = clim_field_A.sel(
 ).assign_coords(month=_clim_A_months)
 _clim_A_native_cells = ohc_clim.to_cells_table(_clim_A_plot)
 
-# Same field, bilinearly interpolated onto the GLORYS native 1/12° grid --
-# the *full* advection-domain grid (not just the analysis box) so this tab
-# covers the same wider extent as the native 1° map and the two are directly
-# comparable, the same convention as the Option B tabset above.
 _clim_A_interp_cells = ohc_clim.climatology_cells_table(
     clim_field_A, truth_field_full["latitude"].values, truth_field_full["longitude"].values,
     months=_clim_A_months,
@@ -535,12 +448,17 @@ def show_clim_map(kind, d):
         return ohc_bias.plot_monthly_cell_maps(
             _clim_A_interp_cells, d, vmin=cmin, vmax=cmax, width=TABSET_FIGW,
             title=f"RG climatology (Option A, seasonal) {d} by month (bilinear -> 1/12°)")
+    if kind == "anom":
+        return ohc_bias.plot_monthly_cell_maps(
+            truth_anom_cells, d, vmin=-ANOM_VLIM[d], vmax=ANOM_VLIM[d], cmap="RdBu_r",
+            cbar_label=f"{d} anomaly (GJ m$^{{-2}}$)", width=TABSET_FIGW,
+            title=f"GLORYS truth {d} anomaly vs RG climatology (native 1/12°)") 
 
 _emit("::: {.panel-tabset}")
 for d in DEPTHS:
     _emit(f"## {DEPTH_LABEL[d]}")
     _emit("::: {.panel-tabset}")
-    for kind, label in [("native", "Native 1°"), ("interp", "Interpolated to 1/12°")]:
+    for kind, label in [("native", "Native 1°"), ("interp", "Interpolated to 1/12°"), ("amom","Anomaly")]:
         _emit(f"### {label}")
         _show_fig(show_clim_map(kind, d))
     _emit(":::")
@@ -548,163 +466,105 @@ _emit(":::")
 ```
 
 ```{python}
-#| label: fig-truth-anomaly
-#| output: asis
-#| code-summary: "GLORYS truth OHC anomaly by month, in the analysis region"
+#| label: fig-climatology-seasonality
+#| fig-cap: "RG climatological OHC, area-mean over the analysis region"
 
-_emit("::: {.panel-tabset}")
-for d in DEPTHS:
-    _emit(f"## {DEPTH_LABEL[d]}")
-    fig = ohc_bias.plot_monthly_cell_maps(
-        truth_anom_cells, d, vmin=-ANOM_VLIM[d], vmax=ANOM_VLIM[d], cmap="RdBu_r",
-        cbar_label=f"{d} anomaly (GJ m$^{{-2}}$)", width=TABSET_FIGW,
-        title=f"GLORYS truth {d} anomaly vs RG climatology (native 1/12°)")
-    _show_fig(fig)
-_emit(":::")
+def _box_mean(field, bounds=ANALYSIS_BOUNDS, value_cols=DEPTHS):
+    la0, la1, lo0, lo1 = bounds
+    sub = field.sel(latitude=slice(la0, la1), longitude=slice(lo0, lo1))
+    w = np.cos(np.deg2rad(sub["latitude"]))
+    return sub[list(value_cols)].weighted(w).mean(dim=("latitude", "longitude"))
+
+box_A = _box_mean(clim_field_A)  # dims: month
+box_B = _box_mean(clim_field_B)  # scalar
+
+fig, axes = plt.subplots(1, 2, figsize=(9, 4), sharex=True)
+months = np.arange(1, 13)
+for ax, d in zip(axes, DEPTHS):
+    ax.plot(months, box_A[d] * ohc_bias.J_TO_GJ, "-o", label="Option A (actual 2020)")
+    ax.axhline(float(box_B[d]) * ohc_bias.J_TO_GJ, color="0.4", ls="--", label="Option B (static 2004-2018 mean)")
+    ax.set_title(f"{d} background OHC, analysis-region mean")
+    ax.set_xlabel("calendar month")
+    ax.set_xticks(months)
+    ax.grid(alpha=0.2)
+axes[0].set_ylabel("OHC (GJ m$^{-2}$)")
+axes[0].legend(frameon=False, fontsize="small")
+fig.tight_layout()
 ```
 
+# GP interpolation with virtual floats
 
-# GP interpolation (Vecchia / GpGp)
+## Background
+Now we interpolate the sparse virtual-float OHC anomalies onto the full analysis-domain grid at the
+native 1/12° resolution, using a Gaussian process model fit with `GpGp`.
+The predicted anomaly field is added back to the climatological mean to give an absolute-OHC field directly
+comparable to the GLORYS truth on the same native grid.
 
-An alternative to the bin-and-average estimator above: interpolate the sparse
-virtual-float OHC anomalies above onto the full analysis-domain grid at the
-native 1/12° resolution, using a Vecchia-approximated Gaussian process
-(`GpGp::fit_model`, run via `code/ohc_gp_interp.R`). The predicted anomaly field
-is added back to the climatological mean to give an absolute-OHC field directly
-comparable, cell-by-cell, to the GLORYS truth on the same native grid.
+`code/ohc_gp_interp.R` fits one GP per depth with covariance function `matern_spheretime`, pooling all ~150 profiles across the year, with covariance parameters $\theta$ = ($\sigma^2$, $\rho_s$, $\rho_t$, $\nu$, $\tau^2$) = (variance, spatial range, temporal range, smoothness, nugget).
 
-**One pooled spatio-temporal fit per depth, not one per month.** An earlier
-version fit `matern_sphere` independently on each month's 3-41 profiles. With so
-few points, the (spatial range, smoothness) maximum-likelihood estimate is
-poorly identified -- it ran away to wildly implausible values in roughly half
-the months (fitted spatial ranges anywhere from 0 to >100x the analysis box's
-own size). The visible symptom was a near-uniform SE map for those months: a
-degenerate range means the whole 4°x6° box looks "equally correlated" to the
-fit, killing the expected close-to-data/far-from-data SE pattern.
-
-Since the anomaly is already de-seasonalized (relative to the RG climatology's
-calendar-month mean, above), different months' anomalies are reasonable to
-treat as draws from one underlying spatio-temporal process rather than
-unrelated one-off spatial snapshots. `code/ohc_gp_interp.R` now fits **one**
-`matern_spheretime` GP per depth, pooling all ~150 profiles across the year
-(`locs = (lon, lat, calendar_month)`) -- the temporal range is *estimated*, not
-assumed, so if different months really did carry no information about each
-other, the fit would show a temporal range near zero; in practice it comes out
-around 0.13 calendar months (effectively negligible, validating the original
-"treat months independently" instinct) while the *spatial* shape is now
-estimated from ~150 points instead of a handful, and stable across refits
-(spatial range consistently ~0.0027 rad/~17 km, vs. the earlier per-month range
-swinging from 0 to >4 rad). Predicting a given month then conditions on *every*
-profile across the year, with the fitted temporal range naturally down-weighting
-temporally-distant ones.
-
-**Mean and standard error.** `GpGp::predictions()`'s own strategy -- combine
-obs+pred into one Vecchia ordering and let later prediction points condition on
-*earlier prediction points* -- is fine when there's enough data, but breaks
-down once data is sparse relative to the (much denser) prediction grid: our
-prediction grid (~3500 points, ~9 km spacing) is far denser than the pooled
-~150 profiles, so prediction points can end up conditioning on each other
-rather than on data. `code/ohc_gp_interp.R`'s `kriging_predict` avoids this by
-conditioning every prediction point *directly and independently* on *all* n_obs
-profiles, computing both the mean and the SE itself -- exact ordinary kriging,
-not a truncated Vecchia approximation, with GpGp's Vecchia machinery
-(`vecchia_Linv`) used purely as the computational engine (cheap here: n_obs is
-in the low hundreds after pooling). Validated against a brute-force dense-GP
-posterior mean/variance for `matern_spheretime` (matches to ~1e-15).
-`GpGp::predictions()`'s own mean (same pooled fit) is kept alongside as a
-`_pred_gpgp` comparison column (not used elsewhere in this report). The SE is
-`NaN` if a depth has fewer than 5 profiles across the *entire year* (`fit_pooled`
-isn't attempted at all -- see `too_few_profiles`); this never triggers in the
-2020 data.
-
-**The matrix math behind `kriging_predict`.** Fix one depth. Let $y \in
-\mathbb{R}^{n}$ be *all* of that depth's profile OHC anomalies pooled across the
-year, at space-time locations $s_1, \dots, s_n = (\text{lon}_i, \text{lat}_i,
-\text{month}_i)$ (`fit$y`, `fit$locs`), and let $s_0 = (\text{lon}_0,
-\text{lat}_0, m_0)$ be one prediction-grid point in target month $m_0$
-(`locs_pred` -- the native 1/12° grid, paired with whichever month is currently
-being predicted). Profile positions and grid points are disjoint sets in space;
-$s_0$'s month coordinate is fixed to the target month while $s_1,\dots,s_n$
-range over every month in the pooled fit, so a profile sitting inside some grid
-cell doesn't make that grid point "observed" -- it just means $s_0$ predicts
-with a small $\sigma_0$ at that location *for nearby months* (per the fitted
-temporal range), tapering off in calendar time. `GpGp::fit_model` (called by
-`fit_pooled`) fits the mean coefficient $\hat\beta$ (`fit$betahat`) and the
-`matern_spheretime` covariance parameters $\hat\theta$ = (variance $\sigma^2$,
-spatial range $\rho_s$, temporal range $\rho_t$, smoothness $\nu$, nugget
-fraction $\eta$) (`fit$covparms`), defining the covariance function
-$k_{\hat\theta}(s, s')$ used everywhere below. Concretely, for two
-space-time locations $s = (\text{lon}, \text{lat}, t)$ and $s' =
-(\text{lon}', \text{lat}', t')$, with great-circle distance $d_{\mathrm{gc}}$
-in radians and $t, t'$ as day-of-year:
+The `matern_spheretime` function embeds the (lat, lon) into  3D coordinates, and then inputs the resulting locations into the `matern_spacetime` covariance function wtih parameterization 
 
 $$
-r(s, s') = \sqrt{\left(\frac{d_{\mathrm{gc}}(s,s')}{\rho_s}\right)^2 +
-              \left(\frac{|t - t'|}{\rho_t}\right)^2},
+k_{\theta}(x, y) = \sigma^2\,\frac{2^{1-\nu}}{\Gamma(\nu)}
+  (\|D^{-1}(x-y)\|)^\nu\,K_\nu\!\left(\|D^{-1}(x-y)\|\right)
+  + \sigma^2\tau^2\,\mathbf{1}_{x = y},
 $$
 
-$$
-k_{\hat\theta}(s, s') = \sigma^2(1 - \eta)\,M_\nu\!\left(r(s,s')\right)
-  + \sigma^2 \eta\,\mathbf{1}_{s = s'},
-$$
+where $D = \operatorname{diag}(\rho_s,\rho_s,\rho_s,\rho_t)$ and $K_\nu$ is the modified Bessel function of the second kind. 
 
-where $M_\nu(r) = \frac{2^{1-\nu}}{\Gamma(\nu)}(\sqrt{2\nu}\,r)^\nu
-K_\nu(\sqrt{2\nu}\,r)$ is the Matérn correlation at effective distance $r$
-($K_\nu$ the modified Bessel function of the second kind). Smoothness is fixed
-at $\nu = \tfrac{3}{2}$, giving the closed form $M_{3/2}(r) = (1 +
-\sqrt{3}\,r)\,e^{-\sqrt{3}\,r}$. The nugget $\eta \in [0,1]$ is a
-dimensionless fraction: $\sigma^2(1-\eta)$ is the smooth (spatially-correlated)
-variance and $\sigma^2\eta$ the pure measurement-error variance at coincident
-locations. Spatial range $\rho_s$ is in radians (so $\rho_s = 0.0027$ rad
-$\approx 17$ km); temporal range $\rho_t$ is in days of year.
+Smoothness is fixed at $\nu = \tfrac{3}{2}$, such that the function is exactly 1-time mean-square differentiable.
+*Note, If the smoothness parameter is free the Fisher scoring algorithm does not converge.*
 
-`kriging_predict` sets the neighbour count to $n$ (all pooled profiles), so what
-follows is exact ordinary kriging, not a truncated Vecchia approximation; the
-Vecchia machinery is used purely as the computational engine.
+When $\nu = \tfrac{3}{2}$, the covariance function has the closed form $(1+r)\,e^{-r}$
+where $r = \|D^{-1}(s-s')\|$.
 
-Writing $K \in \mathbb{R}^{n\times n}$ for the observation covariance matrix
-$K_{ij} = k_{\hat\theta}(s_i, s_j)$, $k_0 \in \mathbb{R}^n$ for the
-observation-to-prediction cross-covariance $k_{0,i} = k_{\hat\theta}(s_i, s_0)$,
-and $k_{00} = k_{\hat\theta}(s_0, s_0)$ the prior variance at $s_0$, the
-classical kriging predictor is
+::: {.callout-note collapse="true"}
+## Derivation: Matérn $\nu=\tfrac{3}{2}$ closed form
+
+The general Matérn covariance (dropping $\sigma^2$ and the nugget) is
 
 $$
-\hat y(s_0) = \hat\beta + b^\top\,(y - \hat\beta \mathbf{1}_n),
-\qquad b = K^{-1}k_0,
-\qquad
-\widehat{\mathrm{Var}}\big[y(s_0)\big] = k_{00} - k_0^\top K^{-1} k_0 .
+k(r) = \frac{2^{1-\nu}}{\Gamma(\nu)}\,r^{\nu}\,K_{\nu}(r), \qquad r \geq 0.
 $$
 
-`kriging_predict` never forms $K$ or $K^{-1}$ densely. Instead a single call to
-**`vecchia_Linv(covparms, covfun_name, locs_all, NNarray, start_ind)`** factors
-$K$ via its Cholesky factor $K = LL^\top$ and, for the prediction row, directly
-returns *both* the kriging weight vector $b$ and the conditional standard
-deviation $\sigma_0 = \sqrt{k_{00} - k_0^\top b}$, packed into one sparse row
+For $\nu = p + \tfrac{1}{2}$ with $p$ a non-negative integer, $K_\nu$ reduces to an elementary function via the identity
 
 $$
-\texttt{Linv\_all[i, ]} = \big[\,1/\sigma_0,\ -b_1/\sigma_0,\ \dots,\ -b_n/\sigma_0\,\big],
+K_{p+1/2}(r) = \sqrt{\frac{\pi}{2r}}\,e^{-r}\sum_{k=0}^{p}\frac{(p+k)!}{k!\,(p-k)!}\,(2r)^{-k}.
 $$
 
-with `NNarray[i, ]` giving the column indices ($s_0$ itself, then
-$s_1,\dots,s_n$) those entries apply to (every prediction row's neighbour set is
-simply *all* n profiles, in any order, since `kriging_predict` always uses full
-conditioning here; `find_ordered_nn` -- with `st_scale` set to the fitted
-spatial/temporal ranges, so the two are on a comparable footing -- separately
-supplies the structurally-required, but otherwise unused, neighbour sets for the
-observation rows themselves). Both quantities the report needs come straight
-off that one row -- no `Linv_mult`/`L_mult` pass over the data required:
+Setting $p = 1$ (so $\nu = \tfrac{3}{2}$) gives $K_{3/2}(r) = \sqrt{\tfrac{\pi}{2r}}\,e^{-r}(1 + r^{-1})$,
+i.e.\ $K_{3/2}(r) = \sqrt{\tfrac{\pi}{2}}\,r^{-3/2}\,e^{-r}(r+1)$.
+
+Substituting into the general form:
 
 $$
-b_k = -\frac{\texttt{Linv\_all[i,k+1]}}{\texttt{Linv\_all[i,1]}},
-\qquad
-\hat y(s_0) = \hat\beta + \sum_{k=1}^n b_k\,(y_k - \hat\beta),
-\qquad
-\widehat{\mathrm{Var}}\big[y(s_0)\big] = \frac{1}{(\texttt{Linv\_all[i,1]})^2}.
+k(r) = \frac{2^{1-3/2}}{\Gamma(3/2)}\,r^{3/2}\cdot\sqrt{\tfrac{\pi}{2}}\,r^{-3/2}\,e^{-r}(1+r)
+      = \frac{2^{-1/2}}{\tfrac{\sqrt{\pi}}{2}}\cdot\frac{\sqrt{\pi}}{\sqrt{2}}\,e^{-r}(1+r).
 $$
+
+Collecting constants: $\dfrac{2^{-1/2}}{\sqrt{\pi}/2}\cdot\dfrac{\sqrt{\pi}}{\sqrt{2}} = \dfrac{2^{-1/2}\cdot 2\cdot\sqrt{\pi}}{\sqrt{\pi}\cdot\sqrt{2}} = \dfrac{2\cdot 2^{-1/2}}{2^{1/2}} = 1$.
+
+Therefore
+
+$$
+\boxed{k(r) = (1+r)\,e^{-r}},
+$$
+
+where $r = \|D^{-1}(s-s')\|$ absorbs the anisotropic scaling by $D$.
+:::
+
+The nugget $\sigma^2\tau^2$ is added to the diagonal (not $\tau^2$ alone), so $k(s,s) = \sigma^2(1+\tau^2)$; $\tau^2 \geq 0$ is a dimensionless scale relative to the process variance. Spatial range $\rho_s$ is in chord-distance units on the unit sphere ($\rho_s \approx 0.0027 \approx 17$ km); temporal range $\rho_t$ is in days of year.
+
+## Model Fit
+`GpGp::fit_model` fits the mean coefficient $\hat\beta$ (`fit$betahat`) and the
+`matern_spheretime` covariance parameters.
+
+Asymptotic standard errors from `fit$info` (log scale) are transformed back to natural scale with the delta method: ${\mathrm{se}}(\theta) \approx \theta\, {\mathrm{se}}(\log\theta)$.
 
 ```{python}
-#| label: gp-interp-prep
-#| code-summary: "Build float OHC anomalies and run the Vecchia GP (GpGp) interpolation"
+#| label: tbl-gp-fit-diagnostics
+#| code-summary: "Per-depth fit diagnostics: log-likelihood, convergence, profile count"
 sim_anom = ohc_clim.float_ohc_anomalies(sim, clim_field)
 
 _GP_DIR = "../data/gp_interp"
@@ -721,6 +581,9 @@ mean_field_cells = ohc_clim.climatology_cells_table(
     clim_field, truth_field["latitude"].values, truth_field["longitude"].values,
     months=_truth_monthly["month"].values,
 )
+
+# Temporal prediction point within each month: "first" (1st), "middle" (15th), "last" (last day).
+_GP_MONTH_DAY = "middle"
 
 # Prediction resolutions -- add entries here to predict on additional grids.
 _GP_RES_LABELS  = {1/12: "1/12° (native)", 0.5: "1/2°", 1.0: "1°"}
@@ -741,11 +604,17 @@ ohc_clim.write_profile_csv(sim_anom, _profiles_csv)
 # First iteration fits the model and saves it to cache; subsequent iterations load it.
 for deg, out_csv in _virt_out_csvs.items():
     ohc_clim.run_gp_interp(
-        _profiles_csv, _pred_grid_csvs[deg], out_csv, _fit_summary_csv, model_cache=_model_cache
+        _profiles_csv, _pred_grid_csvs[deg], out_csv, _fit_summary_csv,
+        model_cache=_model_cache, month_day=_GP_MONTH_DAY,
     )
 
 gp_fit_summary = ohc_clim.load_gp_fit_summary(_fit_summary_csv)
+gp_fit_summary.groupby("depth")[["loglik", "converged", "n_obs"]].first()
+```
 
+```{python}
+#| label: gp-interp-prep
+#| code-summary: "Build float OHC anomalies and run the GpGp interpolation"
 def build_gp_res_ctx(out_csv, deg, profiles_df=None):
     """Load GP predictions from out_csv and assemble the display context for resolution deg."""
     lats, lons = _grid_lats_lons(deg)
@@ -776,6 +645,7 @@ def build_gp_res_ctx(out_csv, deg, profiles_df=None):
         cells=cells, se_cells=se_cells, anom_cells=anom_cells,
         obs_anom_cells=obs_anom_cells, bias_cells=bias_cells,
         mean_cells=mean_cells, truth_cells=truth_by_deg[deg],
+        obs_profiles=profiles_df,
     )
 
 def build_gp_ctx(out_csvs, profiles_df=None):
@@ -784,15 +654,6 @@ def build_gp_ctx(out_csvs, profiles_df=None):
 
 _virtual_ctx = build_gp_ctx(_virt_out_csvs, profiles_df=sim_anom)
 ```
-
-**Fit summary.** Mean and covariance parameter estimates for the two pooled
-`matern_spheretime` fits above, with asymptotic standard errors from
-`fit$info` (the Fisher information `fit_model` reports for the covariance
-parameters it actually estimates, propagated from the log scale it optimizes
-on via the delta method: $\widehat{\mathrm{se}}(\theta) = \theta \times
-\widehat{\mathrm{se}}(\log\theta)$). `smoothness` has no SE -- it's fixed at
-1.5, not estimated (see the note above on why letting it float left the
-likelihood unconverged).
 
 ```{python}
 #| label: tbl-gp-fit-summary
@@ -826,15 +687,60 @@ _disp = gp_fit_summary.copy()
 _disp["estimate"] = _disp.apply(lambda r: r["estimate"] * _scale[r["parameter"]], axis=1)
 _disp["std_error"] = _disp.apply(lambda r: r["std_error"] * _scale[r["parameter"]], axis=1)
 fit_table = _fmt_fit_summary(_disp)
-fit_table.index.name = "parameter (units: mean/variance in GJ/m2, GJ2/m4; spatial_range in km; temporal_range in days; nugget relative to variance)"
+fit_table.index.name = "parameter"
 fit_table
 ```
 
-```{python}
-#| label: tbl-gp-fit-diagnostics
-#| code-summary: "Per-depth fit diagnostics: log-likelihood, convergence, profile count"
-gp_fit_summary.groupby("depth")[["loglik", "converged", "n_obs"]].first()
-```
+**Units** mean (GJ m$^{{-2}}$), variance (GJ m$^{{-4}}$), spatial_range (km), temporal_range (days), nugget (relative fraction of variance)
+
+
+## Predictions
+
+Use `GpGp`'s machinery but perform ordinary kriging by conditioning every prediction point on all observed profiles.
+Predictions are made at the center of grid cells on the 15th of each month (configurable via `_GP_MONTH_DAY`: `"first"`, `"middle"`, or `"last"`).
+
+::: {.callout-note collapse="true"}
+## `kriging_predict` logic
+
+Let $y \in \mathbb{R}^{n}$ be *all* of that depth's profile OHC anomalies pooled across the
+year, at space-time locations $s_1, \dots, s_n$ (`fit$y`, `fit$locs`), and let $s_0$ be one prediction point.
+
+`kriging_predict` sets the neighbour count to $n$ (all pooled profiles).
+
+Writing $K \in \mathbb{R}^{n\times n}$ for the observation covariance matrix
+$K_{ij} = k_{\hat\theta}(s_i, s_j)$, $k_0 \in \mathbb{R}^n$ for the
+observation-to-prediction cross-covariance $k_{0,i} = k_{\hat\theta}(s_i, s_0)$,
+and $k_{00} = k_{\hat\theta}(s_0, s_0)$ the prior variance at $s_0$, the
+classical kriging predictor is
+
+$$
+\hat y(s_0) = \hat\beta + b^\top\,(y - \hat\beta \mathbf{1}_n),
+\qquad b = K^{-1}k_0,
+\qquad
+\widehat{\mathrm{Var}}\big[y(s_0)\big] = k_{00} - k_0^\top K^{-1} k_0 .
+$$
+
+`kriging_predict` calls `Linv_all <- vecchia_Linv(covparms, covfun_name, locs_all, NNarray, start_ind)` factors for the Cholesky factorization $K = LL^\top$. 
+For the prediction row, directly
+returns *both* the kriging weight vector $b$ and the conditional standard
+deviation $\sigma_0 = \sqrt{k_{00} - k_0^\top b}$, packed into one sparse row
+
+$$
+\texttt{Linv\_all[i, ]} = \big[\,1/\sigma_0,\ -b_1/\sigma_0,\ \dots,\ -b_n/\sigma_0\,\big],
+$$
+
+such that
+
+$$
+b_k = -\frac{\texttt{Linv\_all[i,k+1]}}{\texttt{Linv\_all[i,1]}},
+\qquad
+\hat y(s_0) = \hat\beta + \sum_{k=1}^n b_k\,(y_k - \hat\beta),
+\qquad
+\widehat{\mathrm{Var}}\big[y(s_0)\big] = \frac{1}{(\texttt{Linv\_all[i,1]})^2}.
+$$
+
+:::
+
 
 ```{python}
 #| label: gp-interp-maps
@@ -880,11 +786,35 @@ def make_gp_map(c, kind, d, res_label):
 
 GP_MAP_KINDS = [("gp_mean", "Mean field (climatology)"),
                 ("obs_anom", "Observed Argo anomaly"),
+                ("obs_anom_table", "Observed Argo anomaly table"),
                 ("gp_anom", "GP-interpolated Argo anomaly"),
                 ("gp", "GP-interpolated Argo ohc"),
                 ("gp_se", "GP standard error"),
                 ("truth_native", "GLORYS truth"),
                 ("gp_bias", "GP - truth bias")]
+
+_GP_TABLE_KINDS = {"obs_anom_table"}
+
+def make_gp_table(c, kind, d):
+    """Return a per-month summary DataFrame for table kinds, or None if no profiles."""
+    if kind == "obs_anom_table":
+        profiles = c.get("obs_profiles")
+        if profiles is None:
+            return None
+        col = f"{d}_anom"
+        df = profiles.copy()
+        df["_month"] = pd.to_datetime(df["date"]).dt.to_period("M")
+        grp = df.groupby("_month")[col]
+        tbl = pd.DataFrame({
+            "n":              grp.count(),
+            "mean": (grp.mean() * ohc_bias.J_TO_GJ).round(3),
+            "sd":   (grp.std()  * ohc_bias.J_TO_GJ).round(3),
+            "min":  (grp.min()  * ohc_bias.J_TO_GJ).round(3),
+            "max":  (grp.max()  * ohc_bias.J_TO_GJ).round(3),
+        })
+        tbl.index = [str(m) for m in tbl.index]
+        tbl.index.name = "month"
+        return tbl
 
 def emit_gp_map_tabset(ctx):
     """Emit depth → resolution → map-kind tabset from a {res_label: c} context dict."""
@@ -897,7 +827,12 @@ def emit_gp_map_tabset(ctx):
             _emit("::: {.panel-tabset}")
             for kind, label in GP_MAP_KINDS:
                 _emit(f"#### {label}")
-                _show_fig(make_gp_map(c, kind, d, res_label))
+                if kind in _GP_TABLE_KINDS:
+                    tbl = make_gp_table(c, kind, d)
+                    if tbl is not None:
+                        display(tbl)
+                else:
+                    _show_fig(make_gp_map(c, kind, d, res_label))
             _emit(":::")
         _emit(":::")
     _emit(":::")
@@ -920,6 +855,8 @@ def emit_gp_violin_tabset(ctx):
 emit_gp_map_tabset(_virtual_ctx)
 ```
 
+## Bias vs Interpolation SE
+
 ```{python}
 #| label: fig-gp-bias-se-violin
 #| output: asis
@@ -927,7 +864,7 @@ emit_gp_map_tabset(_virtual_ctx)
 emit_gp_violin_tabset(_virtual_ctx)
 ```
 
-# GP interpolation with real Argo coverage
+# GP interpolation with real floats
 
 The previous GP conditions on virtual float positions sampled from GLORYS velocity
 trajectories. A key question is whether the **spatial coverage pattern** of the
@@ -968,7 +905,7 @@ ohc_clim.write_profile_csv(real_argo_anom, _real_profiles_csv)
 for deg, out_csv in _real_out_csvs.items():
     ohc_clim.run_gp_interp(
         _real_profiles_csv, _pred_grid_csvs[deg], out_csv, _fit_summary_csv,
-        model_cache=_real_model_cache,
+        model_cache=_real_model_cache, month_day=_GP_MONTH_DAY,
     )
 
 _real_ctx = build_gp_ctx(_real_out_csvs, profiles_df=real_argo_anom)
@@ -1217,6 +1154,7 @@ for d in DEPTHS:
         [levitus_se_a_cells, levitus_se_0_cells],
         f"{d}_bias",
         [f"{d}_se_a", f"{d}_se_0"],
+        quantiles=[0.05,0.25,0.75,.95],
         se_labels=["SE$_a$ ($\\sigma_A$)", "SE$_0$ ($\\sigma_0$)"],
         se_colors=["#4a90d9", "#f39c12"],
         title=f"{d} anomaly: Levitus bias vs SE",
@@ -1355,6 +1293,7 @@ for d in DEPTHS:
         [levitus_pooled_se_a_cells, levitus_pooled_se_0_cells],
         f"{d}_bias",
         [f"{d}_se_a", f"{d}_se_0"],
+        quantiles=[0.05,.25,.75,.95],
         se_labels=["SE$_a$ ($\\sigma_A$)", "SE$_0$ ($\\sigma_0$)"],
         se_colors=["#4a90d9", "#f39c12"],
         title=f"{d} anomaly: Pooled Levitus bias vs SE",
