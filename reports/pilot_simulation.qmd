@@ -437,9 +437,14 @@ _clim_A_interp_cells = ohc_clim.climatology_cells_table(
     months=_clim_A_months,
 )
 
+_clim_bounds = {
+    d: (float((_clim_A_native_cells[d] * ohc_bias.J_TO_GJ).quantile(0.02)),
+        float((_clim_A_native_cells[d] * ohc_bias.J_TO_GJ).quantile(0.98)))
+    for d in DEPTHS
+}
+
 def show_clim_map(kind, d):
-    cmin = float((_clim_A_native_cells[d] * ohc_bias.J_TO_GJ).quantile(0.02))
-    cmax = float((_clim_A_native_cells[d] * ohc_bias.J_TO_GJ).quantile(0.98))
+    cmin, cmax = _clim_bounds[d]
     if kind == "native":
         return ohc_bias.plot_monthly_cell_maps(
             _clim_A_native_cells, d, vmin=cmin, vmax=cmax, width=TABSET_FIGW,
@@ -458,7 +463,7 @@ _emit("::: {.panel-tabset}")
 for d in DEPTHS:
     _emit(f"## {DEPTH_LABEL[d]}")
     _emit("::: {.panel-tabset}")
-    for kind, label in [("native", "Native 1°"), ("interp", "Interpolated to 1/12°"), ("amom","Anomaly")]:
+    for kind, label in [("native", "Native 1°"), ("interp", "Interpolated to 1/12°"), ("anom", "Anomaly")]:
         _emit(f"### {label}")
         _show_fig(show_clim_map(kind, d))
     _emit(":::")
@@ -793,28 +798,22 @@ GP_MAP_KINDS = [("gp_mean", "Mean field (climatology)"),
                 ("truth_native", "GLORYS truth"),
                 ("gp_bias", "GP - truth bias")]
 
-_GP_TABLE_KINDS = {"obs_anom_table"}
-
-def make_gp_table(c, kind, d):
-    """Return a per-month summary DataFrame for table kinds, or None if no profiles."""
-    if kind == "obs_anom_table":
-        profiles = c.get("obs_profiles")
-        if profiles is None:
-            return None
-        col = f"{d}_anom"
-        df = profiles.copy()
-        df["_month"] = pd.to_datetime(df["date"]).dt.to_period("M")
-        grp = df.groupby("_month")[col]
-        tbl = pd.DataFrame({
-            "n":              grp.count(),
-            "mean": (grp.mean() * ohc_bias.J_TO_GJ).round(3),
-            "sd":   (grp.std()  * ohc_bias.J_TO_GJ).round(3),
-            "min":  (grp.min()  * ohc_bias.J_TO_GJ).round(3),
-            "max":  (grp.max()  * ohc_bias.J_TO_GJ).round(3),
-        })
-        tbl.index = [str(m) for m in tbl.index]
-        tbl.index.name = "month"
-        return tbl
+def make_gp_table(c, d):
+    profiles = c.get("obs_profiles")
+    if profiles is None:
+        return None
+    col = f"{d}_anom"
+    grp = profiles.groupby(pd.to_datetime(profiles["date"]).dt.to_period("M"))[col]
+    raw = grp.agg(["count", "mean", "std", "min", "max"])
+    tbl = raw.assign(
+        mean=(raw["mean"] * ohc_bias.J_TO_GJ).round(3),
+        std=(raw["std"]   * ohc_bias.J_TO_GJ).round(3),
+        min=(raw["min"]   * ohc_bias.J_TO_GJ).round(3),
+        max=(raw["max"]   * ohc_bias.J_TO_GJ).round(3),
+    ).rename(columns={"count": "n", "std": "sd"})
+    tbl.index = tbl.index.astype(str)
+    tbl.index.name = "month"
+    return tbl
 
 def emit_gp_map_tabset(ctx):
     """Emit depth → resolution → map-kind tabset from a {res_label: c} context dict."""
@@ -827,8 +826,8 @@ def emit_gp_map_tabset(ctx):
             _emit("::: {.panel-tabset}")
             for kind, label in GP_MAP_KINDS:
                 _emit(f"#### {label}")
-                if kind in _GP_TABLE_KINDS:
-                    tbl = make_gp_table(c, kind, d)
+                if kind == "obs_anom_table":
+                    tbl = make_gp_table(c, d)
                     if tbl is not None:
                         display(tbl)
                 else:
