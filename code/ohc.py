@@ -134,11 +134,6 @@ def truth_ohc_field(theta_ds, depths=DEPTHS, theta_var="thetao", depth_dim="dept
 
 
 # ---- GRIDDING TO 1-DEGREE CELLS -----------------------------------------
-def _cell_centers(values, deg):
-    """Map coordinates to 1-deg (or deg-deg) cell centres via floor binning."""
-    return np.floor(np.asarray(values) / deg) * deg + deg / 2.0
-
-
 def grid_cells(df, value_cols, deg=1, lat_col="lat", lon_col="lon", date_col="date"):
     """Bin point OHC into deg-degree monthly cells, returning the cell means.
 
@@ -147,8 +142,8 @@ def grid_cells(df, value_cols, deg=1, lat_col="lat", lon_col="lon", date_col="da
     (month, cell_lat, cell_lon) with the mean of each value column and a count.
     """
     df = df.copy()
-    df["cell_lat"] = _cell_centers(df[lat_col], deg)
-    df["cell_lon"] = _cell_centers(df[lon_col], deg)
+    df["cell_lat"] = np.floor(df[lat_col].to_numpy() / deg) * deg + deg / 2.0
+    df["cell_lon"] = np.floor(df[lon_col].to_numpy() / deg) * deg + deg / 2.0
     df["month"] = pd.to_datetime(df[date_col]).dt.to_period("M").dt.to_timestamp()
 
     agg = {c: "mean" for c in value_cols}

@@ -15,8 +15,6 @@ Also emits the sampled-cell fraction over time and simple diagnostic plots.
 All OHC in J/m2 unless converted to GJ/m2 for display.
 """
 
-import os
-
 import numpy as np
 import pandas as pd
 
@@ -169,9 +167,7 @@ def monthly_bias_table(float_cells, truth_cells, value_col, true_domain_mean=Non
     tbl = tbl[
         [
             "month",
-            # "samp_cells",
             "profiles",
-            # "prof_per_cell",
             "true_ohc",
             "true_ohc_samp",
             "synth_ohc_samp",
@@ -189,8 +185,6 @@ def monthly_bias_table(float_cells, truth_cells, value_col, true_domain_mean=Non
 
     out["profiles"] = out["profiles"].round().astype(int)
     for c, n in {
-        # "samp_cells": 1,
-        # "prof_per_cell": 1,
         "true_ohc": 3,
         "true_ohc_samp": 3,
         "synth_ohc_samp": 3,
@@ -355,6 +349,7 @@ def plot_domain_timeseries(
     title=None,
     ylim=None,
     real=None,
+    en4=None,
     figsize=None,
 ):
     """Domain-mean OHC over time: GLORYS truth (all cells), GLORYS truth (sampled
@@ -369,6 +364,10 @@ def plot_domain_timeseries(
     DataFrame with a ``month`` column and a ``value_col`` column (J/m2), e.g. the
     monthly mean of ``data/argo_ohc.csv`` over the cells real floats sampled.
 
+    ``en4`` optionally adds a fifth line for the **EN4** gridded product: a
+    DataFrame with a ``month`` column and a ``value_col`` column (J/m2), e.g. the
+    monthly domain mean of the EN4 cells at their native resolution.
+
     Pass ``figsize`` explicitly when embedding this in a context (e.g. a quarto
     panel-tabset built via ``display()``) where the chunk's ``fig-width``/
     ``fig-height`` options don't reach ``matplotlib.rcParams`` -- the default
@@ -379,26 +378,34 @@ def plot_domain_timeseries(
     fig, (ax, ax3, ax2) = plt.subplots(
         3, 1, figsize=figsize, sharex=True, gridspec_kw={"height_ratios": [3, 2, 1]}
     )
+    pal = plt.get_cmap("Dark2").colors
+    lw, ms = 1.2, 3
     m = domain["month"]
     ax.plot(
         m,
         domain[f"{value_col}_true_mean"] * J_TO_GJ,
         "-o",
-        color="#1a4f8a",
+        color=pal[0],
+        lw=lw,
+        markersize=ms,
         label="GLORYS truth (all cells)",
     )
     ax.plot(
         m,
         domain[f"{value_col}_true_at_sampled"] * J_TO_GJ,
         "-^",
-        color="#4caf73",
+        color=pal[1],
+        lw=lw,
+        markersize=ms,
         label="GLORYS truth (sampled cells)",
     )
     ax.plot(
         m,
         domain[f"{value_col}_float_mean"] * J_TO_GJ,
         "-s",
-        color="#e07b39",
+        color=pal[2],
+        lw=lw,
+        markersize=ms,
         label="synthetic Argo (sampled cells)",
     )
     if real is not None and value_col in real:
@@ -406,9 +413,20 @@ def plot_domain_timeseries(
             real["month"],
             real[value_col] * J_TO_GJ,
             "-D",
-            color="#9467bd",
-            markersize=5,
+            color=pal[3],
+            lw=lw,
+            markersize=ms,
             label="real Argo (sampled cells)",
+        )
+    if en4 is not None and value_col in en4:
+        ax.plot(
+            en4["month"],
+            en4[value_col] * J_TO_GJ,
+            "-v",
+            color=pal[4],
+            lw=lw,
+            markersize=ms,
+            label="EN4",
         )
     ax.set_ylabel(f"{value_col}  (GJ m$^{{-2}}$)")
     if ylim is not None:
@@ -420,9 +438,21 @@ def plot_domain_timeseries(
     samp_bias = domain[f"{value_col}_sampling_bias"] * J_TO_GJ
     grid_bias = domain[f"{value_col}_grid_bias"] * J_TO_GJ
     ax3.axhline(0, color="0.6", lw=0.8)
-    ax3.plot(m, samp_bias + grid_bias, "-o", color="red", label="total bias")
-    ax3.plot(m, samp_bias, "-s", color="#4a90d9", label="sampling bias")
-    ax3.plot(m, grid_bias, "-^", color="#1a4f8a", label="grid bias")
+    ax3.plot(
+        m,
+        samp_bias + grid_bias,
+        "-o",
+        color="red",
+        lw=lw,
+        markersize=ms,
+        label="total bias",
+    )
+    ax3.plot(
+        m, samp_bias, "-s", color="#4a90d9", lw=lw, markersize=ms, label="sampling bias"
+    )
+    ax3.plot(
+        m, grid_bias, "-^", color="#1a4f8a", lw=lw, markersize=ms, label="grid bias"
+    )
     ax3.set_ylabel(f"bias  (GJ m$^{{-2}}$)")
     ax3.legend(frameon=False, fontsize="small")
     ax3.grid(alpha=0.2)
@@ -471,11 +501,26 @@ def plot_bias_vs_resolution(
     ax.set_title(f"OHC sampling bias vs analysis cell size ({value_col})")
     ax.grid(alpha=0.2, which="both")
 
-    bar_width = df["deg"] * 0.3 if xscale == "log" else (df["deg"].max() - df["deg"].min()) * 0.06
-    ax2.bar(df["deg"], df["mean_sampled_fraction"], width=bar_width, color="#4a90d9", alpha=0.7)
+    bar_width = (
+        df["deg"] * 0.3
+        if xscale == "log"
+        else (df["deg"].max() - df["deg"].min()) * 0.06
+    )
+    ax2.bar(
+        df["deg"],
+        df["mean_sampled_fraction"],
+        width=bar_width,
+        color="#4a90d9",
+        alpha=0.7,
+    )
     for deg, frac in zip(df["deg"], df["mean_sampled_fraction"]):
         ax2.text(
-            deg, frac, f"{frac * 100:.0f}%", ha="center", va="bottom", fontsize="x-small"
+            deg,
+            frac,
+            f"{frac * 100:.0f}%",
+            ha="center",
+            va="bottom",
+            fontsize="x-small",
         )
     ax2.set_ylabel("sampled\ncell frac")
     ax2.set_ylim(0, 1)
@@ -543,7 +588,6 @@ def plot_monthly_cell_maps(
     else:
         months = sorted(cell_dt.unique())
 
-    # months = sorted(pd.to_datetime(cells["month"]).unique())
     if lats is None:
         lats = np.sort(cells["cell_lat"].unique())
     if lons is None:
@@ -584,7 +628,6 @@ def plot_monthly_cell_maps(
             d = cells[(cell_dt.dt.year == m.year) & (cell_dt.dt.month == m.month)]
         else:
             d = cells[cell_dt == m]
-        # d = cells[pd.to_datetime(cells["month"]) == m]
         grid = (
             d.pivot_table(
                 index="cell_lat", columns="cell_lon", values=value_col
@@ -695,6 +738,145 @@ def plot_bias_map(cells, value_col="ohc_2000", month=None, out_path=None):
         title += f" — {pd.Timestamp(month):%Y-%m}"
     ax.set_title(title)
     ax.grid(alpha=0.2)
+    fig.tight_layout()
+    if out_path:
+        fig.savefig(out_path, dpi=130, bbox_inches="tight")
+        print(f"saved {out_path}")
+    return fig
+
+
+def plot_bias_se_violin(
+    bias_cells, se_cells, bias_col, se_col,
+    se_labels=None, se_colors=None,
+    title=None, figsize=None, out_path=None
+):
+    """Side-by-side horizontal violins per month: a bias distribution vs one or more SE distributions.
+
+    For an interpolation method that fills in a value everywhere (not just at
+    binned cells a float happened to sample), the natural per-month "bias" is
+    a full spatial distribution -- |predicted minus truth| at every grid point
+    -- directly comparable to that same method's per-pixel SE distribution,
+    rather than a single domain-level scalar compared against a domain-mean
+    SE. ``bias_cells``/``se_cells`` are cells tables (``month, cell_lat,
+    cell_lon, <col>``) sharing the same ``month`` values; ``bias_col``/
+    ``se_col`` select which column of each to plot. Bias is shown as its
+    absolute value, so both distributions are >= 0 and live on the same
+    GJ/m2 axis with directly comparable spreads. Each violin marks its
+    median (solid), mean (dashed), and 5th/95th percentiles (solid) -- the
+    percentiles in place of the true min/max, which are sensitive to single
+    outlier grid cells.
+
+    ``se_cells`` and ``se_col`` may each be a single DataFrame/str (one SE
+    violin) or a list of DataFrames/strs (multiple SE violins, e.g. ``se_A``
+    and ``se_0`` for Levitus). ``se_labels`` and ``se_colors`` customise the
+    legend entry and fill colour for each SE source; defaults are provided
+    when omitted. Violins are evenly spaced across a fixed span so they
+    never overlap regardless of how many SE sources are passed.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Patch
+
+    # Normalise se_cells/se_col to lists.
+    if isinstance(se_cells, list):
+        se_cells_list = se_cells
+        se_col_list = se_col
+    else:
+        se_cells_list = [se_cells]
+        se_col_list = [se_col]
+    n_se = len(se_cells_list)
+
+    _default_colors = ["#4a90d9", "#f39c12", "#2ecc71", "#9b59b6"]
+    if se_labels is None:
+        se_labels = (
+            ["interpolation SE"] if n_se == 1 else [f"SE {i + 1}" for i in range(n_se)]
+        )
+    if se_colors is None:
+        se_colors = _default_colors[:n_se]
+
+    months = sorted(bias_cells["month"].unique())
+    month_labels = [pd.Timestamp(m).strftime("%b") for m in months]
+    bias_data = [
+        (bias_cells.loc[bias_cells["month"] == mo, bias_col] * J_TO_GJ)
+        .abs()
+        .dropna()
+        .to_numpy()
+        for mo in months
+    ]
+    se_data_list = [
+        [
+            (cells.loc[cells["month"] == mo, col] * J_TO_GJ).dropna().to_numpy()
+            for mo in months
+        ]
+        for cells, col in zip(se_cells_list, se_col_list)
+    ]
+
+    positions = np.arange(1, len(months) + 1)
+    n_total = 1 + n_se
+    # Evenly space all violins (bias + SE sources) within a fixed span.
+    span = min(0.70, 0.20 * n_total)
+    offsets = np.linspace(-span / 2, span / 2, n_total)
+    width = (span / (n_total - 1)) * 0.80 if n_total > 1 else span
+
+    quantiles = [[0.05, 0.95]] * len(months)
+    fig, ax = plt.subplots(figsize=figsize or (7, 8))
+
+    parts_bias = ax.violinplot(
+        bias_data,
+        positions=positions + offsets[0],
+        vert=False,
+        widths=width,
+        showmedians=True,
+        showmeans=True,
+        showextrema=False,
+        quantiles=quantiles,
+    )
+    for body in parts_bias["bodies"]:
+        body.set_facecolor("#c0392b")
+        body.set_alpha(0.5)
+    for key in ("cmedians", "cmeans", "cquantiles"):
+        parts_bias[key].set_color("black")
+        parts_bias[key].set_linewidth(1)
+    parts_bias["cmeans"].set_linestyle(":")
+
+    for i, (se_data, color) in enumerate(zip(se_data_list, se_colors)):
+        parts_se = ax.violinplot(
+            se_data,
+            positions=positions + offsets[1 + i],
+            vert=False,
+            widths=width,
+            showmedians=True,
+            showmeans=True,
+            showextrema=False,
+            quantiles=quantiles,
+        )
+        for body in parts_se["bodies"]:
+            body.set_facecolor(color)
+            body.set_alpha(0.5)
+        for key in ("cmedians", "cmeans", "cquantiles"):
+            parts_se[key].set_color("black")
+            parts_se[key].set_linewidth(1)
+        parts_se["cmeans"].set_linestyle(":")
+
+    ax.axvline(0, color="0.6", lw=0.8, zorder=0)
+    ax.set_yticks(positions)
+    ax.set_yticklabels(month_labels)
+    ax.invert_yaxis()  # January at top
+    ax.set_xlabel("GJ m$^{-2}$")
+    if title:
+        ax.set_title(title)
+    ax.legend(
+        handles=[
+            Patch(facecolor="#c0392b", alpha=0.5, label="bias"),
+            *[
+                Patch(facecolor=c, alpha=0.5, label=lbl)
+                for c, lbl in zip(se_colors, se_labels)
+            ],
+        ],
+        frameon=False,
+        fontsize="small",
+        loc="lower right",
+    )
+    ax.grid(alpha=0.2, axis="x")
     fig.tight_layout()
     if out_path:
         fig.savefig(out_path, dpi=130, bbox_inches="tight")
