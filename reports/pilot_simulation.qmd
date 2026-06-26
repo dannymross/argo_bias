@@ -843,40 +843,39 @@ gp_fit_summary.groupby("depth")[["loglik", "converged", "n_obs"]].first()
 
 def make_gp_map(c, kind, d, res_label):
     """Render one map panel from a resolution context dict c."""
-    dots = "1/12" in res_label
     if kind == "gp_mean":
         return ohc_bias.plot_monthly_cell_maps(
-            c["mean_cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], scatter_dots=dots, width=TABSET_FIGW,
+            c["mean_cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], width=TABSET_FIGW,
             title=f"Climatological mean field, {d} by month ({res_label})")
     if kind == "obs_anom":
         return ohc_bias.plot_monthly_cell_maps(
             c["obs_anom_cells"], f"{d}_anom", vmin=-ANOM_VLIM[d], vmax=ANOM_VLIM[d], cmap="RdBu_r",
-            cbar_label=f"{d} anomaly (GJ m$^{{-2}}$)", scatter_dots=dots, width=TABSET_FIGW,
+            cbar_label=f"{d} anomaly (GJ m$^{{-2}}$)", scatter_dots="1/12" in res_label, width=TABSET_FIGW,
             title=f"Observed Argo {d} anomaly by month ({res_label})")
     if kind == "gp":
         return ohc_bias.plot_monthly_cell_maps(
-            c["cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], scatter_dots=dots, width=TABSET_FIGW,
+            c["cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], width=TABSET_FIGW,
             title=f"GP-interpolated {d} by month ({res_label})")
     if kind == "gp_anom":
         return ohc_bias.plot_monthly_cell_maps(
             c["anom_cells"], f"{d}_anom", vmin=-ANOM_VLIM[d], vmax=ANOM_VLIM[d], cmap="RdBu_r",
-            cbar_label=f"{d} anomaly (GJ m$^{{-2}}$)", scatter_dots=dots, width=TABSET_FIGW,
+            cbar_label=f"{d} anomaly (GJ m$^{{-2}}$)", width=TABSET_FIGW,
             title=f"GP-interpolated {d} anomaly by month ({res_label})")
     if kind == "gp_se":
         return ohc_bias.plot_monthly_cell_maps(
-            c["se_cells"], f"{d}_se", vmin=0, cmap="viridis", scatter_dots=dots, width=TABSET_FIGW,
+            c["se_cells"], f"{d}_se", vmin=0, cmap="viridis", width=TABSET_FIGW,
             cbar_label=f"{d} GP standard error (GJ m$^{{-2}}$)",
             title=f"GP standard error, {d} ({res_label})")
     if kind == "truth_native":
         return ohc_bias.plot_monthly_cell_maps(
-            c["truth_cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], scatter_dots=dots, width=TABSET_FIGW,
+            c["truth_cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], width=TABSET_FIGW,
             title=f"GLORYS truth {d} by month ({res_label})")
     if kind == "gp_bias":
         bcol = f"{d}_bias"
         bmax = float(c["bias_cells"][bcol].abs().max()) * ohc_bias.J_TO_GJ
         return ohc_bias.plot_monthly_cell_maps(
             c["bias_cells"], bcol, vmin=-bmax, vmax=bmax, cmap="RdBu_r",
-            cbar_label=f"{d} bias (GJ m$^{{-2}}$)", scatter_dots=dots, width=TABSET_FIGW,
+            cbar_label=f"{d} bias (GJ m$^{{-2}}$)", width=TABSET_FIGW,
             title=f"GP - truth bias, {d} ({res_label})")
 
 GP_MAP_KINDS = [("gp_mean", "Mean field (climatology)"),
