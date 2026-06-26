@@ -73,6 +73,7 @@ sys.path.insert(0, os.path.abspath("../code"))
 import numpy as np
 import pandas as pd
 import xarray as xr
+import matplotlib.pyplot as plt
 
 import ohc
 import ohc_bias
@@ -341,11 +342,14 @@ truth_anom_cells = ohc_clim.to_cells_table(truth_anom)
 ANOM_VLIM = {d: float(truth_anom_cells[d].abs().quantile(0.98)) * ohc_bias.J_TO_GJ for d in DEPTHS}
 ```
 
+![Published RG Climatology global-mean temperature time series (source: sio-argo.ucsd.edu)](../data/rg_climatology/Temperature_2019.png){width=100%}
+
 ```{python}
 #| label: fig-rg-timeseries-check
-#| fig-cap: "Verification: global-mean RG potential temperature reconstructed from mean + monthly extension anomalies matches the published time series at sio-argo.ucsd.edu. The ~0.04 °C upward offset vs the published plot is expected — the RG website excludes marginal seas and the Arctic from its spatial average; we include all non-NaN cells."
-#| code-summary: "Reconstruct published RG global-mean temperature time series (2004-2020)"
+#| fig-cap: "Verification: global-mean RG potential temperature reconstructed from mean + monthly extension anomalies. The ~0.04 °C upward offset vs the published plot above is expected — the RG website excludes marginal seas and the Arctic from its spatial average; we include all non-NaN cells."
+#| code-summary: "Reconstruct published RG global-mean temperature time series (2004–2026)"
 import matplotlib.dates as mdates
+from pathlib import Path
 
 _ds_rg  = xr.open_dataset(ohc_clim.RG_MEAN_PATH, decode_times=False)
 _mean_v = _ds_rg["ARGO_TEMPERATURE_MEAN"].values    # (pres, lat, lon)
@@ -354,42 +358,51 @@ _p      = _ds_rg["PRESSURE"].values
 _lat    = _ds_rg["LATITUDE"].values
 _ds_rg.close()
 
-_dp      = np.diff(_p)               # (57,) thickness between adjacent levels
-_coslat  = np.cos(np.deg2rad(_lat))
+_dp     = np.diff(_p)
+_coslat = np.cos(np.deg2rad(_lat))
 
 def _vol_mean_T(T):
     T_mid = (T[:-1] + T[1:]) / 2    # trapezoidal averages; NaN where either endpoint NaN
     w     = _dp[:, None, None] * _coslat[None, :, None]
     return float(np.nansum(T_mid * w) / np.nansum(np.where(np.isnan(T_mid), 0.0, w)))
 
-_dates_main  = pd.date_range("2004-01", periods=180, freq="MS")
-_tmean_main  = np.array([_vol_mean_T(_mean_v + _anom_v[i]) for i in range(180)])
+_dates_main = pd.date_range("2004-01", periods=180, freq="MS")
+_tmean_main = np.array([_vol_mean_T(_mean_v + _anom_v[i]) for i in range(180)])
 
-def _ext_series(year):
-    dates, vals = [], []
-    for m in range(1, 13):
-        path = f"../data/rg_climatology/RG_ArgoClim_{year}{m:02d}_2019.nc"
-        ds = xr.open_dataset(path, decode_times=False)
-        anom = ds["ARGO_TEMPERATURE_ANOMALY"].values.squeeze(0)
-        vals.append(_vol_mean_T(_mean_v + anom))
-        dates.append(pd.Timestamp(year, m, 1))
-        ds.close()
-    return dates, np.array(vals)
+# Load all available extension months (2019 onward)
+_ext_targets = [(y, m) for y in range(2019, 2027) for m in range(1, 13)
+                if not (y == 2026 and m > 2)]
+_ext_dates, _ext_vals = [], []
+for _y, _m in _ext_targets:
+    _path = f"../data/rg_climatology/RG_ArgoClim_{_y}{_m:02d}_2019.nc"
+    if not Path(_path).exists():
+        continue
+    _ds = xr.open_dataset(_path, decode_times=False)
+    _anom = _ds["ARGO_TEMPERATURE_ANOMALY"].values.squeeze(0)
+    _ext_vals.append(_vol_mean_T(_mean_v + _anom))
+    _ext_dates.append(pd.Timestamp(_y, _m, 1))
+    _ds.close()
 
-_dates_2019, _tmean_2019 = _ext_series(2019)
-_dates_2020, _tmean_2020 = _ext_series(2020)
+# Bridge the Dec 2018 / Jan 2019 gap by prepending the last climatology point
+# to the extension series so the two line segments share an endpoint.
+_bridge_date = pd.Timestamp(2018, 12, 1)
+_bridge_val  = _tmean_main[-1]
 
-_all_dates = np.array(list(_dates_main) + _dates_2019 + _dates_2020, dtype="datetime64[ns]")
-_all_vals  = np.concatenate([_tmean_main, _tmean_2019, _tmean_2020])
-_ext_mask  = _all_dates > np.datetime64("2018-12-31")
+_all_dates = np.array([_bridge_date] + _ext_dates, dtype="datetime64[ns]")
+_all_vals  = np.concatenate([[_bridge_val], _ext_vals])
 
-_smooth = pd.Series(_all_vals).rolling(12, center=True, min_periods=12).mean().values
-_sm_ok  = ~np.isnan(_smooth)
+_smooth  = pd.Series(
+    np.concatenate([_tmean_main, _ext_vals]),
+).rolling(12, center=True, min_periods=12).mean().values
+_sm_dates = np.array(list(_dates_main) + _ext_dates, dtype="datetime64[ns]")
+_sm_ok    = ~np.isnan(_smooth)
 
 fig, ax = plt.subplots(figsize=(10, 4))
 ax.plot(_dates_main, _tmean_main, color="black", lw=0.8, label="2004–2018 (mean + anom)")
-ax.plot(_all_dates[_ext_mask], _all_vals[_ext_mask], color="red", lw=0.8, label="2019–2020 extensions")
-ax.plot(_all_dates[_sm_ok], _smooth[_sm_ok], color="limegreen", lw=1.8, label="12-month running mean")
+ax.plot(_all_dates, _all_vals, color="red", lw=0.8,
+        label=f"2019–{_ext_dates[-1].year} extensions")
+ax.plot(_sm_dates[_sm_ok], _smooth[_sm_ok], color="limegreen", lw=1.8,
+        label="12-month running mean")
 ax.set_ylabel("Potential Temperature (°C)")
 ax.set_title("RG Argo Climatology — global-mean 0–1975 dbar potential temperature\n"
              "reconstructed from ARGO_TEMPERATURE_MEAN + monthly extension anomalies")
@@ -403,7 +416,6 @@ fig.tight_layout()
 ```{python}
 #| label: fig-climatology-seasonality
 #| fig-cap: "RG climatological OHC, area-mean over the analysis region: seasonal (Option A) vs static (Option B)"
-import matplotlib.pyplot as plt
 
 def _box_mean(field, bounds=ANALYSIS_BOUNDS, value_cols=DEPTHS):
     la0, la1, lo0, lo1 = bounds
