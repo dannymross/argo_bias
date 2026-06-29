@@ -1,58 +1,5 @@
 # Levitus et al. (2012)-style objective-analysis interpolation of OHC anomalies.
 #
-# An alternative to the Vecchia-GP estimator in code/ohc_gp_interp.R: a
-# Gaussian-shaped kernel smoother, per literature/levitus_2012_aux.tex. For a
-# prediction point with observations Q_n at distance r_n:
-#
-#   w_n = exp(-E (r_n/R)^2)  for r_n <= R, else 0      (E = 4, fixed)
-#   lambda_n = w_n / sum_m(w_m)
-#   A = sum_n(lambda_n * Q_n)                           (the prediction)
-#
-# This is *not* kriging: the weights depend only on distance from the
-# prediction point, never on redundancy/clustering among the observations
-# themselves (no covariance matrix is estimated or inverted).
-#
-# Two standard-error formulas, named after the two source-doc symbols they
-# compute (se_a for sigma_A, se_0 for sigma_0) -- both derived from the same
-# error-propagation argument but differing in how the cross-covariance between
-# nearby observations' contributions is handled:
-#
-# * se_a (recommended) -- sigma_A under the independence assumption: drops the
-#   cross-covariance term, giving the textbook "SE of a weighted mean":
-#   sigma_0 * sqrt(sum(lambda_n^2)). Shrinks as more/better-distributed
-#   observations fall within the radius.
-# * se_0 -- the source doc's eq. (7) for sigma_A taken literally, substituting
-#   the Schwarz-inequality bound sigma_Cn*sigma_Cm for the cross-covariance
-#   (i.e. assuming every pair of nearby observations is perfectly correlated --
-#   fully redundant, the most pessimistic case possible) and assuming
-#   sigma_Cn = sigma_0 for all n. Algebraically
-#   sum(w_n^2) + 2*sum_{n<m}(w_n*w_m) = (sum_n w_n)^2 = W^2 for *any* weights,
-#   so this reduces *exactly* to sigma_0, regardless of weighting.
-#
-# sigma_0 (eq. 6) is the sample standard deviation (N-1 denominator) of the
-# *corrections* C_n = w_n*Q_n/W = lambda_n*Q_n -- not of the raw Q_n
-# themselves -- across the N profiles within the radius. Because lambda_n ~
-# 1/N shrinks as more profiles fall within the radius, sigma_0 itself shrinks
-# with more/better-distributed data: se_0's algebraic collapse to sigma_0
-# above is real, but sigma_0 is *not* a sample-size-invariant "fixed
-# worst-case ceiling" the way a literal reading of eq. (7) might suggest --
-# only the weights' own contribution collapses to a constant (W^2); the
-# corrections' spread does not. What eq. (7) does still guarantee is se_0 >=
-# se_a pointwise, always (sum(lambda_n^2) <= 1 for any weights summing to 1)
-# -- so se_0 remains the more conservative of the two, just not an estimate
-# immune to sample size. The true SE sits somewhere between se_a (zero
-# correlation) and se_0 (perfect correlation), depending on the real
-# (unknown) correlation among nearby profiles.
-#
-# Radius: the source doc gives R = 666 km (E=4) as a single-pass approximation
-# to the World Ocean Atlas's global 1-degree three-pass objective analysis.
-# This project's analysis domain is only ~500 km x 650 km, so 666 km is roughly
-# the size of the *whole* domain -- it would draw on nearly every profile for
-# every prediction point regardless of location, providing little local
-# discrimination. The report passes a domain-scaled radius instead (tied to the
-# GP's own fitted spatial range, ~50 km) by default; pass the literal 666 km
-# value as the 4th argument to use it instead.
-#
 # By default this script operates per calendar month -- the literal formula
 # (r_n is purely spatial, no time term) does not pool across months the way
 # the pooled spatio-temporal GP does. Pass "pooled" as a 5th argument to pool

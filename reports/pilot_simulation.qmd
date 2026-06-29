@@ -234,33 +234,40 @@ _ = map_positions_by_month(
 
 ## real argo floats
 
-There are only 20 real float in `data/argo_ohc.csv` that entered the analysis domain at any point in 2020.
+There are 20 real float in `data/argo_ohc.csv` that entered the analysis domain at any point in 2020.
 
 ```{python}
 #| label: fig-real-argo-traj
 #| fig-cap: "Real Argo floats (2020)"
 argo_all = pd.read_csv("../data/argo_ohc.csv")
 argo_all["date"] = pd.to_datetime(argo_all["date"], format="ISO8601")
-argo_all = argo_all[argo_all["date"].dt.year == 2020]
 la0, la1, lo0, lo1 = ANALYSIS_BOUNDS
-ids = argo_all.loc[argo_all.lat.between(la0, la1) & argo_all.lon.between(lo0, lo1),
-                   "float_id"].unique()
+ids = argo_all.loc[argo_all.lat.between(la0, la1) & argo_all.lon.between(lo0, lo1) & (argo_all["date"].dt.year == 2020), "float_id"].unique()
 argo_a = argo_all[argo_all.float_id.isin(ids)]
-
-# Real Argo OHC in the analysis box (2020), gridded like the synthetic floats;
-real_cells_by_deg = {deg: ohc.grid_cells(argo_a, ["ohc_700", "ohc_2000"], deg=deg)
-                     for deg in DEGS}
-real_by_deg = {deg: real_cells_by_deg[deg]
-                    .groupby("month", as_index=False)[["ohc_700", "ohc_2000"]].mean()
-               for deg in DEGS}
 
 _ = map_point_trajectories(
     argo_a, 
     extent=[-76, -47, 28, 50],
     boxes=[(*TRUTH_BOUNDS, "advection domain", '0.5', "-"),
            (*ANALYSIS_BOUNDS, "analysis domain")],
-    title=f"Real Argo floats ({len(ids)} floats that profiled the analysis domain in 2020)",
+    title=f"All obs for floats that profiled domain in 2020",
 )
+
+argo_a = argo_a[(argo_a["date"].dt.year==2020)]
+
+_ = map_point_trajectories(
+    argo_a, 
+    extent=[-76, -47, 28, 50],
+    boxes=[(*TRUTH_BOUNDS, "advection domain", '0.5', "-"),
+           (*ANALYSIS_BOUNDS, "analysis domain")],
+    title=f"2020 obs",
+)
+# Real Argo OHC in the analysis box (2020), gridded like the synthetic floats;
+real_cells_by_deg = {deg: ohc.grid_cells(argo_a, ["ohc_700", "ohc_2000"], deg=deg)
+                     for deg in DEGS}
+real_by_deg = {deg: real_cells_by_deg[deg]
+                    .groupby("month", as_index=False)[["ohc_700", "ohc_2000"]].mean()
+               for deg in DEGS}
 ```
 
 
@@ -505,7 +512,7 @@ native 1/12° resolution, using a Gaussian process model fit with `GpGp`.
 The predicted anomaly field is added back to the climatological mean to give an absolute-OHC field directly
 comparable to the GLORYS truth on the same native grid.
 
-`code/ohc_gp_interp.R` fits one GP per depth with covariance function `matern_spheretime`, pooling all ~150 profiles across the year, with covariance parameters $\theta$ = ($\sigma^2$, $\rho_s$, $\rho_t$, $\nu$, $\tau^2$) = (variance, spatial range, temporal range, smoothness, nugget).
+`code/ohc_gp_interp.R` fits one GP per depth (0-700m, 0-2000m) with the stationary spatiotemporal covariance function `matern_spheretime`, pooling all ~150 profiles across the year, with covariance parameters $\theta$ = ($\sigma^2$, $\rho_s$, $\rho_t$, $\nu$, $\tau^2$) = (variance, spatial range, temporal range, smoothness, nugget).
 
 The `matern_spheretime` function embeds the (lat, lon) into  3D coordinates, and then inputs the resulting locations into the `matern_spacetime` covariance function wtih parameterization 
 
@@ -517,7 +524,7 @@ $$
 
 where $D = \operatorname{diag}(\rho_s,\rho_s,\rho_s,\rho_t)$ and $K_\nu$ is the modified Bessel function of the second kind. 
 
-Smoothness is fixed at $\nu = \tfrac{3}{2}$, such that the function is exactly 1-time mean-square differentiable.
+Smoothness is fixed at $\nu = \tfrac{3}{2}$, such that the function is  once differentiable.
 *Note, If the smoothness parameter is free the Fisher scoring algorithm does not converge.*
 
 When $\nu = \tfrac{3}{2}$, the covariance function has the closed form $(1+r)\,e^{-r}$
@@ -559,7 +566,6 @@ $$
 where $r = \|D^{-1}(s-s')\|$ absorbs the anisotropic scaling by $D$.
 :::
 
-The nugget $\sigma^2\tau^2$ is added to the diagonal (not $\tau^2$ alone), so $k(s,s) = \sigma^2(1+\tau^2)$; $\tau^2 \geq 0$ is a dimensionless scale relative to the process variance. Spatial range $\rho_s$ is in chord-distance units on the unit sphere ($\rho_s \approx 0.0027 \approx 17$ km); temporal range $\rho_t$ is in days of year.
 
 ## Model Fit
 `GpGp::fit_model` fits the mean coefficient $\hat\beta$ (`fit$betahat`) and the
@@ -630,7 +636,7 @@ def build_gp_res_ctx(out_csv, deg, profiles_df=None):
     anom_cells = ohc_clim.to_cells_table(anom_field, value_cols=("ohc_700_anom", "ohc_2000_anom"))
     mean_cells = ohc_clim.climatology_cells_table(clim_field, lats, lons, months=gp_field["month"].values)
     obs_anom_cells = (
-        ohc.grid_cells(profiles_df, ["ohc_700_anom", "ohc_2000_anom"], deg=deg)
+        ohc.grid_cells(profiles_df, ["ohc_700_anom", "ohc_2000_anom"], deg=1/12)
         if profiles_df is not None else None
     )
     if deg < 0.1:
@@ -699,9 +705,10 @@ fit_table
 **Units** mean (GJ m$^{{-2}}$), variance (GJ m$^{{-4}}$), spatial_range (km), temporal_range (days), nugget (relative fraction of variance)
 
 
+
 ## Predictions
 
-Use `GpGp`'s machinery but perform ordinary kriging by conditioning every prediction point on all observed profiles.
+Use `GpGp`'s machinery but perform "simple" kriging by conditioning every prediction point on all observed profiles.
 Predictions are made at the center of grid cells on the 15th of each month (configurable via `_GP_MONTH_DAY`: `"first"`, `"middle"`, or `"last"`).
 
 ::: {.callout-note collapse="true"}
@@ -759,9 +766,11 @@ def make_gp_map(c, kind, d, res_label):
             c["mean_cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], width=TABSET_FIGW,
             title=f"Climatological mean field, {d} by month ({res_label})")
     if kind == "obs_anom":
+        _lats, _lons = _grid_lats_lons(1/12)
         return ohc_bias.plot_monthly_cell_maps(
             c["obs_anom_cells"], f"{d}_anom", vmin=-ANOM_VLIM[d], vmax=ANOM_VLIM[d], cmap="RdBu_r",
-            cbar_label=f"{d} anomaly (GJ m$^{{-2}}$)", scatter_dots="1/12" in res_label, width=TABSET_FIGW,
+            cbar_label=f"{d} anomaly (GJ m$^{{-2}}$)", scatter_dots=True, width=TABSET_FIGW,
+            lats=_lats, lons=_lons,
             title=f"Observed Argo {d} anomaly by month ({res_label})")
     if kind == "gp":
         return ohc_bias.plot_monthly_cell_maps(
@@ -803,6 +812,7 @@ def make_gp_table(c, d):
     if profiles is None:
         return None
     col = f"{d}_anom"
+    s = profiles[col]
     grp = profiles.groupby(pd.to_datetime(profiles["date"]).dt.to_period("M"))[col]
     raw = grp.agg(["count", "mean", "std", "min", "max"])
     tbl = raw.assign(
@@ -813,7 +823,14 @@ def make_gp_table(c, d):
     ).rename(columns={"count": "n", "std": "sd"})
     tbl.index = tbl.index.astype(str)
     tbl.index.name = "month"
-    return tbl
+    year_row = pd.DataFrame([{
+        "n":    s.count(),
+        "mean": round(s.mean() * ohc_bias.J_TO_GJ, 3),
+        "sd":   round(s.std()  * ohc_bias.J_TO_GJ, 3),
+        "min":  round(s.min()  * ohc_bias.J_TO_GJ, 3),
+        "max":  round(s.max()  * ohc_bias.J_TO_GJ, 3),
+    }], index=pd.Index(["Year"], name="month"))
+    return pd.concat([tbl, year_row])
 
 def emit_gp_map_tabset(ctx):
     """Emit depth → resolution → map-kind tabset from a {res_label: c} context dict."""
@@ -865,13 +882,9 @@ emit_gp_violin_tabset(_virtual_ctx)
 
 # GP interpolation with real floats
 
-The previous GP conditions on virtual float positions sampled from GLORYS velocity
-trajectories. A key question is whether the **spatial coverage pattern** of the
-real Argo array limits reconstruction quality independently of the GP method itself.
-
-To isolate this: take the real Argo float positions (lat, lon, date) from 2020 in
+Now we use the real Argo float profile positions from 2020 in
 the analysis domain, but assign each profile the **GLORYS truth OHC anomaly** at
-that 1/12° cell and month -- not the real Argo measurement. The GP then conditions
+that 1/12° cell and month. The GP then conditions
 on truth values at real float locations rather than virtual float locations; any
 difference from the virtual-Argo GP above is purely due to spatial coverage
 (which cells the floats happened to sample), not measurement error or model
@@ -910,12 +923,16 @@ for deg, out_csv in _real_out_csvs.items():
 _real_ctx = build_gp_ctx(_real_out_csvs, profiles_df=real_argo_anom)
 ```
 
+## Predictions
+
 ```{python}
 #| label: gp-real-coverage-maps
 #| output: asis
 #| code-summary: "Real-Argo-coverage GP maps"
 emit_gp_map_tabset(_real_ctx)
 ```
+
+## Bias vs Interpolation SE
 
 ```{python}
 #| label: fig-gp-real-bias-se-violin
@@ -924,12 +941,68 @@ emit_gp_map_tabset(_real_ctx)
 emit_gp_violin_tabset(_real_ctx)
 ```
 
+# `fields::Krig` audit
+
+To corroborate the fitted values and standard errors, `code/gp_audit_fields.R` independently reproduces the kriging predictions using `fields::Krig` with a hand-coded `matern_spheretime` correlation function that  matches `GpGp`'s implementation.  The fitted covariance parameters (spatial/temporal ranges, nugget) are fixed at GpGp's ML estimates; `fields::Krig` estimates $\sigma^2$ by GLS.  Three prediction columns are compared:
+
+| Column | Method | Notes |
+|--------|--------|-------|
+| `pred_gpgp` | GpGp custom `kriging_predict` | primary result |
+| `pred_sk` | Direct Cholesky solve (R base) | same covariance, same $\hat \beta$, plug-in simple kriging |
+| `pred_fields` | `fields::Krig` ordinary kriging | GLS $\hat \beta$, beta uncertainty included in SE |
+
+Standard errors: `se_sk` uses GpGp's $\sigma^2$ with the simple-kriging formula (holds $\beta$ fixed); `se_fields` uses `fields`' $\sigma^2_{GLS}$ with the ordinary-kriging formula (adds $\beta$ estimation uncertainty).
+
+```{python}
+#| label: gp-fields-audit
+#| code-summary: "Run fields::Krig audit and display summary"
+
+_audit_csv = f"{_GP_DIR}/gp_predictions_0.08333deg_fields_audit.csv"
+
+ohc_clim.run_gp_audit_fields(
+    _profiles_csv,
+    _pred_grid_csvs[1/12],
+    _virt_out_csvs[1/12],
+    _model_cache,
+    _audit_csv,
+)
+
+_audit = ohc_clim.load_gp_audit(_audit_csv)
+
+# predictions / SEs are in J/m² -- convert to GJ/m² for display
+for _c in ["pred_gpgp","pred_sk","pred_fields","se_gpgp","se_sk","se_fields",
+           "pred_sk_diff","pred_fields_diff"]:
+    _audit[_c] = _audit[_c] * ohc_bias.J_TO_GJ
+# sigma2 is in J²/m⁴ -- just use the ratio (dimensionless) for the table
+
+_summary_rows = []
+for _d in DEPTHS:
+    _sub = _audit[_audit["depth"] == f"{_d}_anom"]
+    _sigma2_ratio = float(_sub["sigma2_fields"].iloc[0] / _sub["sigma2_gpgp"].iloc[0])
+    _summary_rows.append({
+        "depth": _d,
+        "σ² ratio (fields/GpGp)": f"{_sigma2_ratio:.6f}",
+        "RMSE(pred_sk − pred_gpgp) (GJ/m²)": f"{(_sub['pred_sk_diff']**2).mean()**0.5:.2e}",
+        "RMSE(pred_fields − pred_gpgp) (GJ/m²)": f"{(_sub['pred_fields_diff']**2).mean()**0.5:.4f}",
+        "max|pred_fields − pred_gpgp| (GJ/m²)": f"{_sub['pred_fields_diff'].abs().max():.4f}",
+        "median(se_sk / se_gpgp)": f"{(_sub['se_sk']/_sub['se_gpgp']).median():.6f}",
+        "median(se_fields / se_gpgp)": f"{(_sub['se_fields']/_sub['se_gpgp']).median():.6f}",
+    })
+pd.DataFrame(_summary_rows).set_index("depth")
+```
+
+**Interpretation.** The direct Cholesky solve (`pred_sk`) agrees with GpGp's `kriging_predict` to floating-point precision (RMSE ~5×10⁻³ J/m², sub-nanometre on the GJ/m² scale), confirming the `matern_spheretime` covariance implementation is exact.
+`fields::Krig` agrees to within ~1–2 MJ/m² RMSE (~0.02% of the anomaly standard deviation of ~6 GJ/m²); the residual comes from the ML vs GLS intercept difference ($\hat \beta_{fields} − \hat \beta_{gpgp}$ ≈ 2–3 MJ/m²).
+Standard errors match within 0.1–0.2% (se_sk/se_gpgp ≈ 1.000; se_fields/se_gpgp ≈ 1.002), with the slight excess in `se_fields` expected from ordinary-kriging's added $\hat \beta$ estimation term.
+
 # Levitus-style kernel-smoother interpolation
 
-A second, simpler alternative to the bin-and-average estimator: the
+## Background
+
+Now we perform anomaly interpolation with the
 fixed-radius Gaussian-weighted kernel smoother described in
-`literature/levitus_2012_aux.tex` (the WOA/Levitus objective-analysis scheme).
-For a prediction point $s_0$ with nearby profile anomalies $Q_n$ at distance
+`literature/levitus_2012_aux.tex` (the Levitus objective-analysis scheme).
+The predicted anomaly is $\hat A(s_0)$ at a point $s_0$ with nearby profile anomalies $Q_n$ at distance
 $r_n$:
 
 $$
@@ -941,36 +1014,24 @@ $$
 \hat A(s_0) = \sum_n \lambda_n Q_n, \qquad \lambda_n = \frac{w_n}{\sum_m w_m}.
 $$
 
-Unlike the GP, this is **not** kriging: the weights depend only on distance
-from $s_0$, never on redundancy/clustering among the observations themselves
-(no covariance matrix is estimated or inverted), and observations beyond the
-radius $R$ contribute nothing at all -- so, unlike the GP, this estimator is
-undefined wherever no profile falls within $R$ of a grid point that month
-(shown as blank below), and like the per-month GP design abandoned earlier in
-this report, it has no temporal dimension -- each month is interpolated
-independently from its own profiles only.
+**Radius.** Levitus sets $R = 666$ km close to the size of this *entire* ~500 km x 650 km analysis domain
 
-**Radius.** The source document gives $R = 666$ km as a single-pass
-approximation to the World Ocean Atlas's global 1° three-pass analysis --
-close to the size of this *entire* ~500 km x 650 km analysis domain, so it
-draws on nearly every profile for every prediction point regardless of
-location, rather than discriminating locally the way the GP's much shorter
-fitted spatial range does (the fit-summary table above). `code/ohc_levitus_interp.R`
-uses this literal published value -- on a domain this small, the smoother,
-more continuous interpolation that comes from pooling almost all of a month's
-profiles into every prediction was preferred over the GP-comparable, more
-locally-discriminating alternative (a shorter, domain-scaled radius, e.g. ~100
-km); pass a different ``R`` to the script to use that instead.
+**Interpolation standard errors** The Levitus appendix derives a standard error for the analyzed value with a general formula for error propagation (GFEP), then simplifies using the
+Schwarz inequality bound on cross-covariances. 
 
-**Standard error -- two formulas.** The source document (Levitus et al. 2012
-appendix) derives a standard error for the analyzed value via the general
-formula for error propagation (GFEP), then simplifies using the
-Schwarz-inequality bound on cross-covariances. The full derivation chain is
-reproduced below; the key result is that the published formula reduces
-identically to $\sigma_A = \sigma_0$, which shapes how we interpret the two
-reported SE fields.
+Their equations appear to imply that $\sigma_A$, the standard error for an interpolated anomaly, is equal to $\sigma_0$, the standard deviation of the weighted mean anomaly values within a given influence region.
 
-::: {.callout-note title="Source derivation: Levitus et al. 2012 appendix, eqs. (5)–(7)" collapse="true"}
+I compute two standard errors, `se_O`, which assumes $Corr(C_n, C_m) = 1$ for grid points $n$ and $m$ within the same influence region, and `se_a`, which alternatively assumes $Cov(C_n, C_m) = 0$. 
+$$
+\texttt{se\_0} = \sigma_0,
+$$
+
+$$
+\texttt{se\_a} = \sigma_0\sqrt{\textstyle\sum_n \lambda_n^2}
+\qquad\text{(dropping the cross-terms)},
+$$
+
+::: {.callout-note title="Source derivation: Levitus et al. 2012 appendix" collapse="true"}
 **Notation.**  At prediction gridpoint $(i,j)$, let $N$ be the number of
 1°-square mean anomalies $Q_n$ within the influence radius, with weights
 $w_n = \exp(-4\,r_n^2/R^2)$ and $W = \sum_n w_n$.  Define the *correction
@@ -981,7 +1042,7 @@ $$
 so the analyzed anomaly is $A = F + \sum_n C_n$ (first-guess $F = 0$ for
 anomaly fields).
 
-**General formula for error propagation (GFEP, eq. 5).**  Treating
+**General formula for error propagation (GFEP) .**  Treating
 $\partial A/\partial Q_n = w_n/W$:
 $$
 \sigma_A = \sqrt{
@@ -994,61 +1055,32 @@ where $\sigma_{C_n}$ is the standard deviation of anomalies in the $n$th
 square and $\sigma_{C_{n,m}}$ is the cross-covariance between squares $n$ and
 $m$.
 
-**$\sigma_0$ definition (eq. 6).**  Because individual ODSQ time series are
-too short to estimate $\sigma_{C_n}$ directly, Levitus (2012) substitutes the
-*spatial* standard deviation of all corrections within the influence region:
+The standard deviation ($\sigma_0$) of all observed ODSQ mean anomalies within the influence region surrounding an ODSQ at gridpoint $(i,j)$ is defined as:
+
 $$
 \sigma_0 = \sqrt{\frac{1}{N-1}\sum_{n=1}^{N}\!\left(C_n - \bar{C}\right)^2}.
 $$
 
-**Simplified SE (eq. 7).**  Setting $\sigma_{C_n} = \sigma_0$ (uniform across
-all ODSQs) and applying the Schwarz bound
-$\sigma_{C_{n,m}} \le \sigma_{C_n}\sigma_{C_m} = \sigma_0^2$:
+The cross covariance $\sigma_{C_{n,m}}$ in can be replaced by the quantity $\sigma_{C_n}\sigma_{C_m}$ because the Schwarz inequality guarantees that $\left|\sigma_{C_{n,m}}\right| \le \sigma_{C_n}\sigma_{C_m}$.
+
+Next we assume in equation that $\sigma_{C_n} = \sigma_0$ and we have the standard error of the mean of the objectively analyzed value:
+
 $$
 \sigma_A = \frac{\sigma_0}{W}\sqrt{\sum_{n=1}^{N} w_n^2 + 2\!\sum_{n<m} w_n w_m}.
 $$
+
 The expression under the root is the binomial expansion of
-$W^2 = \bigl(\sum_n w_n\bigr)^2$, so **eq. (7) reduces identically to
-$\sigma_A = \sigma_0$** for any weight distribution whatsoever.
+$W^2 = \bigl(\sum_n w_n\bigr)^2$, so it reduces to
+$\sigma_A = \sigma_0$.
 :::
 
-Both readings of the source formula are shown below, named after the symbol
-each one actually computes:
-
-$$
-\texttt{se\_a} = \sigma_A = \sigma_0\sqrt{\textstyle\sum_n \lambda_n^2}
-\qquad\text{(dropping the cross-term -- the standard SE of a weighted mean)},
-$$
-
-$$
-\texttt{se\_0} = \sigma_0
-\qquad\text{(eq. (7) as written, which reduces to } \sigma_A = \sigma_0
-\text{ regardless of weighting)},
-$$
-
-where $\sigma_0$ (eq. 6) is the sample standard deviation ($N\!-\!1$) of the
-**corrections** $C_n = \lambda_n Q_n$ -- *not* of the raw $Q_n$ themselves --
-across the $N$ profiles within the radius. Because $\lambda_n \sim 1/N$
-shrinks as more profiles fall within the radius, $\sigma_0$ itself shrinks
-with more/better-distributed data: `se_0`'s exact algebraic collapse to
-$\sigma_0$ (above) is real, but $\sigma_0$ is not the sample-size-invariant
-"fixed worst-case ceiling" a casual reading of eq. (7) might suggest -- only
-the *weights'* contribution collapses to a constant ($W^2$); the corrections'
-own spread does not. What eq. (7) does still guarantee is that `se_0` $\geq$
-`se_a` pointwise, always (since $\sum_n \lambda_n^2 \leq 1$ for any weights
-summing to 1) -- so `se_0` remains the more conservative of the two, just not
-an estimate that's immune to sample size. The true SE sits somewhere between
-`se_a` (zero correlation among nearby profiles) and `se_0` (perfect
-correlation) depending on a real correlation structure this estimator never
-tries to model. (Contrast with the GP's $\sigma_0$ above -- the conditional SD
-from `matern_spheretime`'s fitted parameters, an unrelated quantity that
-happens to share the same symbol.)
+## Monthly predictions
 
 ```{python}
 #| label: levitus-interp-prep
 #| code-summary: "Run the Levitus-style kernel-smoother interpolation (code/ohc_levitus_interp.R)"
 #LEVITUS_R_KM = ohc_clim.LEVITUS_R_DEFAULT_KM
-LEVITUS_R_KM = 200
+LEVITUS_R_KM = 666
 _levitus_out_csv = f"{_GP_DIR}/levitus_predictions.csv"
 
 # Same profiles/grid CSVs already written for the GP path -- both estimators
@@ -1090,6 +1122,12 @@ def show_levitus_map(kind, d):
         return ohc_bias.plot_monthly_cell_maps(
             mean_field_cells, d, vmin=VLIM[d][0], vmax=VLIM[d][1], width=TABSET_FIGW,
             title=f"Climatological mean field, {d} by month")
+    if kind == "obs_anom":
+        _obs_cells = _virtual_ctx["1/12° (native)"]["obs_anom_cells"]
+        return ohc_bias.plot_monthly_cell_maps(
+            _obs_cells, f"{d}_anom", vmin=-ANOM_VLIM[d], vmax=ANOM_VLIM[d], cmap="RdBu_r",
+            cbar_label=f"{d} anomaly (GJ m$^{{-2}}$)", scatter_dots=True, width=TABSET_FIGW,
+            title=f"Observed Argo {d} anomaly by month")
     if kind == "levitus":
         return ohc_bias.plot_monthly_cell_maps(
             levitus_cells, d, vmin=VLIM[d][0], vmax=VLIM[d][1], width=TABSET_FIGW,
@@ -1105,13 +1143,13 @@ def show_levitus_map(kind, d):
         return ohc_bias.plot_monthly_cell_maps(
             levitus_se_a_cells, scol, vmin=0, cmap="viridis", width=TABSET_FIGW,
             cbar_label=f"{d} SE_a (GJ m$^{{-2}}$)",
-            title=f"Levitus SE_a (= sigma_A, independence assumption), {d} (R={LEVITUS_R_KM:.0f} km)")
+            title=f"Levitus se_a, {d} (R={LEVITUS_R_KM:.0f} km)")
     if kind == "levitus_se_0":
         scol = f"{d}_se_0"
         return ohc_bias.plot_monthly_cell_maps(
             levitus_se_0_cells, scol, vmin=0, cmap="viridis", width=TABSET_FIGW,
             cbar_label=f"{d} SE_0 (GJ m$^{{-2}}$)",
-            title=f"Levitus SE_0 (= sigma_0), {d} (R={LEVITUS_R_KM:.0f} km)")
+            title=f"Levitus se_0, {d} (R={LEVITUS_R_KM:.0f} km)")
     if kind == "truth_native":
         return ohc_bias.plot_monthly_cell_maps(
             truth_native, d, vmin=VLIM[d][0], vmax=VLIM[d][1], width=TABSET_FIGW,
@@ -1129,10 +1167,11 @@ for d in DEPTHS:
     _emit(f"## {DEPTH_LABEL[d]}")
     _emit("::: {.panel-tabset}")
     for kind, label in [("levitus_mean", "Mean field (climatology)"),
+                         ("obs_anom", "Observed Argo anomaly"),
                          ("levitus_anom", "Levitus-interpolated Argo anomaly"),
                          ("levitus", "Levitus-interpolated Argo ohc"),
-                         ("levitus_se_a", "SE_a (sigma_A)"),
-                         ("levitus_se_0", "SE_0 (sigma_0)"),
+                         ("levitus_se_a", "se_a"),
+                         ("levitus_se_0", "se_0"),
                          ("truth_native", "GLORYS truth (native)"),
                          ("levitus_bias", "Levitus - truth bias")]:
         _emit(f"### {label}")
@@ -1154,33 +1193,16 @@ for d in DEPTHS:
         f"{d}_bias",
         [f"{d}_se_a", f"{d}_se_0"],
         quantiles=[0.05,0.25,0.75,.95],
-        se_labels=["SE$_a$ ($\\sigma_A$)", "SE$_0$ ($\\sigma_0$)"],
+        se_labels=["$\\sigma_A$", "$\\sigma_0$"],
         se_colors=["#4a90d9", "#f39c12"],
         title=f"{d} anomaly: Levitus bias vs SE",
     ))
 _emit(":::")
 ```
 
-# Levitus pooled (static)
+## Pooled predictions
 
-The per-month Levitus estimator above predicts each month from only that
-month's profiles (3-41, depending on month) -- a much thinner sample than the
-pooled spatio-temporal GP gets to use, since the literal Levitus weight
-function has no time term at all to pool across months with. But the same
-reasoning that justified pooling the GP across months applies here too: these
-are *de-seasonalized anomalies*, so treating every month's profile as a draw
-from one underlying static spatial field, regardless of which month it was
-taken in, is a reasonable simplification -- not an assumption-free one (a real
-year-round trend or persistent anomaly would get smeared together with
-genuine seasonal-cycle residual), but one worth comparing against the
-per-month estimate above.
-
-`code/ohc_levitus_interp.R`'s `pooled` mode pools every month's profiles (the
-full ~150 across the year) into one fixed observation set and predicts a
-single, time-invariant anomaly field -- one map, not twelve. The only
-month-to-month variation in the resulting OHC map below comes from the
-seasonal climatology itself; the float-derived correction is the same in every
-month.
+Pool all 2020 anomalies to interpolate anomaly field for the year and then add to monthly mean field to compute per-month bias
 
 ```{python}
 #| label: levitus-pooled-prep
@@ -1224,6 +1246,12 @@ def show_levitus_pooled_map(kind, d):
         return ohc_bias.plot_monthly_cell_maps(
             mean_field_cells, d, vmin=VLIM[d][0], vmax=VLIM[d][1], width=TABSET_FIGW,
             title=f"Climatological mean field, {d} by month")
+    if kind == "obs_anom":
+        _obs_cells = _virtual_ctx["1/12° (native)"]["obs_anom_cells"]
+        return ohc_bias.plot_monthly_cell_maps(
+            _obs_cells, f"{d}_anom", vmin=-ANOM_VLIM[d], vmax=ANOM_VLIM[d], cmap="RdBu_r",
+            cbar_label=f"{d} anomaly (GJ m$^{{-2}}$)", scatter_dots=True, width=TABSET_FIGW,
+            title=f"Observed Argo {d} anomaly by month")
     if kind == "levitus_pooled_anom":
         # Static: one map for the whole year, not a monthly facet.
         acol = f"{d}_anom"
@@ -1242,7 +1270,7 @@ def show_levitus_pooled_map(kind, d):
     if kind in ("levitus_pooled_se_a", "levitus_pooled_se_0"):
         suf = "_se_a" if kind == "levitus_pooled_se_a" else "_se_0"
         scol = f"{d}_anom{suf}"
-        label = "SE_a (sigma_A)" if suf == "_se_a" else "SE_0 (sigma_0)"
+        label = "SE_a" if suf == "_se_a" else "SE_0"
         fig, _ = map_fields_row(
             [levitus_pooled_anom_field[scol] * ohc_bias.J_TO_GJ], titles=[d],
             cmaps=["viridis"], cbar_labels=[f"{d} {label} (GJ m$^{{-2}}$)"],
@@ -1268,10 +1296,11 @@ for d in DEPTHS:
     _emit(f"## {DEPTH_LABEL[d]}")
     _emit("::: {.panel-tabset}")
     for kind, label in [("levitus_pooled_mean", "Mean field (climatology)"),
+                         ("obs_anom", "Observed Argo anomaly"),
                          ("levitus_pooled_anom", "Pooled Argo anomaly (whole year)"),
                          ("levitus_pooled", "Pooled Levitus-interpolated Argo ohc"),
-                         ("levitus_pooled_se_a", "SE_a (sigma_A)"),
-                         ("levitus_pooled_se_0", "SE_0 (sigma_0)"),
+                         ("levitus_pooled_se_a", "SE_a"),
+                         ("levitus_pooled_se_0", "SE_0"),
                          ("truth_native", "GLORYS truth (native)"),
                          ("levitus_pooled_bias", "Pooled Levitus - truth bias")]:
         _emit(f"### {label}")
@@ -1293,7 +1322,7 @@ for d in DEPTHS:
         f"{d}_bias",
         [f"{d}_se_a", f"{d}_se_0"],
         quantiles=[0.05,.25,.75,.95],
-        se_labels=["SE$_a$ ($\\sigma_A$)", "SE$_0$ ($\\sigma_0$)"],
+        se_labels=["$\\sigma_A$", "$\\sigma_0$"],
         se_colors=["#4a90d9", "#f39c12"],
         title=f"{d} anomaly: Pooled Levitus bias vs SE",
     ))

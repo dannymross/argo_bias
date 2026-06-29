@@ -50,6 +50,7 @@ RG_MEAN_VAR = "ARGO_TEMPERATURE_MEAN"
 RG_ANOMALY_VAR = "ARGO_TEMPERATURE_ANOMALY"
 GP_INTERP_SCRIPT = os.path.join(os.path.dirname(__file__), "ohc_gp_interp.R")
 LEVITUS_INTERP_SCRIPT = os.path.join(os.path.dirname(__file__), "ohc_levitus_interp.R")
+GP_AUDIT_SCRIPT = os.path.join(os.path.dirname(__file__), "gp_audit_fields.R")
 LEVITUS_R_DEFAULT_KM = 666.0  # literal Levitus (2012) value -- smoother interpolation given this small domain.
 
 
@@ -397,6 +398,70 @@ def run_levitus_interp(
     if pooled:
         cmd.append("pooled")
     subprocess.run(cmd, check=True)
+
+
+def run_gp_audit_fields(
+    profiles_csv,
+    grid_csv,
+    gpgp_out_csv,
+    model_cache,
+    audit_out_csv=None,
+    r_script=GP_AUDIT_SCRIPT,
+):
+    """Shell out to ``code/gp_audit_fields.R`` to audit the GpGp predictions.
+
+    Reproduces ``ohc_gp_interp.R``'s kriging_predict output using
+    ``fields::Krig`` with a hand-coded matern_spheretime correlation function
+    and the fitted parameters from ``model_cache`` (.rds).  Three prediction
+    columns are compared: GpGp custom kriging_predict, direct simple kriging
+    via R's Cholesky, and fields::Krig ordinary kriging.
+
+    Parameters
+    ----------
+    profiles_csv : str
+        Same profiles CSV used for the GP fit (columns: date, lon, lat,
+        ohc_700_anom, ohc_2000_anom).
+    grid_csv : str
+        Same prediction-grid CSV (columns: lon, lat).
+    gpgp_out_csv : str
+        GpGp prediction output CSV to audit (written by ``run_gp_interp``).
+    model_cache : str
+        Path to the ``.rds`` model cache written by ``run_gp_interp``
+        (``fits`` + ``too_few_overall``).
+    audit_out_csv : str, optional
+        Output path for the comparison CSV.  Defaults to
+        ``<gpgp_out_csv stem>_fields_audit.csv``.
+
+    Returns
+    -------
+    str
+        Path to the audit output CSV.
+    """
+    if audit_out_csv is None:
+        stem = gpgp_out_csv.replace(".csv", "")
+        audit_out_csv = f"{stem}_fields_audit.csv"
+    cmd = [
+        "Rscript", r_script,
+        profiles_csv, grid_csv, gpgp_out_csv, model_cache, audit_out_csv,
+    ]
+    subprocess.run(cmd, check=True)
+    return audit_out_csv
+
+
+def load_gp_audit(audit_csv):
+    """Load the fields-audit comparison CSV written by ``run_gp_audit_fields``.
+
+    Returns a DataFrame with columns:
+
+    ``month``, ``lon``, ``lat``, ``depth``,
+    ``pred_gpgp``, ``pred_sk``, ``pred_fields`` (J/m²),
+    ``se_gpgp``,  ``se_sk``,  ``se_fields``  (J/m²),
+    ``pred_sk_diff``, ``pred_fields_diff`` (J/m²),
+    ``se_sk_ratio``, ``se_fields_ratio``,
+    ``sigma2_gpgp``, ``sigma2_fields``.
+    """
+    df = pd.read_csv(audit_csv, parse_dates=["month"], low_memory=False)
+    return df
 
 
 def load_gp_fit_summary(fit_summary_csv):

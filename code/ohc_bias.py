@@ -800,6 +800,20 @@ def plot_bias_se_violin(
         for cells, col in zip(se_cells_list, se_col_list)
     ]
 
+    # Drop months where any distribution is empty — violinplot crashes on zero-size arrays.
+    valid = [
+        len(bias_data[i]) > 1
+        and all(len(sd[i]) > 1 for sd in se_data_list)
+        for i in range(len(months))
+    ]
+    months = [m for m, v in zip(months, valid) if v]
+    month_labels = [l for l, v in zip(month_labels, valid) if v]
+    bias_data = [d for d, v in zip(bias_data, valid) if v]
+    se_data_list = [
+        [d for d, v in zip(sd, valid) if v]
+        for sd in se_data_list
+    ]
+
     positions = np.arange(1, len(months) + 1)
     n_total = 1 + n_se
     # Evenly space all violins (bias + SE sources) within a fixed span.
@@ -828,7 +842,7 @@ def plot_bias_se_violin(
         parts_bias[key].set_linewidth(0.5)
 
     parts_bias["cquantiles"].set_color("gray")
-    parts_bias["cmeans"].set_linestyle(":")
+    parts_bias["cmedians"].set_linestyle(":")
 
     for i, (se_data, color) in enumerate(zip(se_data_list, se_colors)):
         parts_se = ax.violinplot(
@@ -848,7 +862,7 @@ def plot_bias_se_violin(
             parts_se[key].set_color("black")
             parts_se[key].set_linewidth(0.5)
 
-        parts_se["cmeans"].set_linestyle(":")
+        parts_se["cmedians"].set_linestyle(":")
         parts_se["cquantiles"].set_color("gray")
 
     ax.axvline(0, color="0.6", lw=0.8, zorder=0)
