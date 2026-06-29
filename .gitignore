@@ -16,3 +16,6 @@ __pycache__/
 
 # generated images
 *.png
+
+/.quarto/
+**/*.quarto_ipynb

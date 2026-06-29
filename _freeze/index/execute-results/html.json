@@ -1,0 +1,15 @@
+{
+  "hash": "70ac4b6b1f3cb6761372b3a8becc3ba9",
+  "result": {
+    "engine": "knitr",
+    "markdown": "---\ntitle: \"Argo Bias\"\nsubtitle: \"Statistical Analysis of Argo Float Sampling\"\nauthor: \"Daniel Ross\"\ndate: today\n---\n\n## Overview\n\nThis site collects analysis reports for a study of ocean heat content (OHC) sampling bias\nin Argo float observations.\n\nThe sampling bias arises because Argo floats are not uniformly distributed in space or\ntime. We use GLORYS12 reanalysis fields and PARCELS Lagrangian particle simulations to\ncharacterize and quantify the bias.\n\n## Reports\n\n\n::: {.cell}\n::: {.cell-output-display}\n\n\n|Report           |Description                                                   |Last Updated |\n|:----------------|:-------------------------------------------------------------|:------------|\n|[Pilot Simulation](reports/pilot_simulation.qmd)|PARCELS simulation study with GLORYS12 velocity field and OHC |2026-06-29   |\n\n\n:::\n:::\n\n",
+    "supporting": [],
+    "filters": [
+      "rmarkdown/pagebreak.lua"
+    ],
+    "includes": {},
+    "engineDependencies": {},
+    "preserve": {},
+    "postProcess": true
+  }
+}

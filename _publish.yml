@@ -1,0 +1,4 @@
+- source: project
+  gh-pages:
+    - id: argo-bias
+      url: 'https://dannymross.github.io/argo_bias'

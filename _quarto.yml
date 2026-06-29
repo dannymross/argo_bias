@@ -1,0 +1,47 @@
+project:
+  type: website
+  render:
+    - "index.qmd"
+    - "reports/pilot_simulation.qmd"
+
+execute:
+  freeze: auto
+
+website:
+  title: "Argo OHC Sampling Bias"
+  page-navigation: true
+
+  repo-url: https://github.com/dannymross/argo_bias
+
+  navbar:
+    title: "Argo Bias"
+    search: false
+    left:
+      - icon: journal-text
+        menu:
+          - href: reports/pilot_simulation.qmd
+            text: "Pilot Simulation"
+    right:
+      - icon: github
+        href: https://github.com/dannymross/argo_bias
+
+  sidebar: false
+
+
+format:
+  html:
+    theme:
+      light: flatly
+      dark: darkly
+    include-in-header:
+      - text: |
+          <script>
+            if (!localStorage.getItem('quarto-color-scheme')) {
+              localStorage.setItem('quarto-color-scheme', 'dark');
+            }
+          </script>
+    highlight-style: monokai
+    toc: false
+    number-sections: false
+    code-tools: false
+    fig-align: center

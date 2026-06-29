@@ -1,0 +1,19 @@
+---
+title: "Argo Bias"
+subtitle: "Statistical Analysis of Argo Float Sampling"
+author: "Daniel Ross"
+date: today
+---
+
+## Overview
+
+This site collects analysis reports for a study of ocean heat content sampling bias
+in Argo float observations.
+
+The sampling bias arises because Argo floats are not uniformly distributed in space or
+time. We use GLORYS12 reanalysis fields and PARCELS Lagrangian particle simulations to
+characterize and quantify the bias.
+
+## Reports
+
+- [Pilot Simulation](reports/pilot_simulation.qmd) *PARCELS simulation study with GLORYS12 velocity field and OHC*
