@@ -1,0 +1,24 @@
+{
+  "experiment": "nac_gs_smoke",
+  "python": "/Users/danielmaxross/anaconda3/envs/virtualfleet/bin/python",
+  "velocity": "data/velocity/velocity_2020_*.nc",
+  "model": "GLORYS12V1",
+
+  "nfloats": 10,
+  "top_left": [40, -68],
+  "bottom_right": [36, -62],
+  "deploy_time": "2020-01-01",
+
+  "years": null,
+  "days": 60,
+  "step_seconds": 300,
+  "record_seconds": 1800,
+
+  "ntasks": 1,
+  "local_cores": 1,
+
+  "outdir": "data/virtualfleet",
+  "prefix": "nac_gs_smoke",
+
+  "slurm": {"time": "01:00:00", "mem": "16G", "cpus": 1, "conda_env": "virtualfleet"}
+}

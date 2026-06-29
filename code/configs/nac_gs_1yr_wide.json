@@ -1,0 +1,34 @@
+{
+  "experiment": "nac_gs_1yr_wide",
+  "python": "/Users/danielmaxross/anaconda3/envs/virtualfleet/bin/python",
+  "velocity": "data/velocity_gs_wide/velocity_*.nc",
+  "model": "GLORYS12V1",
+
+  "download": {
+    "dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1D-m",
+    "variables": ["uo", "vo", "thetao"],
+    "lon_bounds": [-74, -49],
+    "lat_bounds": [30, 48],
+    "depth_bounds": [0, 2300],
+    "notes": "advection domain extended downstream (east +10, south +3) via code/download_gs_ext.py, reusing data/velocity_gs as the center; analysis/truth region is chosen separately at analysis time"
+  },
+
+  "nfloats": null,
+  "cell_deg": 1,
+  "top_left": [40, -68],
+  "bottom_right": [36, -62],
+  "deploy_time": "2020-01-01",
+
+  "years": null,
+  "days": 365,
+  "step_seconds": 300,
+  "record_seconds": 21600,
+
+  "ntasks": 1,
+  "local_cores": 1,
+
+  "outdir": "data/virtualfleet",
+  "prefix": "nac_gs_1yr_wide",
+
+  "slurm": {"time": "12:00:00", "mem": "16G", "cpus": 1, "conda_env": "virtualfleet"}
+}
