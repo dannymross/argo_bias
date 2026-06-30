@@ -10,12 +10,18 @@ renv/staging/
 *_cache/
 *_files/
 .quarto/
+/_site/
+reports/_site/
+reports/_freeze/
 
 # python cache
 __pycache__/
 
 # generated images
 *.png
+# ...except figures needed to restore the committed freeze cache (CI has no
+# access to data/, so execute:freeze relies on these being tracked)
+!_freeze/**/figure-html/*.png
 
 /.quarto/
 **/*.quarto_ipynb

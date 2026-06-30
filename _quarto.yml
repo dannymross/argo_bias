@@ -8,7 +8,7 @@ execute:
   freeze: auto
 
 website:
-  title: "Argo OHC Sampling Bias"
+  title: "Argo Bias"
   page-navigation: true
 
   repo-url: https://github.com/dannymross/argo_bias
@@ -33,14 +33,6 @@ format:
     theme:
       light: flatly
       dark: darkly
-    include-in-header:
-      - text: |
-          <script>
-            if (!localStorage.getItem('quarto-color-scheme')) {
-              localStorage.setItem('quarto-color-scheme', 'dark');
-            }
-          </script>
-    highlight-style: monokai
     toc: false
     number-sections: false
     code-tools: false
