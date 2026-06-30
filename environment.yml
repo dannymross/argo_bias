@@ -1,0 +1,17 @@
+name: argo_bias
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - ipython
+  - numpy
+  - pandas
+  - xarray
+  - matplotlib
+  - cartopy
+  - pip
+  - parcels
+  - pip:
+    - global_land_mask
+    - git+https://github.com/euroargodev/VirtualFleet.git

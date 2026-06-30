@@ -1,4 +1,6 @@
 data/
+renv/library/
+renv/staging/
 /.Rhistory
 /.RData
 
