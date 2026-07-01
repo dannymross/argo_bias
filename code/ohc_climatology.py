@@ -48,7 +48,8 @@ RG_MEAN_PATH = "../data/rg_climatology/RG_ArgoClim_Temperature_2019.nc"
 RG_EXT_PATH_TEMPLATE = "../data/rg_climatology/RG_ArgoClim_{year}{month:02d}_2019.nc"
 RG_MEAN_VAR = "ARGO_TEMPERATURE_MEAN"
 RG_ANOMALY_VAR = "ARGO_TEMPERATURE_ANOMALY"
-GP_INTERP_SCRIPT = os.path.join(os.path.dirname(__file__), "ohc_gp_interp.R")
+GP_FIT_SCRIPT = os.path.join(os.path.dirname(__file__), "ohc_gp_fit.R")
+GP_PREDICT_SCRIPT = os.path.join(os.path.dirname(__file__), "ohc_gp_predict.R")
 LEVITUS_INTERP_SCRIPT = os.path.join(os.path.dirname(__file__), "ohc_levitus_interp.R")
 GP_AUDIT_SCRIPT = os.path.join(os.path.dirname(__file__), "gp_audit_fields.R")
 # Repo root (parent of code/) -- R subprocesses below run with this as cwd so
@@ -345,31 +346,54 @@ def write_profile_csv(df, path, value_cols=("ohc_700", "ohc_2000"), suffix="_ano
     no climatology needs adding back afterward (see :func:`load_gp_anomaly_field`).
 
     The temporal coordinate written is the actual observation ``date`` (YYYY-MM-DD),
-    not the calendar month. The R script converts this to day-of-year for the
-    spatio-temporal GP fit and uses a configurable day within each calendar month
-    (first/middle/last, controlled by :func:`run_gp_interp`'s ``month_day``
-    argument) as the prediction temporal coordinate.
+    not the calendar month. ``ohc_gp_fit.R`` converts this to a continuous day
+    count for the spatio-temporal GP fit, and ``ohc_gp_predict.R`` uses a
+    configurable day within each calendar month (first/middle/last, controlled
+    by :func:`run_gp_predict`'s ``month_day`` argument) as the prediction
+    temporal coordinate.
     """
     out = df[["date", "lon", "lat"] + [f"{c}{suffix}" for c in value_cols]].copy()
     out["date"] = pd.to_datetime(out["date"]).dt.strftime("%Y-%m-%d")
     out.to_csv(path, index=False)
 
 
-def run_gp_interp(
+def run_gp_fit(profiles_csv, fit_summary_csv, model_cache, r_script=GP_FIT_SCRIPT):
+    """Shell out to ``code/ohc_gp_fit.R`` to fit the pooled Vecchia GP per depth.
+
+    Writes ``fit_summary_csv`` (the fit's parameter table) and ``model_cache``
+    (an ``.rds`` of the fitted GpGp model objects). Prediction is a separate
+    step -- see :func:`run_gp_predict` -- so one fit here can be reused across
+    any number of prediction grids/resolutions without refitting.
+    """
+    cmd = ["Rscript", os.path.abspath(r_script)] + [
+        os.path.abspath(p) for p in (profiles_csv, fit_summary_csv, model_cache)
+    ]
+    subprocess.run(cmd, check=True, cwd=REPO_ROOT)
+
+
+def run_gp_predict(
     profiles_csv,
     grid_csv,
+    model_cache,
     out_csv,
-    fit_summary_csv,
-    model_cache=None,
+    m="exact",
     month_day="middle",
-    r_script=GP_INTERP_SCRIPT,
+    r_script=GP_PREDICT_SCRIPT,
 ):
-    """Shell out to ``code/ohc_gp_interp.R`` to fit/predict the Vecchia GP.
+    """Shell out to ``code/ohc_gp_predict.R`` to predict a fitted GP onto a grid.
 
-    ``fit_summary_csv`` is where the pooled fit's parameter table gets written.
-    Pass ``model_cache`` (path to a ``.rds`` file) to save the fitted model on
-    the first call and reload it on subsequent calls -- so predicting at a
-    second grid (e.g. 1°) skips the expensive fit entirely.
+    ``model_cache`` is the ``.rds`` written by :func:`run_gp_fit`.
+
+    ``m`` controls exact vs Vecchia-approximate prediction: ``"exact"``
+    (default) conditions every prediction point on all observations -- correct
+    but scales poorly once there are thousands of pooled profiles (an
+    O(n_obs^2)-ish neighbour search, redone in the naive version once per
+    month even though it doesn't depend on the month at all). Pass a small
+    integer (e.g. 30, matching ``ohc_gp_fit.R``'s own ``m_seq``) for a fast,
+    approximate prediction that still returns a valid SE -- unlike
+    ``GpGp::predictions()``, which has no SE at all -- by reusing the same
+    ``find_ordered_nn``/``vecchia_Linv`` machinery with a bounded neighbour set
+    instead of full conditioning; see ``code/ohc_gp_predict.R`` for the detail.
 
     ``month_day`` controls the temporal prediction point within each month:
     ``"first"`` (1st), ``"middle"`` (15th, default), or ``"last"`` (last day).
@@ -377,11 +401,8 @@ def run_gp_interp(
     if month_day not in ("first", "middle", "last"):
         raise ValueError(f"month_day must be 'first', 'middle', or 'last'; got {month_day!r}")
     cmd = ["Rscript", os.path.abspath(r_script)] + [
-        os.path.abspath(p) for p in (profiles_csv, grid_csv, out_csv, fit_summary_csv)
-    ]
-    if model_cache is not None:
-        cmd.append(os.path.abspath(model_cache))
-    cmd.append(month_day)
+        os.path.abspath(p) for p in (profiles_csv, grid_csv, model_cache, out_csv)
+    ] + [str(m), month_day]
     subprocess.run(cmd, check=True, cwd=REPO_ROOT)
 
 
@@ -395,7 +416,7 @@ def run_levitus_interp(
 ):
     """Shell out to ``code/ohc_levitus_interp.R`` to run the Levitus-style kernel smoother.
 
-    Mirrors :func:`run_gp_interp`'s subprocess pattern. ``profiles_csv``/
+    Mirrors :func:`run_gp_predict`'s subprocess pattern. ``profiles_csv``/
     ``grid_csv`` are the same files :func:`write_profile_csv`/
     :func:`build_pred_grid` produce for the GP path -- both estimators read the
     identical input format.
@@ -425,7 +446,7 @@ def run_gp_audit_fields(
 ):
     """Shell out to ``code/gp_audit_fields.R`` to audit the GpGp predictions.
 
-    Reproduces ``ohc_gp_interp.R``'s kriging_predict output using
+    Reproduces ``ohc_gp_predict.R``'s kriging_predict output using
     ``fields::Krig`` with a hand-coded matern_spheretime correlation function
     and the fitted parameters from ``model_cache`` (.rds).  Three prediction
     columns are compared: GpGp custom kriging_predict, direct simple kriging
@@ -439,10 +460,10 @@ def run_gp_audit_fields(
     grid_csv : str
         Same prediction-grid CSV (columns: lon, lat).
     gpgp_out_csv : str
-        GpGp prediction output CSV to audit (written by ``run_gp_interp``).
+        GpGp prediction output CSV to audit (written by ``run_gp_predict``).
     model_cache : str
-        Path to the ``.rds`` model cache written by ``run_gp_interp``
-        (``fits`` + ``too_few_overall``).
+        Path to the ``.rds`` model cache written by ``run_gp_fit``
+        (``fits`` + ``too_few_overall`` + ``depth_cols``).
     audit_out_csv : str, optional
         Output path for the comparison CSV.  Defaults to
         ``<gpgp_out_csv stem>_fields_audit.csv``.
@@ -480,13 +501,13 @@ def load_gp_audit(audit_csv):
 
 
 def load_gp_fit_summary(fit_summary_csv):
-    """Load the pooled GP fit's parameter table written by ``ohc_gp_interp.R``.
+    """Load the pooled GP fit's parameter table written by ``ohc_gp_fit.R``.
 
     One row per (depth, parameter): ``mean (intercept)`` plus the
     ``matern_spheretime`` covariance parameters (variance, spatial_range,
     temporal_range, smoothness, nugget). ``std_error``/``z_stat`` are NaN for
     ``smoothness``, which is fixed rather than estimated (see
-    ``code/ohc_gp_interp.R:FIXED_SMOOTHNESS`` -- letting it float left the
+    ``code/ohc_gp_fit.R:FIXED_SMOOTHNESS`` -- letting it float left the
     likelihood unconverged). ``loglik``/``converged``/``n_obs`` repeat per row
     for convenience but are constant within a depth.
     """
@@ -556,7 +577,7 @@ def load_gp_anomaly_field(out_csv, lats, lons, value_cols=("ohc_700", "ohc_2000"
 
     ``<col>_anom_se`` (or ``<col>_se`` if ``suffix=""``) is the GP's
     Vecchia-approximation standard error (see
-    ``code/ohc_gp_interp.R:kriging_predict``; NaN for any (month, depth) where
+    ``code/ohc_gp_predict.R:kriging_predict``; NaN for any (month, depth) where
     there were too few profiles to fit a GP at all -- see ``too_few_profiles``).
     See :func:`_load_anomaly_field` for the shared loading logic, including what
     ``suffix=""`` means (model the raw value directly, not an anomaly).

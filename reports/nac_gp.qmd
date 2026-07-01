@@ -102,15 +102,24 @@ _ = map_point_trajectories(
     title=f"All obs for floats that profiled the domain, {YEARS[0]}-{YEARS[-1]}",
 )
 
-# Restrict to the analysis window itself -- this is the profile set the GP
-# interpolation below is fit on.
-argo_a = argo_a[argo_a["date"].dt.year.isin(YEARS)]
+# Restrict to the analysis window and box itself -- this is the profile set
+# the GP interpolation below is fit on. (The year filter alone isn't enough:
+# a float that entered the box can spend most of a year drifting outside it,
+# and those out-of-box obs would otherwise get carried through as phantom
+# rows that silently turn to NaN once truth is sampled at their position --
+# quietly dropped from the fit, but only after wasting the sampling/interp
+# work on ~8x too many rows.)
+argo_a = argo_a[
+    argo_a["date"].dt.year.isin(YEARS)
+    & argo_a.lat.between(la0, la1)
+    & argo_a.lon.between(lo0, lo1)
+]
 
 _ = map_point_trajectories(
     argo_a,
     extent=EXTENT_WIDE,
     boxes=[(*ANALYSIS_BOUNDS, "analysis domain")],
-    title=f"{YEARS[0]}-{YEARS[-1]} obs",
+    title=f"{YEARS[0]}-{YEARS[-1]} obs within the analysis domain",
 )
 print(f"{len(argo_a)} profiles within the analysis domain, {YEARS[0]}-{YEARS[-1]}")
 ```
@@ -123,7 +132,7 @@ We interpolate real Argo float OHC (`ohc_700`/`ohc_2000` directly, not their ano
 climatology) onto the full analysis-domain grid at the native 1/12$^\circ$ resolution, using a Gaussian
 process fit with `GpGp`. Each real float profile is assigned the **GLORYS truth OHC**  at its position and date.
 
-`code/ohc_gp_interp.R` fits one GP per depth (0-700m, 0-2000m) with the stationary spatiotemporal
+`code/ohc_gp_fit.R` fits one GP per depth (0-700m, 0-2000m) with the stationary spatiotemporal
 covariance function `matern_spheretime`, pooling all profiles across all three years, with
 covariance parameters $\theta$ = ($\sigma^2$, $\rho_s$, $\rho_t$, $\nu$, $\tau^2$) = (variance,
 spatial range, temporal range, smoothness, nugget). Smoothness is fixed at $\nu = \tfrac{1}{2}$,
@@ -133,6 +142,16 @@ The temporal coordinate is a continuous day count (days since 2020-01-01), not d
 the fitted temporal range can extend across years rather than being capped at within-year scale by
 an annual wraparound, letting the model express long-range temporal autocorrelation if the data
 support it.
+
+Fitting and prediction are separate scripts, so one fit is reused across both prediction grids
+below. `code/ohc_gp_predict.R` predicts via a custom Vecchia kriging step (`kriging_predict`) that
+gives both a mean and a standard error -- `GpGp::predictions()` alone is faster but has no SE.
+Predicting on the coarse 1° grid (35 points) conditions each point on every one of the ~3,450
+pooled profiles ("exact" mode) -- cheap at that grid size, and matches the reference. Predicting on
+the native 1/12° grid (~3,600 points x 36 months x 2 depths) with that same full conditioning does
+not scale -- so that pass instead uses a bounded Vecchia neighbourhood (`m = 30`, matching the
+fit's own approximation), which reuses the same underlying machinery but conditions each point on
+only its 30 nearest profiles.
 
 ## Model Fit
 
@@ -151,7 +170,7 @@ for _d in DEPTHS:
 
 ```{python}
 #| label: tbl-gp-fit-diagnostics
-#| code-summary: 'Fit the pooled GP and predict on the native (1/12$^\circ$) and 1$^\circ$ grids'
+#| code-summary: 'Fit the pooled GP once, then predict on the 1$^\circ$ (exact) and native 1/12$^\circ$ (bounded Vecchia) grids'
 _GP_DIR = "../data/gp_interp"
 os.makedirs(_GP_DIR, exist_ok=True)
 _real_profiles_csv    = f"{_GP_DIR}/nac_gp_profiles_real_direct.csv"
@@ -161,6 +180,9 @@ _real_model_cache     = f"{_GP_DIR}/nac_gp_real_direct_model_cache.rds"
 _keys = ["month", "cell_lat", "cell_lon"]
 _GP_MONTH_DAY = "middle"
 _GP_RES_LABELS = {1 / 12: "1/12$^\circ$ (native)", 1.0: "1$^\circ$"}
+# Full conditioning ("exact") is fine at 35 points; the ~3,600-point native
+# grid needs the bounded Vecchia approximation to stay fast -- see Background.
+_GP_PREDICT_M = {1 / 12: 30, 1.0: "exact"}
 _pred_grid_csvs = {deg: f"{_GP_DIR}/nac_gp_pred_grid_{deg:.4g}deg.csv" for deg in [1 / 12, 1.0]}
 _real_out_csvs  = {deg: f"{_GP_DIR}/nac_gp_real_predictions_{deg:.4g}deg.csv" for deg in [1 / 12, 1.0]}
 
@@ -176,10 +198,11 @@ for deg, grid_csv in _pred_grid_csvs.items():
     ohc_clim.build_pred_grid(lats, lons).to_csv(grid_csv, index=False)
 
 ohc_clim.write_profile_csv(real_argo_direct, _real_profiles_csv, suffix="")
+ohc_clim.run_gp_fit(_real_profiles_csv, _real_fit_summary_csv, _real_model_cache)
 for deg, out_csv in _real_out_csvs.items():
-    ohc_clim.run_gp_interp(
-        _real_profiles_csv, _pred_grid_csvs[deg], out_csv, _real_fit_summary_csv,
-        model_cache=_real_model_cache, month_day=_GP_MONTH_DAY,
+    ohc_clim.run_gp_predict(
+        _real_profiles_csv, _pred_grid_csvs[deg], _real_model_cache, out_csv,
+        m=_GP_PREDICT_M[deg], month_day=_GP_MONTH_DAY,
     )
 
 gp_fit_summary = ohc_clim.load_gp_fit_summary(_real_fit_summary_csv)

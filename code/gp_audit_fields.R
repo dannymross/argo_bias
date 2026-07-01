@@ -1,13 +1,13 @@
 #!/usr/bin/env Rscript
 # code/gp_audit_fields.R
 #
-# Audits the custom kriging_predict predictions from ohc_gp_interp.R by
+# Audits the custom kriging_predict predictions from ohc_gp_predict.R by
 # independently reproducing them with fields::Krig and a hand-coded
 # matern_spheretime correlation function that exactly matches GpGp's C++
 # implementation.
 #
 # The GpGp fit parameters are read from the model_cache.rds written by
-# ohc_gp_interp.R.  fields::Krig is called with:
+# ohc_gp_fit.R.  fields::Krig is called with:
 #   - lambda     = GpGp nugget (relative nugget: tau^2 / sigma^2)
 #   - cov.function = matern_spheretime correlation at GpGp's fitted ranges
 #   - m = 1      (intercept-only drift, matching GpGp's X=NULL)
@@ -79,7 +79,7 @@ cat(sprintf("Profiles: %d  |  grid cells: %d  |  months: %d\n",
 cat("Depths in cache:", paste(names(fits), collapse = ", "), "\n\n")
 
 # Helper: day-of-year of prediction point within a month (must match
-# the same position used in ohc_gp_interp.R -- defaults to "middle" / 15th)
+# the same position used in ohc_gp_predict.R -- defaults to "middle" / 15th)
 pred_yday <- function(month_str, position = "middle") {
   d <- as.Date(month_str)
   target <- switch(position,

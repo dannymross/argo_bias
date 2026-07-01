@@ -53,7 +53,7 @@ levitus_predict <- function(lon_obs, lat_obs, q_obs, lon_pred, lat_pred, R) {
   n_pred <- length(lon_pred)
 
   # Great-circle distance (km), as one (n_pred x n_obs) matrix -- same
-  # fields::rdist.earth call ohc_gp_interp.R's kriging_predict uses for its
+  # fields::rdist.earth call ohc_gp_predict.R's kriging_predict uses for its
   # own neighbour distances.
   r <- fields::rdist.earth(cbind(lon_pred, lat_pred), cbind(lon_obs, lat_obs), miles = FALSE)
   in_radius <- r <= R
