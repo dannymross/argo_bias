@@ -25,4 +25,4 @@ __pycache__/
 !_freeze/**/figure-html/*.png
 
 /.quarto/
-**/*.quarto_ipynb
+**/*.quarto_ipynb*

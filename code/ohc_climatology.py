@@ -51,6 +51,11 @@ RG_ANOMALY_VAR = "ARGO_TEMPERATURE_ANOMALY"
 GP_INTERP_SCRIPT = os.path.join(os.path.dirname(__file__), "ohc_gp_interp.R")
 LEVITUS_INTERP_SCRIPT = os.path.join(os.path.dirname(__file__), "ohc_levitus_interp.R")
 GP_AUDIT_SCRIPT = os.path.join(os.path.dirname(__file__), "gp_audit_fields.R")
+# Repo root (parent of code/) -- R subprocesses below run with this as cwd so
+# renv's project-local library activates via .Rprofile (which R only auto-sources
+# from the exact cwd, not ancestor directories -- and reports/ has no .Rprofile
+# of its own). File args are made absolute first since cwd is changing.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LEVITUS_R_DEFAULT_KM = 666.0  # literal Levitus (2012) value -- smoother interpolation given this small domain.
 
 
@@ -330,8 +335,14 @@ def build_pred_grid(lats, lons):
 
 
 # ---- R SUBPROCESS GLUE -----------------------------------------------------
-def write_profile_csv(anom_df, path, value_cols=("ohc_700", "ohc_2000")):
-    """Write the per-profile anomaly table the R Vecchia-GP script reads.
+def write_profile_csv(df, path, value_cols=("ohc_700", "ohc_2000"), suffix="_anom"):
+    """Write the per-profile table the R Vecchia-GP script reads.
+
+    ``suffix="_anom"`` (default) writes ``<col>_anom`` columns -- the usual
+    anomaly-modeling workflow, ``df`` from :func:`float_ohc_anomalies` or
+    equivalent. Pass ``suffix=""`` to write the raw ``<col>`` values directly
+    instead -- GpGp then fits/predicts absolute OHC rather than an anomaly, and
+    no climatology needs adding back afterward (see :func:`load_gp_anomaly_field`).
 
     The temporal coordinate written is the actual observation ``date`` (YYYY-MM-DD),
     not the calendar month. The R script converts this to day-of-year for the
@@ -339,7 +350,7 @@ def write_profile_csv(anom_df, path, value_cols=("ohc_700", "ohc_2000")):
     (first/middle/last, controlled by :func:`run_gp_interp`'s ``month_day``
     argument) as the prediction temporal coordinate.
     """
-    out = anom_df[["date", "lon", "lat"] + [f"{c}_anom" for c in value_cols]].copy()
+    out = df[["date", "lon", "lat"] + [f"{c}{suffix}" for c in value_cols]].copy()
     out["date"] = pd.to_datetime(out["date"]).dt.strftime("%Y-%m-%d")
     out.to_csv(path, index=False)
 
@@ -365,11 +376,13 @@ def run_gp_interp(
     """
     if month_day not in ("first", "middle", "last"):
         raise ValueError(f"month_day must be 'first', 'middle', or 'last'; got {month_day!r}")
-    cmd = ["Rscript", r_script, profiles_csv, grid_csv, out_csv, fit_summary_csv]
+    cmd = ["Rscript", os.path.abspath(r_script)] + [
+        os.path.abspath(p) for p in (profiles_csv, grid_csv, out_csv, fit_summary_csv)
+    ]
     if model_cache is not None:
-        cmd.append(model_cache)
+        cmd.append(os.path.abspath(model_cache))
     cmd.append(month_day)
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True, cwd=REPO_ROOT)
 
 
 def run_levitus_interp(
@@ -394,10 +407,12 @@ def run_levitus_interp(
     :func:`load_levitus_pooled_anomaly_field` instead of
     :func:`load_levitus_anomaly_field`.
     """
-    cmd = ["Rscript", r_script, profiles_csv, grid_csv, out_csv, str(R)]
+    cmd = ["Rscript", os.path.abspath(r_script)] + [
+        os.path.abspath(p) for p in (profiles_csv, grid_csv, out_csv)
+    ] + [str(R)]
     if pooled:
         cmd.append("pooled")
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True, cwd=REPO_ROOT)
 
 
 def run_gp_audit_fields(
@@ -440,11 +455,11 @@ def run_gp_audit_fields(
     if audit_out_csv is None:
         stem = gpgp_out_csv.replace(".csv", "")
         audit_out_csv = f"{stem}_fields_audit.csv"
-    cmd = [
-        "Rscript", r_script,
-        profiles_csv, grid_csv, gpgp_out_csv, model_cache, audit_out_csv,
+    cmd = ["Rscript", os.path.abspath(r_script)] + [
+        os.path.abspath(p)
+        for p in (profiles_csv, grid_csv, gpgp_out_csv, model_cache, audit_out_csv)
     ]
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True, cwd=REPO_ROOT)
     return audit_out_csv
 
 
@@ -501,7 +516,7 @@ def snap_grid_coords(field, lats, lons):
 
 
 def _load_anomaly_field(
-    df, lats, lons, se_suffixes, value_cols=("ohc_700", "ohc_2000")
+    df, lats, lons, se_suffixes, value_cols=("ohc_700", "ohc_2000"), suffix="_anom"
 ):
     """Convert a long (month, lon, lat, ...) prediction table into an xarray field.
 
@@ -516,33 +531,39 @@ def _load_anomaly_field(
     (both estimators run as standalone R scripts via subprocess), since this
     field must align exactly with the truth grid for later comparison.
 
-    Returns a Dataset on ``(month, latitude, longitude)`` with ``<col>_anom`` and
-    ``<col>_anom<suffix>`` for each suffix in ``se_suffixes``, for each of
-    ``value_cols``, plus ``too_few_profiles``.
+    ``suffix`` must match what :func:`write_profile_csv` wrote the profiles
+    with -- ``"_anom"`` (default) for anomaly modeling, ``""`` for modeling the
+    raw value directly (see :func:`write_profile_csv`).
+
+    Returns a Dataset on ``(month, latitude, longitude)`` with ``<col><suffix>``
+    and ``<col><suffix><se_suffix>`` for each suffix in ``se_suffixes``, for each
+    of ``value_cols``, plus ``too_few_profiles``.
     """
     df = df.rename(columns={"lat": "latitude", "lon": "longitude"})
-    cols = [f"{c}_anom_pred" for c in value_cols]
-    cols += [f"{c}_anom{suf}" for c in value_cols for suf in se_suffixes]
+    cols = [f"{c}{suffix}_pred" for c in value_cols]
+    cols += [f"{c}{suffix}{suf}" for c in value_cols for suf in se_suffixes]
     cols += ["too_few_profiles"]
     ds = df.set_index(["month", "latitude", "longitude"])[cols].to_xarray()
-    ds = ds.rename({f"{c}_anom_pred": f"{c}_anom" for c in value_cols})
+    ds = ds.rename({f"{c}{suffix}_pred": f"{c}{suffix}" for c in value_cols})
     # Sort ascending so position-for-position alignment with sorted lats/lons
     # (below) is correct regardless of the row order .to_xarray() produced.
     ds = ds.sortby(["latitude", "longitude"])
     return snap_grid_coords(ds, np.sort(lats), np.sort(lons))
 
 
-def load_gp_anomaly_field(out_csv, lats, lons, value_cols=("ohc_700", "ohc_2000")):
+def load_gp_anomaly_field(out_csv, lats, lons, value_cols=("ohc_700", "ohc_2000"), suffix="_anom"):
     """Load the R script's prediction CSV into an xarray field.
 
-    ``<col>_anom_se`` is the GP's Vecchia-approximation standard error (see
+    ``<col>_anom_se`` (or ``<col>_se`` if ``suffix=""``) is the GP's
+    Vecchia-approximation standard error (see
     ``code/ohc_gp_interp.R:kriging_predict``; NaN for any (month, depth) where
     there were too few profiles to fit a GP at all -- see ``too_few_profiles``).
-    See :func:`_load_anomaly_field` for the shared loading logic.
+    See :func:`_load_anomaly_field` for the shared loading logic, including what
+    ``suffix=""`` means (model the raw value directly, not an anomaly).
     """
     pred = pd.read_csv(out_csv, parse_dates=["month"])
     return _load_anomaly_field(
-        pred, lats, lons, se_suffixes=("_se",), value_cols=value_cols
+        pred, lats, lons, se_suffixes=("_se",), value_cols=value_cols, suffix=suffix
     )
 
 

@@ -38,8 +38,8 @@ def _show_fig(fig):
 This report targets the same Gulf Stream / North Atlantic Current analysis region as
 `pilot_simulation.qmd`, but compares the GLORYS truth OHC field against the RG Argo
 Climatology across three years (2020, 2021, 2022) rather than just one. 2020 velocity
-and temperature come from `data/velocity_gs_wide/` (lat 30–48°N); 2021 and 2022 come
-from `data/velocity_gs_2021_2022/` (lat 33–45°N, downloaded by
+and temperature come from `data/velocity_gs_wide/` (lat 30–48$^\circ$N); 2021 and 2022 come
+from `data/velocity_gs_2021_2022/` (lat 33–45$^\circ$N, downloaded by
 `code/download_gs_2021_2022.py`), a tighter latitude band over the same longitude span
 and GLORYS12V1 product. Both cover the analysis region with room to spare.
 
@@ -73,7 +73,7 @@ DOWNLOAD_BOUNDS = {  # (lat0, lat1, lon0, lon1) -- as downloaded, differs by yea
     2022: (33, 45, -74, -49),
 }
 
-ANALYSIS_BOUNDS = (36, 40, -68, -62)     # float deployment box (4° lat x 6° lon)
+ANALYSIS_BOUNDS = (36, 40, -68, -62)     # float deployment box (4$^\circ$ lat x 6$^\circ$ lon)
 CONTEXT_BOUNDS  = (34, 42, -70, -60)     # ANALYSIS_BOUNDS + 2 deg margin, inside every year's domain
 EXTENT_WIDE     = [-76, -47, 28, 50]     # cartopy map extent for the wide-context maps
 DEPTHS          = ["ohc_700", "ohc_2000"]   # both depth layers, shown throughout
@@ -82,10 +82,10 @@ DEPTHS          = ["ohc_700", "ohc_2000"]   # both depth layers, shown throughou
 # Analysis region
 
 The analysis domain sits on the **Gulf Stream / North Atlantic Current front** — a sharp north–south OHC gradient.
-The annual-mean GLORYS OHC below shows high OHC (~90 GJ m⁻²) to the south and low OHC (~45 GJ m⁻²) to the north, for each of 2020, 2021, and 2022.
+The annual-mean GLORYS OHC below shows high OHC (~90 GJ m$^{-2}$) to the south and low OHC (~45 GJ m$^{-2}$) to the north, for each of 2020, 2021, and 2022.
 
-**OHC definition.** For every 1/12° grid cell, OHC (GJ m⁻²) is the integral $\text{OHC} = \int_0^{z} \rho\, c_p\, T\, dz$ computed using the trapezoidal rule for $z = 700$ m and $z = 2000$ m where $T$ is the sea water potential temperature in °C reported at 50 standard depth levels (41 levels from 0m-2250m: 0.41m, 1.54m, ..., 644m, 763m, ..., 1942m, 2225m).
-Unlike Levitus et al. [2012], which computed $\rho$ and $c_p$ from annual climatological T/S fields, here both are fixed constants -- adequate at this study's scope (a $4°\times6°$ region and a *bias* between two estimators computed the same way, so most of the T/S-dependence common to both cancels) but worth revisiting if the analysis later targets absolute OHC magnitudes or multi-year trends, where Levitus-style climatological $\rho,c_p$ would matter more.
+**OHC definition.** For every 1/12$^\circ$ grid cell, OHC (GJ m$^{-2}$) is the integral $\text{OHC} = \int_0^{z} \rho\, c_p\, T\, dz$ computed using the trapezoidal rule for $z = 700$ m and $z = 2000$ m where $T$ is the sea water potential temperature in $^\circ$C reported at 50 standard depth levels (41 levels from 0m-2250m: 0.41m, 1.54m, ..., 644m, 763m, ..., 1942m, 2225m).
+Unlike Levitus et al. [2012], which computed $\rho$ and $c_p$ from annual climatological T/S fields, here both are fixed constants -- adequate at this study's scope (a $4^\circ\times6^\circ$ region and a *bias* between two estimators computed the same way, so most of the T/S-dependence common to both cancels) but worth revisiting if the analysis later targets absolute OHC magnitudes or multi-year trends, where Levitus-style climatological $\rho,c_p$ would matter more.
 
 ```{python}
 #| label: load-region-fields
@@ -123,7 +123,7 @@ def plot_ohc_field_year(y):
         extent=EXTENT_WIDE,
         boxes=[(*DOWNLOAD_BOUNDS[y], "download domain", '0.5', "-"),
                (*ANALYSIS_BOUNDS, "analysis domain")],
-        suptitle=f"GLORYS 1/12° {y}-mean",
+        suptitle=f"GLORYS 1/12$^\circ$ {y}-mean",
     )
 ```
 
@@ -133,7 +133,7 @@ def plot_ohc_field_year(y):
 
 ```{python}
 #| label: fig-ohc-field-2020
-#| fig-cap: "GLORYS 1/12° 2020-mean OHC (0–700 m and 0–2000 m)"
+#| fig-cap: 'GLORYS 1/12$^\circ$ 2020-mean OHC (0–700 m and 0–2000 m)'
 _ = plot_ohc_field_year(2020)
 ```
 
@@ -141,7 +141,7 @@ _ = plot_ohc_field_year(2020)
 
 ```{python}
 #| label: fig-ohc-field-2021
-#| fig-cap: "GLORYS 1/12° 2021-mean OHC (0–700 m and 0–2000 m)"
+#| fig-cap: 'GLORYS 1/12$^\circ$ 2021-mean OHC (0–700 m and 0–2000 m)'
 _ = plot_ohc_field_year(2021)
 ```
 
@@ -149,7 +149,7 @@ _ = plot_ohc_field_year(2021)
 
 ```{python}
 #| label: fig-ohc-field-2022
-#| fig-cap: "GLORYS 1/12° 2022-mean OHC (0–700 m and 0–2000 m)"
+#| fig-cap: 'GLORYS 1/12$^\circ$ 2022-mean OHC (0–700 m and 0–2000 m)'
 _ = plot_ohc_field_year(2022)
 ```
 
@@ -211,14 +211,14 @@ _ = plot_velocity_1000_year(2022)
 
 # OHC Anomaly
 
-**Climatology source.** `data/rg_climatology/RG_ArgoClim_Temperature_2019.nc` (the [RG Argo Climatology](https://sio-argo.ucsd.edu/RG_Climatology.html)) contains `ARGO_TEMPERATURE_MEAN`: a single **static** mean temperature field (Jan 2004 -- Dec 2018, no seasonal/monthly dimension) on a 1° lat/lon grid and 58 pressure levels (2.5--1975 dbar).
-Its longitude is 0--360°E and is converted to -180..180° on load.
+**Climatology source.** `data/rg_climatology/RG_ArgoClim_Temperature_2019.nc` (the [RG Argo Climatology](https://sio-argo.ucsd.edu/RG_Climatology.html)) contains `ARGO_TEMPERATURE_MEAN`: a single **static** mean temperature field (Jan 2004 -- Dec 2018, no seasonal/monthly dimension) on a 1$^\circ$ lat/lon grid and 58 pressure levels (2.5--1975 dbar).
+Its longitude is 0--360$^\circ$E and is converted to -180..180$^\circ$ on load.
 
 The twelve monthly extension files `RG_ArgoClim_<YYYY><MM>_2019.nc` each contain the observed `ARGO_TEMPERATURE_ANOMALY` from the 2004--2018 mean for each calendar month. We load these for each of 2020, 2021, and 2022.
 
-**Climatological OHC field.** Either mean-temperature field is integrated over depth with the same trapezoidal rule used for GLORYS (`ohc.profile_ohc`, treating RG's pressure in dbar as meters, the same approximation already used throughout this report), giving an `ohc_700`/`ohc_2000` field on RG's native 1° grid.
+**Climatological OHC field.** Either mean-temperature field is integrated over depth with the same trapezoidal rule used for GLORYS (`ohc.profile_ohc`, treating RG's pressure in dbar as meters, the same approximation already used throughout this report), giving an `ohc_700`/`ohc_2000` field on RG's native 1$^\circ$ grid.
 
-**Linear interpolation from 1° to 1/12°.** Because the true GLORYS temperature field is on a 1/12° grid, `code/ohc_climatology.py` bilinearly interpolates the climatological OHC to the 1/12° grid for each calendar month.
+**Linear interpolation from 1$^\circ$ to 1/12$^\circ$.** Because the true GLORYS temperature field is on a 1/12$^\circ$ grid, `code/ohc_climatology.py` bilinearly interpolates the climatological OHC to the 1/12$^\circ$ grid for each calendar month.
 
 **Anomaly.** For a grid cell at $x = (x_{lat}, x_{lon})$ observed in month $t$ of year $y$, the OHC anomaly is calculated by subtracting the spatially interpolated climatological OHC for that calendar month (built from **that year's** RG extension file) from the observed monthly-mean GLORYS OHC value. This is repeated independently for 2020, 2021, and 2022, each against its own year's RG climatology anomaly.
 
@@ -230,7 +230,7 @@ clim_field_B = ohc_clim.climatological_ohc_field(mean_da)  # static 2004-2018 me
 
 clim_field = {}       # per-year seasonal climatology (Option A), month dim 1-12
 truth_field = {}      # per-year truth field restricted to the analysis region
-truth_anom = {}       # per-year GLORYS truth OHC anomaly (native 1/12°)
+truth_anom = {}       # per-year GLORYS truth OHC anomaly (native 1/12$^\circ$)
 truth_anom_cells = {}
 for y in YEARS:
     ext_da = ohc_clim.load_rg_extensions(year=y)
@@ -242,8 +242,19 @@ for y in YEARS:
     truth_anom[y] = ohc_clim.truth_ohc_anomaly(truth_field[y], clim_field[y])
     truth_anom_cells[y] = ohc_clim.to_cells_table(truth_anom[y])
 
+# truth_field[y]'s spatial grid is identical across years (same ANALYSIS_BOUNDS
+# slice of the same native 1/12 deg grid) -- only the time axis differs -- so
+# concatenating along time lets downstream monthly-mean/coarsen calls run once
+# on all three years instead of once per year.
+truth_field_all = xr.concat([truth_field[y] for y in YEARS], dim="time")
+
 # All three years concatenated -- one 36-month table for the multi-year maps/limits below.
 truth_anom_cells_all = pd.concat(truth_anom_cells.values(), ignore_index=True)
+
+# Publish both to data/ so nac_gp.qmd (and any other downstream report) can load
+# them directly instead of re-deriving them from the raw RG climatology files.
+truth_field_all.to_netcdf(f"{OHC_TRUTH_DIR}/truth_field_analysis.nc")
+truth_anom_cells_all.to_csv(f"{OHC_TRUTH_DIR}/truth_anom_cells_all.csv", index=False)
 
 # Shared diverging colour range for every *anomaly* map below, across all years.
 ANOM_VLIM = {d: float(truth_anom_cells_all[d].abs().quantile(0.98)) * ohc_bias.J_TO_GJ for d in DEPTHS}
@@ -255,7 +266,7 @@ Below is comparison of the RG climatology published temperature trend and my rec
 
 ```{python}
 #| label: fig-rg-timeseries-check
-#| fig-cap: "Verification: global-mean RG potential temperature reconstructed from mean + monthly extension anomalies. The ~0.04 °C upward offset vs the published plot above is expected — the RG website excludes marginal seas and the Arctic from its spatial average; we include all non-NaN cells."
+#| fig-cap: 'Verification: global-mean RG potential temperature reconstructed from mean + monthly extension anomalies. The ~0.04 $^\circ$C upward offset vs the published plot above is expected — the RG website excludes marginal seas and the Arctic from its spatial average; we include all non-NaN cells.'
 #| code-summary: "Reconstruct published RG global-mean temperature time series (2004–2026)"
 import matplotlib.dates as mdates
 from pathlib import Path
@@ -314,7 +325,7 @@ ax.plot(_sm_dates[_sm_ok], _smooth[_sm_ok], color="limegreen", lw=1,
         label="12-month running mean")
 for y in YEARS:
     ax.axvspan(pd.Timestamp(y, 1, 1), pd.Timestamp(y, 12, 31), color="#4a90d9", alpha=0.06)
-ax.set_ylabel("Potential Temperature (°C)")
+ax.set_ylabel("Potential Temperature ($^\circ$C)")
 ax.set_xlim(_dates_main[0], _all_dates[-1])
 ax.xaxis.set_major_locator(mdates.YearLocator(2))
 ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
@@ -324,7 +335,7 @@ fig.tight_layout()
 
 ```{python}
 #| label: fig-climatology-map-static
-#| code-summary: "RG climatology (static), native 1° grid vs interpolated to 1/12°"
+#| code-summary: 'RG climatology (static), native 1$^\circ$ grid vs interpolated to 1/12$^\circ$'
 
 _clim_B_interp = ohc_clim.climatology_on_grid(
     clim_field_B, truth_field_full[2020]["latitude"].values, truth_field_full[2020]["longitude"].values
@@ -340,18 +351,18 @@ _STATIC_MAP_KW = dict(
 
 _ = map_fields_row(
     [clim_field_B["ohc_700"] * ohc_bias.J_TO_GJ, clim_field_B["ohc_2000"] * ohc_bias.J_TO_GJ],
-    suptitle="RG climatology (native 1°)", **_STATIC_MAP_KW,
+    suptitle="RG climatology (native 1$^\circ$)", **_STATIC_MAP_KW,
 )
 _ = map_fields_row(
     [_clim_B_interp["ohc_700"] * ohc_bias.J_TO_GJ, _clim_B_interp["ohc_2000"] * ohc_bias.J_TO_GJ],
-    suptitle="RG climatology (bilinear -> 1/12°)", **_STATIC_MAP_KW,
+    suptitle="RG climatology (bilinear -> 1/12$^\circ$)", **_STATIC_MAP_KW,
 )
 ```
 
 ```{python}
 #| label: fig-climatology-map-seasonal
 #| output: asis
-#| code-summary: "RG climatology by year and month, native 1° grid vs interpolated to 1/12°, the GLORYS truth, the GLORYS truth - RG climatology anomaly, and eastward/northward velocity"
+#| code-summary: 'RG climatology by year and month, native 1$^\circ$ grid vs interpolated to 1/12$^\circ$, the GLORYS truth, the GLORYS truth - RG climatology anomaly, and eastward/northward velocity'
 
 # Fixed view for every panel below, regardless of its native grid resolution.
 ANALYSIS_XLIM = (ANALYSIS_BOUNDS[2], ANALYSIS_BOUNDS[3])
@@ -376,27 +387,28 @@ for y in YEARS:
 _clim_A_native_cells = ohc_clim.to_cells_table(xr.concat(_clim_A_plot_years, dim="month"))
 _clim_A_interp_cells = pd.concat(_clim_A_interp_cells_years, ignore_index=True)
 
-# GLORYS truth, monthly-mean, same grid as the anomaly.
-_truth_monthly_cells_years = []
-for y in YEARS:
-    monthly = truth_field[y].resample(time="1MS").mean().rename({"time": "month"})
-    months_y = [pd.Timestamp(y, pd.Timestamp(m).month, 1) for m in monthly["month"].values]
-    _truth_monthly_cells_years.append(ohc_clim.to_cells_table(monthly.assign_coords(month=months_y)))
-truth_monthly_cells_all = pd.concat(_truth_monthly_cells_years, ignore_index=True)
+# GLORYS truth, monthly-mean, same grid as the anomaly. truth_field_all already
+# carries real per-year dates, so one resample over all three years gives
+# correctly-dated months directly -- no per-year loop/relabeling needed.
+truth_monthly_all = truth_field_all.resample(time="1MS").mean().rename({"time": "month"})
+truth_monthly_cells_all = ohc_clim.to_cells_table(truth_monthly_all)
 
 # Velocity near the 1000 m parking depth, monthly-mean, analysis region only.
-_velocity_cells_years = []
-for y in YEARS:
-    vel = theta[y][["uo", "vo"]].sel(depth=1000, method="nearest").sel(
-        latitude=slice(ANALYSIS_BOUNDS[0], ANALYSIS_BOUNDS[1]),
-        longitude=slice(ANALYSIS_BOUNDS[2], ANALYSIS_BOUNDS[3]),
-    )
-    vel_monthly = vel.resample(time="1MS").mean().compute().rename({"time": "month"})
-    months_y = [pd.Timestamp(y, pd.Timestamp(m).month, 1) for m in vel_monthly["month"].values]
-    _velocity_cells_years.append(
-        ohc_clim.to_cells_table(vel_monthly.assign_coords(month=months_y), value_cols=("uo", "vo"))
-    )
-velocity_cells_all = pd.concat(_velocity_cells_years, ignore_index=True)
+# theta[y] itself can't be concatenated (different years cover different lat/lon
+# extents -- see DOWNLOAD_BOUNDS), but restricting each to ANALYSIS_BOUNDS first
+# gives identical grids that can be, so the resample below still runs once.
+_theta_analysis_all = xr.concat(
+    [
+        theta[y][["uo", "vo"]].sel(depth=1000, method="nearest").sel(
+            latitude=slice(ANALYSIS_BOUNDS[0], ANALYSIS_BOUNDS[1]),
+            longitude=slice(ANALYSIS_BOUNDS[2], ANALYSIS_BOUNDS[3]),
+        )
+        for y in YEARS
+    ],
+    dim="time",
+)
+velocity_monthly_all = _theta_analysis_all.resample(time="1MS").mean().compute().rename({"time": "month"})
+velocity_cells_all = ohc_clim.to_cells_table(velocity_monthly_all, value_cols=("uo", "vo"))
 VEL_VLIM = float(pd.concat([velocity_cells_all["uo"], velocity_cells_all["vo"]]).abs().quantile(0.98))
 
 # Shared absolute-OHC colour range across native/interpolated climatology and truth.
@@ -412,20 +424,20 @@ def show_clim_map(kind, d):
     if kind == "native":
         return ohc_bias.plot_monthly_cell_maps(
             _clim_A_native_cells, d, vmin=cmin, vmax=cmax,
-            title=f"RG climatology {d} by year/month (native 1°)", **common)
+            title=f"RG climatology {d} by year/month (native 1$^\circ$)", **common)
     if kind == "interp":
         return ohc_bias.plot_monthly_cell_maps(
             _clim_A_interp_cells, d, vmin=cmin, vmax=cmax,
-            title=f"RG climatology {d} by year/month (bilinear -> 1/12°)", **common)
+            title=f"RG climatology {d} by year/month (bilinear -> 1/12$^\circ$)", **common)
     if kind == "truth":
         return ohc_bias.plot_monthly_cell_maps(
             truth_monthly_cells_all, d, vmin=cmin, vmax=cmax,
-            title=f"GLORYS truth {d} by year/month (native 1/12°)", **common)
+            title=f"GLORYS truth {d} by year/month (native 1/12$^\circ$)", **common)
     if kind == "anom":
         return ohc_bias.plot_monthly_cell_maps(
             truth_anom_cells_all, d, vmin=-ANOM_VLIM[d], vmax=ANOM_VLIM[d], cmap="RdBu_r",
             cbar_label=f"{d} anomaly (GJ m$^{{-2}}$)",
-            title=f"GLORYS truth - RG climatology (native 1/12°)", **common)
+            title=f"GLORYS truth - RG climatology (native 1/12$^\circ$)", **common)
 
 def show_velocity_map(component):
     label = "eastward" if component == "uo" else "northward"
@@ -440,7 +452,7 @@ _emit("::: {.panel-tabset}")
 for d in DEPTHS:
     _emit(f"## {DEPTH_LABEL[d]}")
     _emit("::: {.panel-tabset}")
-    for kind, label in [("native", "Native 1°"), ("interp", "Interpolated to 1/12°"),
+    for kind, label in [("native", "Native 1$^\circ$"), ("interp", "Interpolated to 1/12$^\circ$"),
                          ("truth", "GLORYS truth"), ("anom", "Anomaly")]:
         _emit(f"### {label}")
         _show_fig(show_clim_map(kind, d))

@@ -32,11 +32,11 @@ def _show_fig(fig):
 # Setup
 
 This report picks up where `nac.qmd`'s Analysis Region / OHC Anomaly sections leave off, without
-re-running any of that report's plotting. The expensive step -- depth-integrating GLORYS `thetao`
-over all 41 levels to get the truth OHC field -- is cached to `data/ohc_truth/truth_ohc_<year>.nc`
-by `nac.qmd`; loading that cache plus the (cheap) RG climatology processing takes ~10s, vs. ~2.5 min
-for `nac.qmd`'s full render (dominated by matplotlib/cartopy rendering of ~20 map panels, which
-quarto has no way to skip short of freezing the whole file untouched).
+re-running any of that report's plotting or re-deriving its climatology. `nac.qmd` publishes the
+ANALYSIS_BOUNDS-restricted, multi-year truth field and the truth-vs-climatology anomaly cells to
+`data/ohc_truth/`; loading those directly (~1s) skips both the expensive depth-integration step
+(cached separately, per year, as `data/ohc_truth/truth_ohc_<year>.nc`) and the RG climatology
+reprocessing, neither of which this report needs to repeat.
 
 ```{python}
 #| label: setup
@@ -55,67 +55,320 @@ import ohc_climatology as ohc_clim
 
 YEARS = [2020, 2021, 2022]
 
-VELOCITY_GLOB = {
-    2020: "../data/velocity_gs_wide/velocity_2020_*.nc",
-    2021: "../data/velocity_gs_2021_2022/velocity_2021_*.nc",
-    2022: "../data/velocity_gs_2021_2022/velocity_2022_*.nc",
-}
-DOWNLOAD_BOUNDS = {
-    2020: (30, 48, -74, -49),
-    2021: (33, 45, -74, -49),
-    2022: (33, 45, -74, -49),
-}
 ANALYSIS_BOUNDS = (36, 40, -68, -62)
+EXTENT_WIDE     = [-76, -47, 28, 50]
 OHC_TRUTH_DIR   = "../data/ohc_truth"
 DEPTHS          = ["ohc_700", "ohc_2000"]
 ```
 
 ```{python}
 #| label: load-cached-data
-#| code-summary: "Load the cached truth OHC field and rebuild the RG climatology anomaly"
-theta = {}
-truth_field_full = {}
-for y in YEARS:
-    la0, la1, lo0, lo1 = DOWNLOAD_BOUNDS[y]
-    theta[y] = xr.open_mfdataset(VELOCITY_GLOB[y]).sel(
-        latitude=slice(la0, la1), longitude=slice(lo0, lo1),
-    )
-    truth_field_full[y] = xr.open_dataset(f"{OHC_TRUTH_DIR}/truth_ohc_{y}.nc").load()
-
-mean_da = ohc_clim.load_rg_mean()
-clim_field_B = ohc_clim.climatological_ohc_field(mean_da)  # static 2004-2018 mean
-
-clim_field = {}
-truth_field = {}
-truth_anom = {}
-truth_anom_cells = {}
-for y in YEARS:
-    ext_da = ohc_clim.load_rg_extensions(year=y)
-    clim_field[y] = ohc_clim.climatological_ohc_field(mean_da + ext_da).compute()
-    truth_field[y] = truth_field_full[y].sel(
-        latitude=slice(ANALYSIS_BOUNDS[0], ANALYSIS_BOUNDS[1]),
-        longitude=slice(ANALYSIS_BOUNDS[2], ANALYSIS_BOUNDS[3]),
-    )
-    truth_anom[y] = ohc_clim.truth_ohc_anomaly(truth_field[y], clim_field[y])
-    truth_anom_cells[y] = ohc_clim.to_cells_table(truth_anom[y])
-
-truth_anom_cells_all = pd.concat(truth_anom_cells.values(), ignore_index=True)
+#| code-summary: "Load nac.qmd's published truth field and truth-vs-climatology anomaly"
+truth_field_all = xr.open_dataset(f"{OHC_TRUTH_DIR}/truth_field_analysis.nc").load()
+truth_anom_cells_all = pd.read_csv(f"{OHC_TRUTH_DIR}/truth_anom_cells_all.csv", parse_dates=["month"])
 ```
 
 ```{python}
-#| label: real-argo
-#| code-summary: "Load real Argo profiles in the analysis region, 2020-2022"
+#| label: load-real-argo
+#| include: false
 argo_all = pd.read_csv("../data/argo_ohc.csv")
 argo_all["date"] = pd.to_datetime(argo_all["date"], format="ISO8601")
-la0, la1, lo0, lo1 = ANALYSIS_BOUNDS
-argo_a = argo_all[
-    argo_all.lat.between(la0, la1)
-    & argo_all.lon.between(lo0, lo1)
-    & argo_all["date"].dt.year.isin(YEARS)
-]
-len(argo_a)
 ```
 
-# GP Modeling
+# Real Argo Float Trajectories
 
-*TODO*
+Real Argo floats that profiled the analysis domain at any point during 2020-2022, from
+`data/argo_ohc.csv`.
+
+```{python}
+#| label: fig-real-argo-traj
+#| fig-cap: "Real Argo floats, 2020-2022"
+from trajplots import map_point_trajectories
+
+la0, la1, lo0, lo1 = ANALYSIS_BOUNDS
+ids = argo_all.loc[
+    argo_all.lat.between(la0, la1)
+    & argo_all.lon.between(lo0, lo1)
+    & argo_all["date"].dt.year.isin(YEARS),
+    "float_id",
+].unique()
+argo_a = argo_all[argo_all.float_id.isin(ids)]
+print(f"{len(ids)} floats entered the analysis domain during {YEARS[0]}-{YEARS[-1]}")
+
+_ = map_point_trajectories(
+    argo_a,
+    extent=EXTENT_WIDE,
+    boxes=[(*ANALYSIS_BOUNDS, "analysis domain")],
+    title=f"All obs for floats that profiled the domain, {YEARS[0]}-{YEARS[-1]}",
+)
+
+# Restrict to the analysis window itself -- this is the profile set the GP
+# interpolation below is fit on.
+argo_a = argo_a[argo_a["date"].dt.year.isin(YEARS)]
+
+_ = map_point_trajectories(
+    argo_a,
+    extent=EXTENT_WIDE,
+    boxes=[(*ANALYSIS_BOUNDS, "analysis domain")],
+    title=f"{YEARS[0]}-{YEARS[-1]} obs",
+)
+print(f"{len(argo_a)} profiles within the analysis domain, {YEARS[0]}-{YEARS[-1]}")
+```
+
+# GP Interpolation with Real Floats
+
+## Background
+
+We interpolate real Argo float OHC (`ohc_700`/`ohc_2000` directly, not their anomaly relative to
+climatology) onto the full analysis-domain grid at the native 1/12$^\circ$ resolution, using a Gaussian
+process fit with `GpGp`. Each real float profile is assigned the **GLORYS truth OHC**  at its position and date.
+
+`code/ohc_gp_interp.R` fits one GP per depth (0-700m, 0-2000m) with the stationary spatiotemporal
+covariance function `matern_spheretime`, pooling all profiles across all three years, with
+covariance parameters $\theta$ = ($\sigma^2$, $\rho_s$, $\rho_t$, $\nu$, $\tau^2$) = (variance,
+spatial range, temporal range, smoothness, nugget). Smoothness is fixed at $\nu = \tfrac{1}{2}$,
+where the Matérn form reduces to the simple exponential $k(r) = e^{-r}$.
+
+The temporal coordinate is a continuous day count (days since 2020-01-01), not day-of-year -- so
+the fitted temporal range can extend across years rather than being capped at within-year scale by
+an annual wraparound, letting the model express long-range temporal autocorrelation if the data
+support it.
+
+## Model Fit
+
+```{python}
+#| label: gp-real-prep
+#| code-summary: "Sample GLORYS truth OHC at each real Argo profile's position/date"
+_dates = xr.DataArray(pd.to_datetime(argo_a["date"]).values, dims="profile")
+_lats  = xr.DataArray(argo_a["lat"].values, dims="profile")
+_lons  = xr.DataArray(argo_a["lon"].values, dims="profile")
+_truth_at_real = truth_field_all.interp(time=_dates, latitude=_lats, longitude=_lons, method="nearest")
+
+real_argo_direct = argo_a[["lat", "lon", "date"]].copy()
+for _d in DEPTHS:
+    real_argo_direct[_d] = _truth_at_real[_d].values
+```
+
+```{python}
+#| label: tbl-gp-fit-diagnostics
+#| code-summary: 'Fit the pooled GP and predict on the native (1/12$^\circ$) and 1$^\circ$ grids'
+_GP_DIR = "../data/gp_interp"
+os.makedirs(_GP_DIR, exist_ok=True)
+_real_profiles_csv    = f"{_GP_DIR}/nac_gp_profiles_real_direct.csv"
+_real_fit_summary_csv = f"{_GP_DIR}/nac_gp_real_direct_fit_summary.csv"
+_real_model_cache     = f"{_GP_DIR}/nac_gp_real_direct_model_cache.rds"
+
+_keys = ["month", "cell_lat", "cell_lon"]
+_GP_MONTH_DAY = "middle"
+_GP_RES_LABELS = {1 / 12: "1/12$^\circ$ (native)", 1.0: "1$^\circ$"}
+_pred_grid_csvs = {deg: f"{_GP_DIR}/nac_gp_pred_grid_{deg:.4g}deg.csv" for deg in [1 / 12, 1.0]}
+_real_out_csvs  = {deg: f"{_GP_DIR}/nac_gp_real_predictions_{deg:.4g}deg.csv" for deg in [1 / 12, 1.0]}
+
+def _grid_lats_lons(deg):
+    """Prediction grid for one resolution -- native truth grid, or a deg-degree coarsening of it."""
+    if deg < 0.1:
+        return truth_field_all["latitude"].values, truth_field_all["longitude"].values
+    _tc = ohc.coarsen_truth(truth_field_all, deg=deg)
+    return np.sort(_tc["cell_lat"].unique()), np.sort(_tc["cell_lon"].unique())
+
+for deg, grid_csv in _pred_grid_csvs.items():
+    lats, lons = _grid_lats_lons(deg)
+    ohc_clim.build_pred_grid(lats, lons).to_csv(grid_csv, index=False)
+
+ohc_clim.write_profile_csv(real_argo_direct, _real_profiles_csv, suffix="")
+for deg, out_csv in _real_out_csvs.items():
+    ohc_clim.run_gp_interp(
+        _real_profiles_csv, _pred_grid_csvs[deg], out_csv, _real_fit_summary_csv,
+        model_cache=_real_model_cache, month_day=_GP_MONTH_DAY,
+    )
+
+gp_fit_summary = ohc_clim.load_gp_fit_summary(_real_fit_summary_csv)
+gp_fit_summary.groupby("depth")[["loglik", "converged", "n_obs"]].first()
+```
+
+```{python}
+#| label: gp-interp-prep
+#| code-summary: "Load the GP-predicted OHC field directly (no climatology to add back)"
+def build_gp_res_ctx(out_csv, deg, profiles_df=None):
+    """Load GP predictions from out_csv and assemble the display context for resolution deg.
+
+    Modeling OHC directly (suffix="" throughout) means the GP's prediction *is*
+    the field -- no per-year climatology reassembly needed here, unlike the
+    anomaly-modeling case.
+    """
+    lats, lons = _grid_lats_lons(deg)
+    gp_field = ohc_clim.load_gp_anomaly_field(out_csv, lats, lons, suffix="")
+
+    cells    = ohc_clim.to_cells_table(gp_field)
+    se_cells = ohc_clim.to_cells_table(gp_field, value_cols=("ohc_700_se", "ohc_2000_se"))
+    obs_cells = (
+        ohc.grid_cells(profiles_df, list(DEPTHS), deg=1 / 12)
+        if profiles_df is not None else None
+    )
+
+    if deg < 0.1:
+        truth_monthly_all = truth_field_all.resample(time="1MS").mean().rename({"time": "month"})
+        _bf = (gp_field[list(DEPTHS)] - truth_monthly_all[list(DEPTHS)]).rename(
+            {d: f"{d}_bias" for d in DEPTHS}
+        )
+        bias_cells  = ohc_clim.to_cells_table(_bf, value_cols=[f"{d}_bias" for d in DEPTHS])
+        truth_cells = ohc_clim.to_cells_table(truth_monthly_all)
+    else:
+        # coarsen_truth resamples+bins by each row's own date, so one call over
+        # all three concatenated years already yields distinct per-year cells.
+        truth_by_deg_all = ohc.coarsen_truth(truth_field_all, deg=deg)
+        _merged = cells.merge(
+            truth_by_deg_all[_keys + list(DEPTHS)].rename(columns={d: f"{d}_truth" for d in DEPTHS}),
+            on=_keys, how="left",
+        )
+        bias_cells = _merged.copy()
+        for _d in DEPTHS:
+            bias_cells[f"{_d}_bias"] = bias_cells[_d] - bias_cells[f"{_d}_truth"]
+        truth_cells = truth_by_deg_all
+
+    return dict(
+        cells=cells, se_cells=se_cells, obs_cells=obs_cells,
+        bias_cells=bias_cells, truth_cells=truth_cells,
+        obs_profiles=profiles_df,
+    )
+
+def build_gp_ctx(out_csvs, profiles_df=None):
+    return {_GP_RES_LABELS[deg]: build_gp_res_ctx(out_csv, deg, profiles_df) for deg, out_csv in out_csvs.items()}
+
+_real_ctx = build_gp_ctx(_real_out_csvs, profiles_df=real_argo_direct)
+```
+
+```{python}
+#| label: tbl-gp-fit-summary
+#| code-summary: "Format the pooled GP fit parameter table for display"
+def _fmt_fit_summary(df):
+    d = df.copy()
+    d["display"] = d.apply(
+        lambda r: f"{r['estimate']:.4g}" if pd.isna(r["std_error"])
+        else f"{r['estimate']:.4g} $\pm$ {r['std_error']:.3g}",
+        axis=1,
+    )
+    wide = d.pivot(index="parameter", columns="depth", values="display")
+    order = ["mean (intercept)", "variance", "spatial_range", "temporal_range", "smoothness", "nugget"]
+    return wide.reindex([p for p in order if p in wide.index])
+
+EARTH_RADIUS_KM = 6371.0
+_scale = {
+    "mean (intercept)": ohc_bias.J_TO_GJ, "variance": ohc_bias.J_TO_GJ ** 2,
+    "spatial_range": EARTH_RADIUS_KM, "temporal_range": 1.0,
+    "smoothness": 1.0, "nugget": 1.0,
+}
+_disp = gp_fit_summary.copy()
+_disp["estimate"] = _disp.apply(lambda r: r["estimate"] * _scale[r["parameter"]], axis=1)
+_disp["std_error"] = _disp.apply(lambda r: r["std_error"] * _scale[r["parameter"]], axis=1)
+fit_table = _fmt_fit_summary(_disp)
+fit_table.index.name = "parameter"
+fit_table
+```
+
+**Units** mean (GJ m$^{{-2}}$), variance (GJ m$^{{-4}}$), spatial_range (km), temporal_range (days), nugget (relative fraction of variance)
+
+## Predictions
+
+```{python}
+#| label: gp-color-scales
+#| include: false
+# Shared absolute-OHC colour range across every map below.
+_truth_monthly_all_cells = ohc_clim.to_cells_table(
+    truth_field_all.resample(time="1MS").mean().rename({"time": "month"})
+)
+VLIM = {
+    d: (float((_truth_monthly_all_cells[d] * ohc_bias.J_TO_GJ).quantile(0.02)),
+        float((_truth_monthly_all_cells[d] * ohc_bias.J_TO_GJ).quantile(0.98)))
+    for d in DEPTHS
+}
+```
+
+```{python}
+#| label: gp-interp-maps
+#| output: asis
+#| code-summary: "GP-interpolated field vs native-grid truth, its standard error, and the GP - truth bias map"
+
+def make_gp_map(c, kind, d, res_label):
+    if kind == "obs":
+        _lats, _lons = _grid_lats_lons(1 / 12)
+        return ohc_bias.plot_monthly_cell_maps(
+            c["obs_cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1],
+            scatter_dots=True, width=TABSET_FIGW,
+            lats=_lats, lons=_lons,
+            title=f"Observed Argo {d} by month ({res_label})")
+    if kind == "gp":
+        return ohc_bias.plot_monthly_cell_maps(
+            c["cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], width=TABSET_FIGW,
+            title=f"GP-interpolated {d} by month ({res_label})")
+    if kind == "gp_se":
+        return ohc_bias.plot_monthly_cell_maps(
+            c["se_cells"], f"{d}_se", vmin=0, cmap="viridis", width=TABSET_FIGW,
+            cbar_label=f"{d} GP standard error (GJ m$^{{-2}}$)",
+            title=f"GP standard error, {d} ({res_label})")
+    if kind == "truth_native":
+        return ohc_bias.plot_monthly_cell_maps(
+            c["truth_cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], width=TABSET_FIGW,
+            title=f"GLORYS truth {d} by month ({res_label})")
+    if kind == "gp_bias":
+        bcol = f"{d}_bias"
+        bmax = float(c["bias_cells"][bcol].abs().max()) * ohc_bias.J_TO_GJ
+        return ohc_bias.plot_monthly_cell_maps(
+            c["bias_cells"], bcol, vmin=-bmax, vmax=bmax, cmap="RdBu_r",
+            cbar_label=f"{d} bias (GJ m$^{{-2}}$)", width=TABSET_FIGW,
+            title=f"GP - truth bias, {d} ({res_label})")
+
+GP_MAP_KINDS = [("obs", "Observed Argo OHC"),
+                ("obs_table", "Observed Argo OHC table"),
+                ("gp", "GP-interpolated Argo OHC"),
+                ("gp_se", "GP standard error"),
+                ("truth_native", "GLORYS truth"),
+                ("gp_bias", "GP - truth bias")]
+
+def make_gp_table(c, d):
+    profiles = c.get("obs_profiles")
+    if profiles is None:
+        return None
+    col = d
+    s = profiles[col]
+    grp = profiles.groupby(pd.to_datetime(profiles["date"]).dt.to_period("M"))[col]
+    raw = grp.agg(["count", "mean", "std", "min", "max"])
+    tbl = raw.assign(
+        mean=(raw["mean"] * ohc_bias.J_TO_GJ).round(3),
+        std=(raw["std"]   * ohc_bias.J_TO_GJ).round(3),
+        min=(raw["min"]   * ohc_bias.J_TO_GJ).round(3),
+        max=(raw["max"]   * ohc_bias.J_TO_GJ).round(3),
+    ).rename(columns={"count": "n", "std": "sd"})
+    tbl.index = tbl.index.astype(str)
+    tbl.index.name = "month"
+    year_row = pd.DataFrame([{
+        "n":    s.count(),
+        "mean": round(s.mean() * ohc_bias.J_TO_GJ, 3),
+        "sd":   round(s.std()  * ohc_bias.J_TO_GJ, 3),
+        "min":  round(s.min()  * ohc_bias.J_TO_GJ, 3),
+        "max":  round(s.max()  * ohc_bias.J_TO_GJ, 3),
+    }], index=pd.Index(["Year"], name="month"))
+    return pd.concat([tbl, year_row])
+
+def emit_gp_map_tabset(ctx):
+    _emit("::: {.panel-tabset}")
+    for d in DEPTHS:
+        _emit(f"## {DEPTH_LABEL[d]}")
+        _emit("::: {.panel-tabset}")
+        for res_label, c in ctx.items():
+            _emit(f"### {res_label}")
+            _emit("::: {.panel-tabset}")
+            for kind, label in GP_MAP_KINDS:
+                _emit(f"#### {label}")
+                if kind == "obs_table":
+                    tbl = make_gp_table(c, d)
+                    if tbl is not None:
+                        display(tbl)
+                else:
+                    _show_fig(make_gp_map(c, kind, d, res_label))
+            _emit(":::")
+        _emit(":::")
+    _emit(":::")
+
+emit_gp_map_tabset(_real_ctx)
+```

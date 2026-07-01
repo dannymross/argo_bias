@@ -36,27 +36,39 @@ for (opt in args[seq_len(max(0, length(args) - 4)) + 4]) {
   else model_cache_path <- opt
 }
 
-FIXED_SMOOTHNESS <- 1.5
+FIXED_SMOOTHNESS <- 0.5
 
 profiles <- fread(profiles_path)
 grid <- fread(pred_grid_path)
 
-depth_cols <- intersect(c("ohc_700_anom", "ohc_2000_anom"), names(profiles))
-profiles[, day_num := as.integer(format(as.Date(date), "%j"))]
+# Matches either the anomaly-modeling columns (ohc_700_anom, ohc_2000_anom) or
+# the raw-value columns (ohc_700, ohc_2000) written by write_profile_csv's
+# suffix="" mode -- everything below is suffix-agnostic (just string-pastes
+# onto whatever depth_cols resolves to), so no other change is needed to model
+# OHC directly instead of its anomaly.
+depth_cols <- intersect(c("ohc_700_anom", "ohc_2000_anom", "ohc_700", "ohc_2000"), names(profiles))
+# Continuous day count (not day-of-year) -- day-of-year would wrap every 366
+# days and treat e.g. Jan 2020 and Jan 2021 as temporally adjacent, capping
+# the fitted temporal range at within-year scale. A continuous count lets the
+# temporal_range parameter be estimated freely, including ranges spanning
+# multiple years, when profiles cover more than one year (as here, pooling
+# 2020-2022).
+EPOCH <- as.Date("2020-01-01")
+profiles[, day_num := as.integer(as.Date(date) - EPOCH)]
 profiles[, month_str := format(as.Date(date), "%Y-%m-01")]
 months_first <- sort(unique(profiles$month_str))
 
-pred_yday <- function(first_of_month, position) {
+pred_day <- function(first_of_month, position) {
   d <- as.Date(first_of_month)
   target <- switch(position,
     first  = d,
     middle = as.Date(format(d, "%Y-%m-15")),
     last   = as.Date(format(d + 32, "%Y-%m-01")) - 1
   )
-  as.integer(format(target, "%j"))
+  as.integer(target - EPOCH)
 }
-month_pred_yday <- setNames(
-  vapply(months_first, pred_yday, integer(1), position = month_day),
+month_pred_day <- setNames(
+  vapply(months_first, pred_day, integer(1), position = month_day),
   months_first
 )
 
@@ -193,7 +205,7 @@ cat("wrote", nrow(fit_summary), "rows ->", fit_summary_path, "\n")
 rows <- vector("list", length(months_first))
 for (i in seq_along(months_first)) {
   mo <- months_first[i]
-  day_pred <- month_pred_yday[[mo]]
+  day_pred <- month_pred_day[[mo]]
   out_row <- list(month = mo, lon = grid$lon, lat = grid$lat)
   any_too_few <- FALSE
   for (col in depth_cols) {
@@ -224,7 +236,7 @@ for (i in seq_along(months_first)) {
   out_row$n_profiles <- sum(is.finite(profiles[month_str == mo][[depth_cols[1]]]))
   rows[[i]] <- as.data.table(out_row)
   # cat(sprintf(
-  #  "month %s (prediction day-of-year=%d): predicted %d depth(s), n_profiles_this_month=%d\n",
+  #  "month %s (prediction day=%d): predicted %d depth(s), n_profiles_this_month=%d\n",
   #  mo, day_pred, length(depth_cols), out_row$n_profiles
   # ))
 }
