@@ -534,6 +534,8 @@ def plot_monthly_cell_maps(
     lons=None,
     scatter_dots=False,
     width=None,
+    xlim=None,
+    ylim=None,
 ):
     """Facet of monthly cell maps from a gridded cells table.
 
@@ -547,6 +549,13 @@ def plot_monthly_cell_maps(
     truth. Pass explicit ``lats``/``lons`` (e.g. the truth cell centres) to force
     every source onto the **same grid and extent** -- essential when flipping
     between maps in tabs, so they line up exactly.
+
+    ``xlim``/``ylim`` (each a ``(min, max)`` tuple) instead fix the *view*
+    window directly, independent of the underlying data/grid resolution --
+    useful for lining up tabs whose cell tables span different native
+    resolutions (e.g. a coarse 1° climatology grid vs a native 1/12° truth
+    grid): both can be cropped to the same on-screen extent even though their
+    ``lats``/``lons`` differ.
 
     Defaults plot OHC in GJ/m2. To plot another quantity (e.g. the per-cell
     profile count ``n``) pass ``value_col="n"``, ``value_scale=1`` and a
@@ -638,6 +647,10 @@ def plot_monthly_cell_maps(
                 **scatter_kw,
             )
         ax.set_aspect("equal")  # 1 deg lon == 1 deg lat, so cells render square
+        if xlim is not None:
+            ax.set_xlim(xlim)
+        if ylim is not None:
+            ax.set_ylim(ylim)
         ax.set_title(pd.Timestamp(m).strftime("%Y-%m"), fontsize=8)
         ax.tick_params(labelsize=6)
     for ax in axes[len(months) :]:

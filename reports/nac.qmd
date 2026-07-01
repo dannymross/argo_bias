@@ -344,7 +344,12 @@ _ = map_fields_row(
 ```{python}
 #| label: fig-climatology-map-seasonal
 #| output: asis
-#| code-summary: "RG climatology by year and month, native 1° grid vs interpolated to 1/12°, and the GLORYS truth - RG climatology anomaly"
+#| code-summary: "RG climatology by year and month, native 1° grid vs interpolated to 1/12°, the GLORYS truth, the GLORYS truth - RG climatology anomaly, and eastward/northward velocity"
+
+# Every panel below is cropped to this same view, regardless of its native grid
+# resolution (1° climatology, 1/12° truth/velocity) -- so tabs line up exactly.
+ANALYSIS_XLIM = (ANALYSIS_BOUNDS[2], ANALYSIS_BOUNDS[3])
+ANALYSIS_YLIM = (ANALYSIS_BOUNDS[0], ANALYSIS_BOUNDS[1])
 
 _clim_A_plot_years, _clim_A_interp_cells_years = [], []
 for y in YEARS:
@@ -365,36 +370,80 @@ for y in YEARS:
 _clim_A_native_cells = ohc_clim.to_cells_table(xr.concat(_clim_A_plot_years, dim="month"))
 _clim_A_interp_cells = pd.concat(_clim_A_interp_cells_years, ignore_index=True)
 
-_clim_bounds = {
-    d: (float((_clim_A_native_cells[d] * ohc_bias.J_TO_GJ).quantile(0.02)),
-        float((_clim_A_native_cells[d] * ohc_bias.J_TO_GJ).quantile(0.98)))
+# GLORYS truth, monthly-mean, on the same analysis-region native grid used for the anomaly.
+_truth_monthly_cells_years = []
+for y in YEARS:
+    monthly = truth_field[y].resample(time="1MS").mean().rename({"time": "month"})
+    months_y = [pd.Timestamp(y, pd.Timestamp(m).month, 1) for m in monthly["month"].values]
+    _truth_monthly_cells_years.append(ohc_clim.to_cells_table(monthly.assign_coords(month=months_y)))
+truth_monthly_cells_all = pd.concat(_truth_monthly_cells_years, ignore_index=True)
+
+# GLORYS eastward/northward velocity near the 1000 m parking depth, monthly-mean,
+# restricted to the analysis region (same box as the truth/anomaly cells above).
+_velocity_cells_years = []
+for y in YEARS:
+    vel = theta[y][["uo", "vo"]].sel(depth=1000, method="nearest").sel(
+        latitude=slice(ANALYSIS_BOUNDS[0], ANALYSIS_BOUNDS[1]),
+        longitude=slice(ANALYSIS_BOUNDS[2], ANALYSIS_BOUNDS[3]),
+    )
+    vel_monthly = vel.resample(time="1MS").mean().compute().rename({"time": "month"})
+    months_y = [pd.Timestamp(y, pd.Timestamp(m).month, 1) for m in vel_monthly["month"].values]
+    _velocity_cells_years.append(
+        ohc_clim.to_cells_table(vel_monthly.assign_coords(month=months_y), value_cols=("uo", "vo"))
+    )
+velocity_cells_all = pd.concat(_velocity_cells_years, ignore_index=True)
+VEL_VLIM = float(pd.concat([velocity_cells_all["uo"], velocity_cells_all["vo"]]).abs().quantile(0.98))
+
+# Shared absolute-OHC colour range across native/interpolated climatology and truth.
+_abs_bounds = {
+    d: (float(pd.concat([_clim_A_native_cells[d], truth_monthly_cells_all[d]]).mul(ohc_bias.J_TO_GJ).quantile(0.02)),
+        float(pd.concat([_clim_A_native_cells[d], truth_monthly_cells_all[d]]).mul(ohc_bias.J_TO_GJ).quantile(0.98)))
     for d in DEPTHS
 }
 
 def show_clim_map(kind, d):
-    cmin, cmax = _clim_bounds[d]
+    cmin, cmax = _abs_bounds[d]
+    common = dict(width=TABSET_FIGW, ncols=6, xlim=ANALYSIS_XLIM, ylim=ANALYSIS_YLIM)
     if kind == "native":
         return ohc_bias.plot_monthly_cell_maps(
-            _clim_A_native_cells, d, vmin=cmin, vmax=cmax, width=TABSET_FIGW, ncols=6,
-            title=f"RG climatology {d} by year/month (native 1°)")
+            _clim_A_native_cells, d, vmin=cmin, vmax=cmax,
+            title=f"RG climatology {d} by year/month (native 1°)", **common)
     if kind == "interp":
         return ohc_bias.plot_monthly_cell_maps(
-            _clim_A_interp_cells, d, vmin=cmin, vmax=cmax, width=TABSET_FIGW, ncols=6,
-            title=f"RG climatology {d} by year/month (bilinear -> 1/12°)")
+            _clim_A_interp_cells, d, vmin=cmin, vmax=cmax,
+            title=f"RG climatology {d} by year/month (bilinear -> 1/12°)", **common)
+    if kind == "truth":
+        return ohc_bias.plot_monthly_cell_maps(
+            truth_monthly_cells_all, d, vmin=cmin, vmax=cmax,
+            title=f"GLORYS truth {d} by year/month (native 1/12°)", **common)
     if kind == "anom":
         return ohc_bias.plot_monthly_cell_maps(
             truth_anom_cells_all, d, vmin=-ANOM_VLIM[d], vmax=ANOM_VLIM[d], cmap="RdBu_r",
-            cbar_label=f"{d} anomaly (GJ m$^{{-2}}$)", width=TABSET_FIGW, ncols=6,
-            title=f"GLORYS truth - RG climatology (native 1/12°)")
+            cbar_label=f"{d} anomaly (GJ m$^{{-2}}$)",
+            title=f"GLORYS truth - RG climatology (native 1/12°)", **common)
+
+def show_velocity_map(component):
+    label = "eastward" if component == "uo" else "northward"
+    return ohc_bias.plot_monthly_cell_maps(
+        velocity_cells_all, component, vmin=-VEL_VLIM, vmax=VEL_VLIM, cmap="RdBu_r",
+        value_scale=1, cbar_label=f"{component} (m s$^{{-1}}$)",
+        title=f"GLORYS {label} velocity ({component}) ~1000 m, by year/month",
+        width=TABSET_FIGW, ncols=6, xlim=ANALYSIS_XLIM, ylim=ANALYSIS_YLIM,
+    )
 
 _emit("::: {.panel-tabset}")
 for d in DEPTHS:
     _emit(f"## {DEPTH_LABEL[d]}")
     _emit("::: {.panel-tabset}")
-    for kind, label in [("native", "Native 1°"), ("interp", "Interpolated to 1/12°"), ("anom", "Anomaly")]:
+    for kind, label in [("native", "Native 1°"), ("interp", "Interpolated to 1/12°"),
+                         ("truth", "GLORYS truth"), ("anom", "Anomaly")]:
         _emit(f"### {label}")
         _show_fig(show_clim_map(kind, d))
     _emit(":::")
+_emit("## Eastward velocity")
+_show_fig(show_velocity_map("uo"))
+_emit("## Northward velocity")
+_show_fig(show_velocity_map("vo"))
 _emit(":::")
 ```
 
