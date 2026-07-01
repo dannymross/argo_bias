@@ -1,0 +1,124 @@
+---
+title: "Argo OHC Sampling Bias — North Atlantic Current"
+subtitle: "GP Modeling"
+author: "Daniel Ross"
+date: today
+jupyter: python3
+---
+
+```{=html}
+<style>
+/* pandas/quarto dataframe tables inherit Bootstrap's .table (width:100%),
+   which stretches them across the full page-layout container; size to
+   content instead. */
+table.dataframe { width: auto; max-width: 90%; font-size: 0.85em; margin-left: auto; margin-right: auto; }
+</style>
+```
+
+```{python}
+#| label: py-helpers
+#| include: false
+
+DEPTH_LABEL = {"ohc_700": "0–700 m", "ohc_2000": "0–2000 m"}
+TABSET_FIGW, TABSET_FIGH = 8, 5
+
+def _emit(md):
+    print("\n" + md + "\n")
+
+def _show_fig(fig):
+    _emit('<div style="text-align:center">')
+    display(fig)
+    _emit("</div>")
+    plt.close(fig)
+```
+
+# Setup
+
+This report picks up where `nac.qmd`'s Analysis Region / OHC Anomaly sections leave off, without
+re-running any of that report's plotting. The expensive step -- depth-integrating GLORYS `thetao`
+over all 41 levels to get the truth OHC field -- is cached to `data/ohc_truth/truth_ohc_<year>.nc`
+by `nac.qmd`; loading that cache plus the (cheap) RG climatology processing takes ~10s, vs. ~2.5 min
+for `nac.qmd`'s full render (dominated by matplotlib/cartopy rendering of ~20 map panels, which
+quarto has no way to skip short of freezing the whole file untouched).
+
+```{python}
+#| label: setup
+#| code-summary: "Setup — imports and experiment configuration"
+import sys, os
+sys.path.insert(0, os.path.abspath("../code"))
+
+import numpy as np
+import pandas as pd
+import xarray as xr
+import matplotlib.pyplot as plt
+
+import ohc
+import ohc_bias
+import ohc_climatology as ohc_clim
+
+YEARS = [2020, 2021, 2022]
+
+VELOCITY_GLOB = {
+    2020: "../data/velocity_gs_wide/velocity_2020_*.nc",
+    2021: "../data/velocity_gs_2021_2022/velocity_2021_*.nc",
+    2022: "../data/velocity_gs_2021_2022/velocity_2022_*.nc",
+}
+DOWNLOAD_BOUNDS = {
+    2020: (30, 48, -74, -49),
+    2021: (33, 45, -74, -49),
+    2022: (33, 45, -74, -49),
+}
+ANALYSIS_BOUNDS = (36, 40, -68, -62)
+OHC_TRUTH_DIR   = "../data/ohc_truth"
+DEPTHS          = ["ohc_700", "ohc_2000"]
+```
+
+```{python}
+#| label: load-cached-data
+#| code-summary: "Load the cached truth OHC field and rebuild the RG climatology anomaly"
+theta = {}
+truth_field_full = {}
+for y in YEARS:
+    la0, la1, lo0, lo1 = DOWNLOAD_BOUNDS[y]
+    theta[y] = xr.open_mfdataset(VELOCITY_GLOB[y]).sel(
+        latitude=slice(la0, la1), longitude=slice(lo0, lo1),
+    )
+    truth_field_full[y] = xr.open_dataset(f"{OHC_TRUTH_DIR}/truth_ohc_{y}.nc").load()
+
+mean_da = ohc_clim.load_rg_mean()
+clim_field_B = ohc_clim.climatological_ohc_field(mean_da)  # static 2004-2018 mean
+
+clim_field = {}
+truth_field = {}
+truth_anom = {}
+truth_anom_cells = {}
+for y in YEARS:
+    ext_da = ohc_clim.load_rg_extensions(year=y)
+    clim_field[y] = ohc_clim.climatological_ohc_field(mean_da + ext_da).compute()
+    truth_field[y] = truth_field_full[y].sel(
+        latitude=slice(ANALYSIS_BOUNDS[0], ANALYSIS_BOUNDS[1]),
+        longitude=slice(ANALYSIS_BOUNDS[2], ANALYSIS_BOUNDS[3]),
+    )
+    truth_anom[y] = ohc_clim.truth_ohc_anomaly(truth_field[y], clim_field[y])
+    truth_anom_cells[y] = ohc_clim.to_cells_table(truth_anom[y])
+
+truth_anom_cells_all = pd.concat(truth_anom_cells.values(), ignore_index=True)
+```
+
+```{python}
+#| label: real-argo
+#| code-summary: "Load real Argo profiles in the analysis region, 2020-2022"
+argo_all = pd.read_csv("../data/argo_ohc.csv")
+argo_all["date"] = pd.to_datetime(argo_all["date"], format="ISO8601")
+la0, la1, lo0, lo1 = ANALYSIS_BOUNDS
+argo_a = argo_all[
+    argo_all.lat.between(la0, la1)
+    & argo_all.lon.between(lo0, lo1)
+    & argo_all["date"].dt.year.isin(YEARS)
+]
+len(argo_a)
+```
+
+# GP Modeling
+
+*TODO*

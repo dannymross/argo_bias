@@ -93,6 +93,11 @@ Unlike Levitus et al. [2012], which computed $\rho$ and $c_p$ from annual climat
 ```{python}
 #| label: load-region-fields
 #| code-summary: "Load per-year GLORYS velocity/temperature and compute the true OHC field"
+# Cache truth_ohc_field (reads all 41 depth levels -- the dominant cost here)
+# to NetCDF so re-rendering doesn't repeat it. Delete the .nc to force a recompute.
+OHC_TRUTH_DIR = "../data/ohc_truth"
+os.makedirs(OHC_TRUTH_DIR, exist_ok=True)
+
 theta = {}
 truth_field_full = {}
 for y in YEARS:
@@ -100,7 +105,12 @@ for y in YEARS:
     theta[y] = xr.open_mfdataset(VELOCITY_GLOB[y]).sel(
         latitude=slice(la0, la1), longitude=slice(lo0, lo1),
     )
-    truth_field_full[y] = ohc.truth_ohc_field(theta[y]).compute()
+    cache_path = f"{OHC_TRUTH_DIR}/truth_ohc_{y}.nc"
+    if os.path.exists(cache_path):
+        truth_field_full[y] = xr.open_dataset(cache_path).load()
+    else:
+        truth_field_full[y] = ohc.truth_ohc_field(theta[y]).compute()
+        truth_field_full[y].to_netcdf(cache_path)
 ```
 
 ```{python}
@@ -346,8 +356,7 @@ _ = map_fields_row(
 #| output: asis
 #| code-summary: "RG climatology by year and month, native 1° grid vs interpolated to 1/12°, the GLORYS truth, the GLORYS truth - RG climatology anomaly, and eastward/northward velocity"
 
-# Every panel below is cropped to this same view, regardless of its native grid
-# resolution (1° climatology, 1/12° truth/velocity) -- so tabs line up exactly.
+# Fixed view for every panel below, regardless of its native grid resolution.
 ANALYSIS_XLIM = (ANALYSIS_BOUNDS[2], ANALYSIS_BOUNDS[3])
 ANALYSIS_YLIM = (ANALYSIS_BOUNDS[0], ANALYSIS_BOUNDS[1])
 
@@ -370,7 +379,7 @@ for y in YEARS:
 _clim_A_native_cells = ohc_clim.to_cells_table(xr.concat(_clim_A_plot_years, dim="month"))
 _clim_A_interp_cells = pd.concat(_clim_A_interp_cells_years, ignore_index=True)
 
-# GLORYS truth, monthly-mean, on the same analysis-region native grid used for the anomaly.
+# GLORYS truth, monthly-mean, same grid as the anomaly.
 _truth_monthly_cells_years = []
 for y in YEARS:
     monthly = truth_field[y].resample(time="1MS").mean().rename({"time": "month"})
@@ -378,8 +387,7 @@ for y in YEARS:
     _truth_monthly_cells_years.append(ohc_clim.to_cells_table(monthly.assign_coords(month=months_y)))
 truth_monthly_cells_all = pd.concat(_truth_monthly_cells_years, ignore_index=True)
 
-# GLORYS eastward/northward velocity near the 1000 m parking depth, monthly-mean,
-# restricted to the analysis region (same box as the truth/anomaly cells above).
+# Velocity near the 1000 m parking depth, monthly-mean, analysis region only.
 _velocity_cells_years = []
 for y in YEARS:
     vel = theta[y][["uo", "vo"]].sel(depth=1000, method="nearest").sel(

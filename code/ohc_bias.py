@@ -550,12 +550,8 @@ def plot_monthly_cell_maps(
     every source onto the **same grid and extent** -- essential when flipping
     between maps in tabs, so they line up exactly.
 
-    ``xlim``/``ylim`` (each a ``(min, max)`` tuple) instead fix the *view*
-    window directly, independent of the underlying data/grid resolution --
-    useful for lining up tabs whose cell tables span different native
-    resolutions (e.g. a coarse 1° climatology grid vs a native 1/12° truth
-    grid): both can be cropped to the same on-screen extent even though their
-    ``lats``/``lons`` differ.
+    ``xlim``/``ylim`` fix the view window directly, independent of grid
+    resolution -- for lining up tabs whose cell tables span different grids.
 
     Defaults plot OHC in GJ/m2. To plot another quantity (e.g. the per-cell
     profile count ``n``) pass ``value_col="n"``, ``value_scale=1`` and a
