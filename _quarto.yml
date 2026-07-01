@@ -20,29 +20,15 @@ website:
     style: docked
     contents:
       - index.qmd
-      - section: reports/nac.qmd
-        contents:
-          - text: "Goal and design"
-            href: reports/nac.qmd#goal-and-design
-          - text: "Setup"
-            href: reports/nac.qmd#setup
-          - text: "Analysis region"
-            href: reports/nac.qmd#analysis-region
-          - text: "OHC Anomaly"
-            href: reports/nac.qmd#ohc-anomaly
-      - section: reports/nac_gp.qmd
-        contents:
-          - text: "Setup"
-            href: reports/nac_gp.qmd#setup
-          - text: "GP Modeling"
-            href: reports/nac_gp.qmd#gp-modeling
+      - reports/nac.qmd
+      - reports/nac_gp.qmd
 
 format:
   html:
     theme:
       light: flatly
       dark: darkly
-    toc: false
+    toc: true
     number-sections: false
     code-tools: false
     fig-align: center
