@@ -1,8 +1,5 @@
 ---
-title: "Argo OHC Sampling Bias — North Atlantic Current"
-subtitle: "GP Modeling"
-author: "Daniel Ross"
-date: today
+title: "NAC GP Modeling"
 jupyter: python3
 ---
 

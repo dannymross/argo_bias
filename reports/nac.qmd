@@ -1,8 +1,5 @@
 ---
-title: "Argo OHC Sampling Bias — North Atlantic Current"
-subtitle: "Targeted Analysis"
-author: "Daniel Ross"
-date: today
+title: "NAC Targeted Analysis"
 jupyter: python3
 ---
 

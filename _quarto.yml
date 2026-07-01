@@ -12,27 +12,30 @@ execute:
 website:
   title: "Argo Bias"
   page-navigation: true
+  search: false
 
   repo-url: https://github.com/dannymross/argo_bias
 
-  navbar:
-    title: "Argo Bias"
-    search: false
-    left:
-      - icon: journal-text
-        menu:
-          - href: reports/pilot_simulation.qmd
-            text: "Pilot Simulation"
-          - href: reports/nac.qmd
-            text: "NAC Targeted Analysis"
-          - href: reports/nac_gp.qmd
-            text: "NAC GP Modeling"
-    right:
-      - icon: github
-        href: https://github.com/dannymross/argo_bias
-
-  sidebar: false
-
+  sidebar:
+    style: docked
+    contents:
+      - index.qmd
+      - section: reports/nac.qmd
+        contents:
+          - text: "Goal and design"
+            href: reports/nac.qmd#goal-and-design
+          - text: "Setup"
+            href: reports/nac.qmd#setup
+          - text: "Analysis region"
+            href: reports/nac.qmd#analysis-region
+          - text: "OHC Anomaly"
+            href: reports/nac.qmd#ohc-anomaly
+      - section: reports/nac_gp.qmd
+        contents:
+          - text: "Setup"
+            href: reports/nac_gp.qmd#setup
+          - text: "GP Modeling"
+            href: reports/nac_gp.qmd#gp-modeling
 
 format:
   html:
