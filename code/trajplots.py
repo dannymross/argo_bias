@@ -216,6 +216,7 @@ def map_trajectories(
     )
     gl.top_labels = False
     gl.right_labels = False
+    gl.geo_labels = False
 
     ax.legend(
         loc="lower left",
@@ -322,6 +323,7 @@ def map_trajectories_minimal(
         draw_labels=True, linewidth=0.3, color="grey", alpha=0.4, linestyle=":"
     )
     gl.top_labels = gl.right_labels = False
+    gl.geo_labels = False
 
     if title is None:
         t0 = np.datetime_as_string(np.nanmin(ds.time.values), unit="D")
@@ -411,6 +413,7 @@ def map_point_trajectories(
         draw_labels=True, linewidth=0.3, color="grey", alpha=0.4, linestyle=":"
     )
     gl.top_labels = gl.right_labels = False
+    gl.geo_labels = False
 
     ax.set_title(title or f"{len(floats)} float tracks", fontsize=11, pad=8)
     if any(len(b) > 4 for b in (boxes or [])):
@@ -490,6 +493,7 @@ def map_field(
         draw_labels=True, linewidth=0.3, color="grey", alpha=0.4, linestyle=":"
     )
     gl.top_labels = gl.right_labels = False
+    gl.geo_labels = False
 
     if title:
         ax.set_title(title, fontsize=11, pad=8)
@@ -909,9 +913,10 @@ def plot_deployment_plan(
     ax.add_feature(cfeature.LAND, facecolor="#e8e0d0", edgecolor="grey", linewidth=0.5)
     ax.add_feature(cfeature.COASTLINE, linewidth=0.6, edgecolor="dimgrey")
     ax.add_feature(cfeature.BORDERS, linewidth=0.4, edgecolor="grey", linestyle=":")
-    ax.gridlines(
+    gl = ax.gridlines(
         draw_labels=True, linewidth=0.4, color="grey", alpha=0.6, linestyle="--"
     )
+    gl.geo_labels = False
 
     ax.scatter(
         lons,
