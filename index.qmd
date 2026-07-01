@@ -17,3 +17,4 @@ characterize and quantify the bias.
 ## Reports
 
 - [Pilot Simulation](reports/pilot_simulation.qmd) *PARCELS simulation study with GLORYS12 velocity field and OHC*
+- [NAC Targeted Analysis](reports/nac.qmd) *Targeted analysis of Argo sampling bias in the North Atlantic Current*

@@ -1,0 +1,12 @@
+{
+  "hash": "b00ccfe7d1dfa1ec2f00cb9ea3f560a2",
+  "result": {
+    "engine": "jupyter",
+    "markdown": "---\ntitle: \"Argo OHC Sampling Bias — North Atlantic Current\"\nsubtitle: \"Targeted Analysis\"\nauthor: \"Daniel Ross\"\ndate: today\njupyter: python3\n---\n\n```{=html}\n<style>\n/* pandas/quarto dataframe tables inherit Bootstrap's .table (width:100%),\n   which stretches them across the full page-layout container; size to\n   content instead. */\ntable.dataframe { width: auto; max-width: 90%; font-size: 0.85em; margin-left: auto; margin-right: auto; }\n</style>\n```\n\n# Goal and design\n\n*TODO*\n\n",
+    "supporting": [
+      "nac_files"
+    ],
+    "filters": [],
+    "includes": {}
+  }
+}

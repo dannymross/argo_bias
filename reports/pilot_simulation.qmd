@@ -3,25 +3,7 @@ title: "Argo OHC Sampling Bias — North Atlantic Current"
 subtitle: "PARCELS Simulation Study with GLORYS12 Velocity Field and OHC"
 author: "Daniel Ross"
 date: today
-format:
-  html:
-    page-layout: full
-    toc: true
-    toc-depth: 3
-    number-sections: true
-    code-fold: true
-    code-tools: true
-    embed-resources: true
-    fig-width: 9
-    fig-height: 6
-    theme: 
-      light: cosmo
-      dark: darkly
-lightbox: true
 jupyter: python3
-execute:
-  warning: false
-  cache: true
 ---
 
 ```{=html}

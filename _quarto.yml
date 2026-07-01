@@ -2,7 +2,8 @@ project:
   type: website
   render:
     - "index.qmd"
-    - "reports/pilot_simulation.qmd"
+    # - "reports/pilot_simulation.qmd"  # temporarily disabled to speed up nac.qmd preview
+    - "reports/nac.qmd"
 
 execute:
   freeze: auto
@@ -21,6 +22,8 @@ website:
         menu:
           - href: reports/pilot_simulation.qmd
             text: "Pilot Simulation"
+          - href: reports/nac.qmd
+            text: "NAC Targeted Analysis"
     right:
       - icon: github
         href: https://github.com/dannymross/argo_bias

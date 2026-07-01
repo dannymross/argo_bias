@@ -1,0 +1,20 @@
+---
+title: "Argo OHC Sampling Bias — North Atlantic Current"
+subtitle: "Targeted Analysis"
+author: "Daniel Ross"
+date: today
+jupyter: python3
+---
+
+```{=html}
+<style>
+/* pandas/quarto dataframe tables inherit Bootstrap's .table (width:100%),
+   which stretches them across the full page-layout container; size to
+   content instead. */
+table.dataframe { width: auto; max-width: 90%; font-size: 0.85em; margin-left: auto; margin-right: auto; }
+</style>
+```
+
+# Goal and design
+
+*TODO*

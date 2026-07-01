@@ -5,6 +5,9 @@ channels:
 dependencies:
   - python=3.11
   - ipython
+  - jupyter
+  - ipykernel
+  - jupyter-cache
   - numpy
   - pandas
   - xarray
@@ -12,6 +15,7 @@ dependencies:
   - cartopy
   - pip
   - parcels
+  - copernicusmarine
   - pip:
     - global_land_mask
     - git+https://github.com/euroargodev/VirtualFleet.git
