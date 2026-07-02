@@ -7,11 +7,5 @@ date: today
 
 ## Overview
 
-This site collects analysis reports for a study of ocean heat content sampling bias
-in Argo float observations.
+This site collects analysis reports for a study of ocean heat content sampling bias in Argo float observations.
 
-The sampling bias arises because Argo floats are not uniformly distributed in space or
-time. We use GLORYS12 reanalysis fields and PARCELS Lagrangian particle simulations to
-characterize and quantify the bias.
-
-Use the sidebar to navigate between reports and jump to individual sections.
