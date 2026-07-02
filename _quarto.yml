@@ -2,6 +2,7 @@ project:
   type: website
   render:
     - "index.qmd"
+    - "reports/nac_bound.qmd"
     # - "reports/pilot_simulation.qmd"  # temporarily disabled to speed up nac.qmd preview
     - "reports/nac.qmd"
     - "reports/nac_gp.qmd"
@@ -20,10 +21,12 @@ website:
     style: docked
     contents:
       - index.qmd
+      - reports/nac_bound.qmd
       - section: "North Atlantic Current"
         contents:
           - reports/nac.qmd
           - reports/nac_gp.qmd
+          
 
 format:
   html:
