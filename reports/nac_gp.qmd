@@ -102,13 +102,6 @@ _ = map_point_trajectories(
     title=f"All obs for floats that profiled the domain, {YEARS[0]}-{YEARS[-1]}",
 )
 
-# Restrict to the analysis window and box itself -- this is the profile set
-# the GP interpolation below is fit on. (The year filter alone isn't enough:
-# a float that entered the box can spend most of a year drifting outside it,
-# and those out-of-box obs would otherwise get carried through as phantom
-# rows that silently turn to NaN once truth is sampled at their position --
-# quietly dropped from the fit, but only after wasting the sampling/interp
-# work on ~8x too many rows.)
 argo_a = argo_a[
     argo_a["date"].dt.year.isin(YEARS)
     & argo_a.lat.between(la0, la1)
@@ -122,6 +115,12 @@ _ = map_point_trajectories(
     title=f"{YEARS[0]}-{YEARS[-1]} obs within the analysis domain",
 )
 print(f"{len(argo_a)} profiles within the analysis domain, {YEARS[0]}-{YEARS[-1]}")
+ohc_bias.monthly_float_counts(argo_a).rename(
+    columns={
+        "n_floats": "n_floats_real",
+        "n_profiles": "n_profiles_real",
+    }
+)
 ```
 
 # GP Interpolation with Real Floats
@@ -198,12 +197,16 @@ for deg, grid_csv in _pred_grid_csvs.items():
     ohc_clim.build_pred_grid(lats, lons).to_csv(grid_csv, index=False)
 
 ohc_clim.write_profile_csv(real_argo_direct, _real_profiles_csv, suffix="")
-ohc_clim.run_gp_fit(_real_profiles_csv, _real_fit_summary_csv, _real_model_cache)
-for deg, out_csv in _real_out_csvs.items():
-    ohc_clim.run_gp_predict(
-        _real_profiles_csv, _pred_grid_csvs[deg], _real_model_cache, out_csv,
-        m=_GP_PREDICT_M[deg], month_day=_GP_MONTH_DAY,
-    )
+# Fit + predict are the expensive steps (pooled GP fit, bounded-Vecchia predict
+# on the ~3,600-point native grid); skip both if the fit summary and model
+# cache are already on disk. Delete both files to force a re-fit/re-predict.
+if not (os.path.exists(_real_fit_summary_csv) and os.path.exists(_real_model_cache)):
+    ohc_clim.run_gp_fit(_real_profiles_csv, _real_fit_summary_csv, _real_model_cache)
+    for deg, out_csv in _real_out_csvs.items():
+        ohc_clim.run_gp_predict(
+            _real_profiles_csv, _pred_grid_csvs[deg], _real_model_cache, out_csv,
+            m=_GP_PREDICT_M[deg], month_day=_GP_MONTH_DAY,
+        )
 
 gp_fit_summary = ohc_clim.load_gp_fit_summary(_real_fit_summary_csv)
 gp_fit_summary.groupby("depth")[["loglik", "converged", "n_obs"]].first()
@@ -268,7 +271,7 @@ def _fmt_fit_summary(df):
     d = df.copy()
     d["display"] = d.apply(
         lambda r: f"{r['estimate']:.4g}" if pd.isna(r["std_error"])
-        else f"{r['estimate']:.4g} $\pm$ {r['std_error']:.3g}",
+        else f"{r['estimate']:.4g} +/- {r['std_error']:.3g}",
         axis=1,
     )
     wide = d.pivot(index="parameter", columns="depth", values="display")
@@ -311,42 +314,66 @@ VLIM = {
 #| label: gp-interp-maps
 #| output: asis
 #| code-summary: "GP-interpolated field vs native-grid truth, its standard error, and the GP - truth bias map"
+_CI_BAND_LEVELS = (50, 75, 90, 95, 99)
+_CI_BAND_LABELS = (
+    [f"within {_CI_BAND_LEVELS[0]}% CI"]
+    + [f"{lo}-{hi}% CI" for lo, hi in zip(_CI_BAND_LEVELS[:-1], _CI_BAND_LEVELS[1:])]
+    + [f"beyond {_CI_BAND_LEVELS[-1]}% CI"]
+)
 
 def make_gp_map(c, kind, d, res_label):
     if kind == "obs":
         _lats, _lons = _grid_lats_lons(1 / 12)
         return ohc_bias.plot_monthly_cell_maps(
             c["obs_cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1],
-            scatter_dots=True, width=TABSET_FIGW,
+            scatter_dots=True, width=TABSET_FIGW, ncols=12,
             lats=_lats, lons=_lons,
             title=f"Observed Argo {d} by month ({res_label})")
     if kind == "gp":
         return ohc_bias.plot_monthly_cell_maps(
-            c["cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], width=TABSET_FIGW,
+            c["cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], width=TABSET_FIGW, ncols=12,
             title=f"GP-interpolated {d} by month ({res_label})")
     if kind == "gp_se":
         return ohc_bias.plot_monthly_cell_maps(
-            c["se_cells"], f"{d}_se", vmin=0, cmap="viridis", width=TABSET_FIGW,
+            c["se_cells"], f"{d}_se", vmin=0, cmap="viridis", width=TABSET_FIGW, ncols=12,
             cbar_label=f"{d} GP standard error (GJ m$^{{-2}}$)",
             title=f"GP standard error, {d} ({res_label})")
     if kind == "truth_native":
         return ohc_bias.plot_monthly_cell_maps(
-            c["truth_cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], width=TABSET_FIGW,
+            c["truth_cells"], d, vmin=VLIM[d][0], vmax=VLIM[d][1], width=TABSET_FIGW, ncols=12,
             title=f"GLORYS truth {d} by month ({res_label})")
     if kind == "gp_bias":
         bcol = f"{d}_bias"
         bmax = float(c["bias_cells"][bcol].abs().max()) * ohc_bias.J_TO_GJ
         return ohc_bias.plot_monthly_cell_maps(
             c["bias_cells"], bcol, vmin=-bmax, vmax=bmax, cmap="RdBu_r",
-            cbar_label=f"{d} bias (GJ m$^{{-2}}$)", width=TABSET_FIGW,
+            cbar_label=f"{d} bias (GJ m$^{{-2}}$)", width=TABSET_FIGW, ncols=12,
             title=f"GP - truth bias, {d} ({res_label})")
+    if kind == "gp_bias_se":
+        z_cells = ohc_bias.compute_standardized_bias_cells(c["bias_cells"], c["se_cells"], f"{d}_bias", f"{d}_se")
+        zmax = float(np.nanmax(np.abs(z_cells["z"])))
+        return ohc_bias.plot_monthly_cell_maps(
+            z_cells, "z", vmin=-zmax, vmax=zmax, cmap="RdBu_r", value_scale=1,
+            cbar_label="(GP - truth) / SE", width=TABSET_FIGW, ncols=12,
+            title=f"GP - truth bias in SE units, {d} ({res_label})")
+    if kind == "gp_coverage":
+        band_cells = ohc_bias.compute_bias_ci_band_cells(
+            c["bias_cells"], c["se_cells"], f"{d}_bias", f"{d}_se", levels=_CI_BAND_LEVELS
+        )
+        return ohc_bias.plot_monthly_cell_maps(
+            band_cells, "band", vmin=0, vmax=len(_CI_BAND_LEVELS), discrete=True,
+            cmap="RdYlGn_r", value_scale=1, tick_labels=_CI_BAND_LABELS,
+            width=TABSET_FIGW, ncols=12, cbar_label="predicted-truth gap, by nested CI band",
+            title=f"Prediction-interval band, {d} ({res_label})")
 
 GP_MAP_KINDS = [("obs", "Observed Argo OHC"),
                 ("obs_table", "Observed Argo OHC table"),
                 ("gp", "GP-interpolated Argo OHC"),
                 ("gp_se", "GP standard error"),
                 ("truth_native", "GLORYS truth"),
-                ("gp_bias", "GP - truth bias")]
+                ("gp_bias", "GP - truth bias"),
+                ("gp_bias_se", "GP - truth bias (SE units)"),
+                ("gp_coverage", "Prediction-interval band map")]
 
 def make_gp_table(c, d):
     profiles = c.get("obs_profiles")
@@ -394,4 +421,45 @@ def emit_gp_map_tabset(ctx):
     _emit(":::")
 
 emit_gp_map_tabset(_real_ctx)
+```
+
+## Coverage Rates
+
+For each grid cell and month, we check whether the truth OHC falls within the GP's predicted
+value +/- a chosen multiple of its kriging standard error, at two widths: +/-1 SE and the wider
++/-1.96 SE (`scipy.stats.norm.ppf(0.975)`), i.e. a nominal two-sided 95% prediction interval.
+Summarizing either indicator over all cells in a month gives a **coverage rate**: if the kriging SE
+is well calibrated and interpolation errors are approximately Gaussian, each rate should hover near
+its interval's nominal Gaussian coverage (68.3%, 95%). A rate consistently *below* its reference
+line means that interval is too narrow (the GP is overconfident at that width); consistently
+*above* means it is too wide (overly conservative).
+
+```{python}
+#| label: gp-coverage-rate
+#| output: asis
+#| fig-cap: "Monthly +/-1 SE and 95% CI coverage rate vs the nominal Gaussian rate"
+
+_COVERAGE_INTERVALS = {"+/-1 SE": 1.0, "95% CI": ohc_bias.Z_95}
+_COVERAGE_LINESTYLES = {"+/-1 SE": "--", "95% CI": "-"}
+_COVERAGE_NOMINAL = {lbl: ohc_bias.nominal_coverage(z) for lbl, z in _COVERAGE_INTERVALS.items()}
+
+def emit_gp_coverage_tabset(ctx):
+    _emit("::: {.panel-tabset}")
+    for res_label, c in ctx.items():
+        _emit(f"### {res_label}")
+        cov_by_depth = {}
+        for d in DEPTHS:
+            cov_by_depth[DEPTH_LABEL[d]] = {
+                lbl: ohc_bias.monthly_coverage_rate(
+                    ohc_bias.compute_coverage_cells(c["bias_cells"], c["se_cells"], f"{d}_bias", f"{d}_se", z=z)
+                )
+                for lbl, z in _COVERAGE_INTERVALS.items()
+            }
+        _show_fig(ohc_bias.plot_coverage_by_month(
+            cov_by_depth, nominal=_COVERAGE_NOMINAL, linestyles=_COVERAGE_LINESTYLES,
+            title=f"Monthly coverage rate ({res_label})"))
+        display(ohc_bias.coverage_rate_table(cov_by_depth))
+    _emit(":::")
+
+emit_gp_coverage_tabset(_real_ctx)
 ```

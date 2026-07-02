@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from scipy.stats import norm
 
 import ohc
 
@@ -12,29 +13,13 @@ def compute_bias(
 ):
     """Join float and truth cells and compute per-cell and domain-level bias.
 
-    Parameters
-    ----------
-    float_cells, truth_cells : DataFrame
-        Output of :func:`ohc.grid_cells` / :func:`ohc.coarsen_truth`, each with
-        columns ``month, cell_lat, cell_lon, <value_cols>, n``.
-    value_cols : tuple
-        OHC columns to analyse.
-    true_domain_mean : DataFrame, optional
-        Fixed per-month true domain mean (columns ``month`` + value_cols, J/m2)
-        from :func:`ohc.truth_domain_mean`. If given, it is used as the truth
-        reference for total and sampling bias instead of the cell-mean over all
-        truth cells -- which removes the resolution-dependent drift of the
-        reference across a cell-size sweep. The total = sampling + grid
-        decomposition is preserved either way.
+    ``true_domain_mean`` (from :func:`ohc.truth_domain_mean`), if given,
+    replaces the cell-mean-over-all-truth-cells reference for total/sampling
+    bias, removing the resolution-dependent drift across a cell-size sweep;
+    the total = sampling + grid decomposition holds either way.
 
-    Returns
-    -------
-    dict with:
-        ``cells`` -- per (month, cell) truth, float, and grid error
-            (float - truth), only where a float sampled the cell;
-        ``domain`` -- per month: true domain mean (all truth cells), sampled
-            domain mean (float-sampled cells), the float estimate, the sampling
-            bias (sampled estimate - true mean), and sampled-cell fraction.
+    Returns ``{"cells": per-sampled-cell truth/float/bias rows, "domain":
+    per-month true/sampled means, sampling bias, sampled-cell fraction}``.
     """
     keys = ["month", "cell_lat", "cell_lon"]
     tcols = {c: f"{c}_truth" for c in value_cols}
@@ -106,24 +91,12 @@ def bias_summary(domain, value_cols=("ohc_700", "ohc_2000")):
 def monthly_bias_table(float_cells, truth_cells, value_col, true_domain_mean=None):
     """Per-month preferential-sampling summary for one depth + resolution.
 
-    Tells the full bias story for a single depth layer at the cell size implied
-    by ``float_cells``/``truth_cells``. OHC columns are in GJ/m2:
-
-    * ``samp_cells``     -- cells a float sampled that month
-    * ``profiles``       -- float profiles that month (sum of per-cell counts)
-    * ``prof_per_cell``  -- profiles / sampled cells
-    * ``true_ohc``       -- mean true OHC over **all** cells
-    * ``true_ohc_samp``  -- mean true OHC over the **sampled** cells
-    * ``synth_ohc_samp`` -- mean synthetic-Argo OHC over the sampled cells
-    * ``samp_bias``      -- true_ohc_samp - true_ohc  (sampling/coverage: which
-      cells get sampled, true values only)
-    * ``grid_bias``      -- synth_ohc_samp - true_ohc_samp  (within-cell estimate
-      error)
-
-    ``samp_bias + grid_bias`` is the total estimate error
-    (synth_ohc_samp - true_ohc). A final ``YEAR`` row summarises the year:
-    profiles are summed, everything else is the monthly mean (so the YEAR bias
-    terms are the time-averaged biases).
+    Columns (GJ/m2): ``true_ohc`` (mean over all cells), ``true_ohc_samp``/
+    ``synth_ohc_samp`` (true/synthetic mean over sampled cells only),
+    ``samp_bias = true_ohc_samp - true_ohc`` (which cells get sampled),
+    ``grid_bias = synth_ohc_samp - true_ohc_samp`` (within-cell estimate
+    error), ``bias = samp_bias + grid_bias``. Trailing ``YEAR`` row: profiles
+    summed, everything else averaged.
     """
     dom = compute_bias(
         float_cells,
@@ -185,33 +158,17 @@ def sweep_resolution(
 ):
     """Sweep the analysis cell size and report bias vs resolution.
 
-    The grid cell size is a parameter of the estimator (a box-kernel proxy for
-    a Gaussian-process correlation length), not an intrinsic feature of the
-    ungridded float data. sampling and grid bias both depend on it:
-    coarse cells -> small sampling bias but large grid/smoothing bias;
-    fine cells -> the reverse. This traces that curve.
-
-    The expensive pieces (truth OHC field and synthetic-float profiles) are
+    Cell size is a parameter of the estimator (a box-kernel proxy for a GP
+    correlation length), not an intrinsic feature of the float data: coarse
+    cells give small sampling bias but large grid/smoothing bias, fine cells
+    the reverse. The expensive pieces (truth field, synthetic profiles) are
     computed once by the caller and re-gridded cheaply at each ``deg``.
+    ``weighted_reference=True`` (default) measures bias against the fixed
+    cos(lat)-weighted native-resolution truth mean, so only the estimator
+    changes across the sweep.
 
-    Parameters
-    ----------
-    truth_field : xarray.Dataset
-        Output of :func:`ohc.truth_ohc_field` (ohc_700/ohc_2000 on the native grid).
-    sim : pandas.DataFrame
-        Per-profile synthetic-Argo OHC from :func:`ohc.float_ohc`.
-    degs : iterable of float
-        Cell sizes (degrees) to sweep, e.g. ``[1/12, 0.25, 0.5, 1]``.
-    weighted_reference : bool
-        If True (default), measure bias against the fixed cos(lat) area-weighted
-        true domain mean (native resolution), so only the estimator changes
-        across the sweep. If False, use the unweighted native-cell mean.
-
-    Returns
-    -------
-    pandas.DataFrame
-        One row per (deg, depth) with time-averaged bias terms in GJ/m2,
-        the mean sampled-cell fraction, and the mean cell count.
+    Returns one row per (deg, depth): time-averaged bias terms (GJ/m2), mean
+    sampled-cell fraction, mean cell count.
     """
     ref = ohc.truth_domain_mean(
         truth_field, weighted=weighted_reference, value_cols=list(value_cols)
@@ -264,21 +221,9 @@ def sweep_region(
 ):
     """Compute bias over a sequence of analysis regions at a fixed cell size.
 
-    Parameters
-    ----------
-    regions : list of (bounds, label)
-        ``bounds`` is ``(lat_min, lat_max, lon_min, lon_max)``; ``label`` names
-        the region (e.g. "deploy", "+2deg").
-    deg : float
-        Analysis cell size held fixed across the region sweep.
-    weighted_reference : bool
-        cos(lat) area-weighted true domain mean per region (default) vs unweighted.
-
-    Returns
-    -------
-    pandas.DataFrame
-        One row per (region, depth) with time-averaged bias terms (GJ/m2), the
-        region box, and its area in deg^2.
+    ``regions``: list of ``(bounds, label)``, ``bounds = (lat_min, lat_max,
+    lon_min, lon_max)``. Returns one row per (region, depth): time-averaged
+    bias terms (GJ/m2), the region box area (deg^2).
     """
     rows = []
     for bounds, label in regions:
@@ -335,26 +280,15 @@ def plot_domain_timeseries(
     en4=None,
     figsize=None,
 ):
-    """Domain-mean OHC over time: GLORYS truth (all cells), GLORYS truth (sampled
-    cells), and synthetic Argo (sampled cells), with the sampled-cell fraction below.
+    """Domain-mean OHC over time: GLORYS truth (all/sampled cells) and synthetic
+    Argo (sampled cells), plus sampling/grid bias and sampled-cell fraction below.
 
-    The gap between truth-all and truth-sampled is the **sampling bias** (which
-    cells get sampled); the gap between truth-sampled and synthetic Argo is the
-    **grid bias** (within-cell estimate error). Pass ``ylim=(lo, hi)`` (GJ/m2) to
-    fix the OHC axis -- e.g. a shared range across resolutions for one depth.
-
-    ``real`` optionally adds a fourth line for the **real** Argo array: a
-    DataFrame with a ``month`` column and a ``value_col`` column (J/m2), e.g. the
-    monthly mean of ``data/argo_ohc.csv`` over the cells real floats sampled.
-
-    ``en4`` optionally adds a fifth line for the **EN4** gridded product: a
-    DataFrame with a ``month`` column and a ``value_col`` column (J/m2), e.g. the
-    monthly domain mean of the EN4 cells at their native resolution.
-
-    Pass ``figsize`` explicitly when embedding this in a context (e.g. a quarto
-    panel-tabset built via ``display()``) where the chunk's ``fig-width``/
-    ``fig-height`` options don't reach ``matplotlib.rcParams`` -- the default
-    (``None``) falls back to ``rcParams["figure.figsize"]``.
+    Gap between truth-all and truth-sampled is sampling bias (which cells get
+    sampled); truth-sampled vs synthetic Argo is grid bias (within-cell
+    estimate error). ``real``/``en4`` each optionally add a line: a DataFrame
+    with ``month`` and ``value_col`` (J/m2) columns. ``figsize`` is needed
+    explicitly in contexts (e.g. a quarto panel-tabset via ``display()``)
+    where the chunk's fig-width/height options don't reach ``rcParams``.
     """
     import matplotlib.pyplot as plt
 
@@ -530,6 +464,7 @@ def plot_monthly_cell_maps(
     value_scale=J_TO_GJ,
     cbar_label=None,
     discrete=False,
+    tick_labels=None,
     lats=None,
     lons=None,
     scatter_dots=False,
@@ -539,33 +474,22 @@ def plot_monthly_cell_maps(
 ):
     """Facet of monthly cell maps from a gridded cells table.
 
-    Works for both the truth cells (dense) and the synthetic-float cells
-    (sparse) -- unsampled cells are left blank, so a float-cell panel doubles as
-    a coverage map. Pass a shared ``vmin``/``vmax`` (e.g. from the truth) to make
-    float and truth panels directly comparable.
+    Unsampled cells are left blank, so a sparse float-cell panel doubles as a
+    coverage map. Pass shared ``vmin``/``vmax`` to make float/truth panels
+    comparable, and explicit ``lats``/``lons`` (e.g. truth cell centres) to
+    force every source onto the same grid/extent -- essential when flipping
+    between tabs. ``xlim``/``ylim`` fix the view window independent of grid
+    resolution.
 
-    By default the cell grid (and hence the map extent) is taken from the cells
-    present, so a sparse float panel spans a *smaller* extent than the dense
-    truth. Pass explicit ``lats``/``lons`` (e.g. the truth cell centres) to force
-    every source onto the **same grid and extent** -- essential when flipping
-    between maps in tabs, so they line up exactly.
+    Defaults plot OHC in GJ/m2; for another quantity pass ``value_col``,
+    ``value_scale=1``, ``cbar_label``. ``discrete=True`` treats values as
+    integer levels with one colour band each (``tick_labels`` relabels the
+    ticks). ``scatter_dots=True`` overlays a fixed-size marker per sampled
+    cell so sparse sources stay visible at fine resolutions.
 
-    ``xlim``/``ylim`` fix the view window directly, independent of grid
-    resolution -- for lining up tabs whose cell tables span different grids.
-
-    Defaults plot OHC in GJ/m2. To plot another quantity (e.g. the per-cell
-    profile count ``n``) pass ``value_col="n"``, ``value_scale=1`` and a
-    ``cbar_label``. With ``discrete=True`` the values are treated as integers
-    and shown on a discrete colour scale with one band per integer level (use
-    for counts). At fine resolutions (e.g. 1/12 deg) a sampled cell can be
-    smaller than a pixel on screen; pass ``scatter_dots=True`` to overlay a
-    fixed-size marker per sampled cell so sparse sources stay visible
-    regardless of grid resolution.
-
-    ``width`` (inches) sets the figure width directly -- needed in contexts
-    (e.g. a quarto panel-tabset built via ``display()``) where the chunk's
-    ``fig-width`` option doesn't reach ``matplotlib.rcParams``. Defaults to
-    ``rcParams["figure.figsize"][0]`` when not given.
+    ``width`` sets the figure width directly -- needed where a quarto
+    chunk's ``fig-width`` doesn't reach ``matplotlib.rcParams`` (e.g. via
+    ``display()``).
     """
     import matplotlib.pyplot as plt
     import matplotlib.colors as mcolors
@@ -654,6 +578,8 @@ def plot_monthly_cell_maps(
     if mesh is not None:
         cb = fig.colorbar(mesh, ax=axes.tolist(), shrink=0.7, pad=0.02, ticks=ticks)
         cb.set_label(cbar_label or f"{value_col}  (GJ m$^{{-2}}$)")
+        if tick_labels is not None:
+            cb.set_ticklabels(tick_labels)
     if title:
         fig.suptitle(title, y=1.0, fontsize=12)
     if out_path:
@@ -749,28 +675,18 @@ def plot_bias_se_violin(
     figsize=None,
     out_path=None,
 ):
-    """Side-by-side horizontal violins per month: a bias distribution vs one or more SE distributions.
+    """Side-by-side horizontal violins per month: bias distribution vs one or more SE distributions.
 
-    For an interpolation method that fills in a value everywhere (not just at
-    binned cells a float happened to sample), the natural per-month "bias" is
-    a full spatial distribution -- |predicted minus truth| at every grid point
-    -- directly comparable to that same method's per-pixel SE distribution,
-    rather than a single domain-level scalar compared against a domain-mean
-    SE. ``bias_cells``/``se_cells`` are cells tables (``month, cell_lat,
-    cell_lon, <col>``) sharing the same ``month`` values; ``bias_col``/
-    ``se_col`` select which column of each to plot. Bias is shown as its
-    absolute value, so both distributions are >= 0 and live on the same
-    GJ/m2 axis with directly comparable spreads. Each violin marks its
-    median (solid), mean (dashed), and 5th/95th percentiles (solid) -- the
-    percentiles in place of the true min/max, which are sensitive to single
-    outlier grid cells.
+    For an interpolation method that fills in every grid point (not just
+    binned float cells), bias is the full |predicted - truth| spatial
+    distribution, directly comparable to the per-pixel SE distribution --
+    rather than a domain scalar vs a domain-mean SE. Each violin marks its
+    median (solid), mean (dashed), and 5th/95th percentiles (solid, in
+    place of min/max, which are outlier-sensitive).
 
-    ``se_cells`` and ``se_col`` may each be a single DataFrame/str (one SE
-    violin) or a list of DataFrames/strs (multiple SE violins, e.g. ``se_A``
-    and ``se_0`` for Levitus). ``se_labels`` and ``se_colors`` customise the
-    legend entry and fill colour for each SE source; defaults are provided
-    when omitted. Violins are evenly spaced across a fixed span so they
-    never overlap regardless of how many SE sources are passed.
+    ``se_cells``/``se_col`` may each be a single DataFrame/str or a list
+    (e.g. Levitus's ``se_A``/``se_0``); violins are evenly spaced so any
+    number of SE sources fit without overlapping.
     """
     import matplotlib.pyplot as plt
     from matplotlib.patches import Patch
@@ -899,3 +815,126 @@ def plot_bias_se_violin(
         fig.savefig(out_path, dpi=130, bbox_inches="tight")
         print(f"saved {out_path}")
     return fig
+
+
+def nominal_coverage(z):
+    """Two-sided Gaussian coverage of the +/- z*SE interval: P(-z <= Z <= z)."""
+    return norm.cdf(z) - norm.cdf(-z)
+
+
+NORM1 = nominal_coverage(1.0)  # nominal 68.3% coverage of a +/-1 SE interval
+Z_95 = norm.ppf(0.975)  # ~1.96, the z multiplier for a 95% two-sided interval
+
+
+def ci_z_thresholds(levels=(50, 75, 90, 95, 99)):
+    """Two-sided Gaussian z threshold per confidence level (%): qnorm((1+level/100)/2)."""
+    levels = np.asarray(levels, dtype=float)
+    return norm.ppf((1 + levels / 100) / 2)
+
+
+def compute_bias_ci_band_cells(
+    bias_cells, se_cells, bias_col, se_col, levels=(50, 75, 90, 95, 99),
+    keys=("month", "cell_lat", "cell_lon"),
+):
+    """Per-cell band: index of the narrowest CI in ``levels`` containing |z| (0 = tightest)."""
+    merged = compute_standardized_bias_cells(bias_cells, se_cells, bias_col, se_col, keys=keys)
+    breaks = ci_z_thresholds(levels)
+    band = np.full(len(merged), np.nan)
+    finite = merged["z"].notna().to_numpy()
+    band[finite] = np.digitize(merged["z"][finite].abs(), breaks)
+    merged["band"] = band
+    return merged
+
+
+def compute_standardized_bias_cells(
+    bias_cells, se_cells, bias_col, se_col, keys=("month", "cell_lat", "cell_lon")
+):
+    """Merge bias_cells/se_cells on keys, add z = bias/SE."""
+    keys = list(keys)
+    merged = bias_cells[keys + [bias_col]].merge(
+        se_cells[keys + [se_col]], on=keys, how="inner"
+    )
+    merged["z"] = merged[bias_col] / merged[se_col]
+    return merged
+
+
+def compute_coverage_cells(
+    bias_cells, se_cells, bias_col, se_col, z=1.0, keys=("month", "cell_lat", "cell_lon")
+):
+    """Per-cell indicator: does predicted +/- z*SE bracket the truth (|z| <= z)?"""
+    merged = compute_standardized_bias_cells(bias_cells, se_cells, bias_col, se_col, keys=keys)
+    merged["covered"] = np.where(merged["z"].notna(), (merged["z"].abs() <= z).astype(float), np.nan)
+    return merged
+
+
+def monthly_coverage_rate(coverage_cells):
+    """Fraction of cells covered each month, from :func:`compute_coverage_cells` output."""
+    g = coverage_cells.groupby("month")["covered"]
+    return g.mean().rename("coverage_rate").to_frame().assign(n=g.count())
+
+
+def plot_coverage_by_month(
+    coverage_by_series,
+    nominal,
+    linestyles,
+    title=None,
+    figsize=(8, 4.5),
+    out_path=None,
+):
+    """Monthly coverage rate: one colour per series, one linestyle per interval.
+
+    ``coverage_by_series``: ``{series_label: {interval_label: monthly_coverage_rate df}}``.
+    ``nominal``/``linestyles`` keyed by ``interval_label``. Y-axis is free (not fixed to 0-100).
+    """
+    import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=figsize)
+    colors = ["#c0392b", "#4a90d9", "#2ecc71", "#9b59b6"]
+    for (series_label, by_interval), color in zip(coverage_by_series.items(), colors):
+        for interval_label, df in by_interval.items():
+            d = df.sort_index()
+            ax.plot(
+                pd.to_datetime(d.index), d["coverage_rate"] * 100,
+                marker="o", color=color, ls=linestyles[interval_label],
+                label=f"{series_label} ({interval_label})",
+            )
+
+    for interval_label, frac in nominal.items():
+        ax.axhline(
+            frac * 100, color="0.4", lw=1, ls=linestyles[interval_label],
+            label=f"nominal ({interval_label}) = {frac * 100:.1f}%",
+        )
+    ax.set_ylabel("coverage rate (%)")
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b\n%Y"))
+    ax.tick_params(labelsize=8)
+    if title:
+        ax.set_title(title)
+    ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False, fontsize="small")
+    ax.grid(alpha=0.2)
+    fig.tight_layout()
+    if out_path:
+        fig.savefig(out_path, dpi=130, bbox_inches="tight")
+        print(f"saved {out_path}")
+    return fig
+
+
+def coverage_rate_table(coverage_by_series, value_scale=100, decimals=1):
+    """Wide monthly coverage-rate table (%); same input shape as :func:`plot_coverage_by_month`.
+
+    Trailing ``Year`` row is the pooled rate (sum(covered)/sum(n)), not a mean of monthly means.
+    """
+    cols, pooled = {}, {}
+    for series_label, by_interval in coverage_by_series.items():
+        for interval_label, df in by_interval.items():
+            col = f"{series_label} ({interval_label})"
+            d = df.sort_index()
+            cols[col] = (d["coverage_rate"] * value_scale).round(decimals)
+            pooled[col] = round(
+                (d["coverage_rate"] * d["n"]).sum() / d["n"].sum() * value_scale, decimals
+            )
+    tbl = pd.DataFrame(cols)
+    tbl.index = pd.to_datetime(tbl.index).strftime("%Y-%m")
+    tbl.index.name = "month"
+    year_row = pd.DataFrame([pooled], index=pd.Index(["Year"], name="month"))
+    return pd.concat([tbl, year_row])
