@@ -42,12 +42,9 @@ levitus_weights <- function(r_km, R, e = E) {
 }
 
 # Levitus-style kernel-smoother prediction, vectorized over every prediction
-# point at once (one (n_pred x n_obs) matrix of weights, reduced by row).
-# Returns a list of length-n_pred vectors: mean, se_a, se_0, n_obs_in_radius.
-# mean is NA wherever zero observations fall in the radius (or the single
-# observation's own value if exactly one does -- a well-defined, if
-# unweighted-by-anything-else, prediction); both SEs are NA below
-# MIN_OBS_FOR_SE (sigma_0's sample std needs >=2 points).
+# point (one (n_pred x n_obs) weight matrix, reduced by row). mean is NA with
+# zero observations in radius (or the lone obs's value if exactly one does);
+# both SEs are NA below MIN_OBS_FOR_SE (sigma_0's sample std needs >=2 points).
 levitus_predict <- function(lon_obs, lat_obs, q_obs, lon_pred, lat_pred, R) {
   n_obs <- length(lon_obs)
   n_pred <- length(lon_pred)

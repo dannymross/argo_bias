@@ -130,16 +130,8 @@ def map_trajectories(
 ):
     """Plot float trajectories on a map, one colour per float.
 
-    Parameters
-    ----------
-    output : str
-        Path to a zarr directory, or a glob matching multiple batch zarrs.
-    extent : list of [lon_min, lon_max, lat_min, lat_max], optional
-        Map extent. Auto-computed from the data + margin if not given.
-    margin : float
-        Degrees of padding added around the data when auto-computing extent.
-    save_path : str, optional
-        Directory to save the figure (as <stem>.png). Not saved if None.
+    ``output``: zarr path or glob of batch zarrs. ``extent`` auto-computes
+    from data + ``margin`` if not given. ``save_path`` saves as ``<stem>.png``.
     """
     ds = open_trajectories(output)
     stem = _zarr_stem(output)
@@ -259,16 +251,12 @@ def map_trajectories_minimal(
 ):
     """Minimal map of many float trajectories.
 
-    Unlike :func:`map_trajectories` (one colour + legend entry per float, made
-    for a handful of floats), this draws all tracks as thin translucent lines
-    with deployment dots -- readable for a 100-float pilot. Optional ``boxes``
-    (list of ``(lat_min, lat_max, lon_min, lon_max, label)``) outline e.g. the
-    truth domain and the deployment region.
-
-    ``color_by`` colours each float's track and deployment dot by its **deployed
-    position** -- ``"lat"`` (default) or ``"lon"`` -- so floats launched at the
-    same latitude/longitude share a colour and can be tracked as they disperse.
-    Set ``color_by=None`` for a single ``line_color``.
+    Unlike :func:`map_trajectories` (one colour/legend entry per float),
+    draws all tracks as thin translucent lines with deployment dots --
+    readable for a 100-float pilot. ``boxes``: list of ``(lat_min, lat_max,
+    lon_min, lon_max, label)``. ``color_by`` (``"lat"`` default, ``"lon"``,
+    or ``None``) colours each track by its deployed position, so floats
+    launched together share a colour as they disperse.
     """
     ds = open_trajectories(output)
     lat_vals = ds["lat"].values.astype(float)
@@ -584,17 +572,11 @@ def map_positions_by_month(
 ):
     """Facet of monthly float positions: one snapshot dot per float per month.
 
-    Complements :func:`map_trajectories_minimal` -- instead of the full tangle of
-    tracks, each panel shows where the floats are in a given month (each float's
-    last position that month), so the cloud's month-over-month migration and
-    thinning (as floats exit the domain) are easy to read. ``boxes`` outlines
-    (e.g. deployment / advection domain) are drawn on every panel; the panel
-    title notes the float count still present that month.
-
-    ``color_by`` colours each dot by its float's **deployed position** --
-    ``"lat"`` (default) or ``"lon"`` -- with a shared colour scale across panels,
-    so a launch latitude/longitude band can be followed month to month. Set
-    ``color_by=None`` for a single ``color``.
+    Complements :func:`map_trajectories_minimal` -- each panel shows each
+    float's last position that month (rather than the full track tangle), so
+    month-over-month migration/thinning (as floats exit the domain) is easy
+    to read. ``color_by`` (``"lat"`` default, ``"lon"``, or ``None``) colours
+    dots by deployed position, with a shared colour scale across panels.
     """
     import pandas as pd
 
@@ -706,29 +688,12 @@ def plot_depth_profiles(
 ):
     """Plot float depth vs days since deployment, coloured by cycle phase.
 
-    Each segment of the continuous line is coloured by its cycle phase so the
-    transitions are visible without breaking the line. Y-axis is inverted
-    (surface at top). Vertical dashed lines mark cycle boundaries.
-
-    Parameters
-    ----------
-    output : str
-        Path to a zarr directory, or a glob matching multiple batch zarrs.
-    ncols : int
-        Number of subplot columns (rows auto-calculated).
-    linewidth : float
-        Width of the depth profile line.
-    save_path : str, optional
-        Directory to save the figure (as <stem>_depth.png).
-    floats : list of int, optional
-        Trajectory indices to plot (default: all floats).
-    max_days : float, optional
-        Crop the x-axis to the first ``max_days`` days (e.g. ~22 for two cycles).
-    mark_profiles : bool
-        Overlay a star at each **recorded** profile position -- the shallowest
-        point of each cycle, excluding the deployment cycle, matching
-        :func:`ohc._one_position_per_cycle` (the point whose lat/lon/time become
-        the synthetic Argo observation).
+    Y-axis inverted (surface at top); vertical dashed lines mark cycle
+    boundaries. ``floats`` selects trajectory indices (default: all).
+    ``max_days`` crops the x-axis. ``mark_profiles=True`` overlays a star at
+    each cycle's shallowest point (excluding the deployment cycle), matching
+    :func:`ohc._one_position_per_cycle` -- the point that becomes the
+    synthetic Argo observation.
     """
     from matplotlib.collections import LineCollection
 

@@ -151,9 +151,8 @@ for (col in names(fits)) {
               sigma2_gpgp, rs, rs * 6371, rt))
   cat(sprintf("  nugget=%.4g  beta=%.4g\n", nugget, beta_gpgp))
 
-  # Use the observations stored inside the fitted model -- these are the data
-  # the model was actually fitted on, which may differ from the profiles CSV if
-  # the CSV was regenerated after the cache was saved.
+  # Use the observations stored inside the fitted model, not the profiles CSV
+  # (which may have been regenerated after the cache was saved).
   y_obs    <- fit$y
   locs_obs <- as.matrix(fit$locs)   # columns: lon, lat, day_num
   n_obs    <- nrow(locs_obs)

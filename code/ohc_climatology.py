@@ -1,38 +1,19 @@
 """Climatological OHC mean field from the RG Argo Climatology, and OHC anomalies.
 
-The RG monthly extension files (``data/rg_climatology/RG_ArgoClim_<YYYYMM>_2019.nc``)
-contain only the *anomaly* relative to the 2004-2018 climatology -- not the mean
-itself. The mean lives in a separate, large file
-(``RG_ArgoClim_Temperature_2019.nc``, fetched by
+The RG monthly extension files (``RG_ArgoClim_<YYYYMM>_2019.nc``) hold only
+the *anomaly* relative to the 2004-2018 climatology, not the mean itself. The
+mean lives in a separate file (``RG_ArgoClim_Temperature_2019.nc``, fetched by
 :func:`code.download_rg_monthly.download_mean`): ``ARGO_TEMPERATURE_MEAN`` is a
-single **static** 15-year (Jan 2004 - Dec 2018) mean field on ``(pressure,
-latitude, longitude)`` -- no time/month dimension, so using it alone (Option B,
-below) folds the real seasonal OHC cycle into "the anomaly" along with
-everything else.
+single static 2004-2018 mean with no month dimension, so using it alone
+(Option B) folds the seasonal cycle into "the anomaly." The same file's
+``ARGO_TEMPERATURE_ANOMALY`` (all 180 months, relative to that mean) lets
+:func:`load_rg_anomaly_series` + :func:`seasonal_climatology_mean` build a
+proper 12-month seasonal mean instead (Option A, the recommended default).
 
-That same file also has ``ARGO_TEMPERATURE_ANOMALY`` resolved over all 180
-months (15 years x 12) of 2004-2018, relative to that static mean -- i.e. the
-ingredients for a proper calendar-month climatology are already here, just not
-pre-computed. :func:`load_rg_anomaly_series` + :func:`seasonal_climatology_mean`
-average those 180 months within each calendar month and add the result back to
-the static mean, giving Option A: a 12-month seasonal mean temperature field.
-
-Two climatology options, both integrated by the same
-:func:`climatological_ohc_field` (it doesn't care whether its input has a
-``month`` dimension or not):
-
-* **Option A (seasonal, recommended default)** -- ``climatological_ohc_field(
-  seasonal_climatology_mean(mean_da, anomaly_da))``, on ``(month, latitude,
-  longitude)``. Anomalies relative to this isolate real interannual variability
-  from the seasonal cycle.
-* **Option B (static)** -- ``climatological_ohc_field(mean_da)``, on
-  ``(latitude, longitude)`` only. Simpler, but its anomaly includes the seasonal
-  cycle as part of the "signal."
-
-``climatology_at``/``climatology_on_grid`` sample either one (by calendar month,
-when the field has one) at arbitrary points or onto another grid -- the building
-block for computing OHC anomalies for both the synthetic-float profiles and the
-GLORYS truth field.
+Both options integrate through the same :func:`climatological_ohc_field`
+(with or without a ``month`` dimension); :func:`climatology_at`/
+:func:`climatology_on_grid` sample either one at points or onto a grid, for
+computing OHC anomalies for both synthetic-float profiles and GLORYS truth.
 """
 
 import os
@@ -91,18 +72,10 @@ def load_rg_anomaly_series(
 ):
     """Load the 2004-2018 monthly ``ARGO_TEMPERATURE_ANOMALY`` time series.
 
-    Same file as :func:`load_rg_mean` -- it has both the static mean and this
-    180-month (15 years x 12 months) anomaly series relative to that mean.
-    Loaded lazily (dask-chunked along time): the full array is ~2 GB, but
-    :func:`seasonal_climatology_mean` only ever materializes the much smaller
-    per-calendar-month average.
-
-    Returns
-    -------
-    xarray.DataArray
-        On ``(time, pressure, latitude, longitude)``, with an extra
-        ``month_of_year`` (1-12) coordinate on ``time`` for the groupby in
-        :func:`seasonal_climatology_mean`.
+    Same file as :func:`load_rg_mean`. Dask-chunked along time (full array
+    ~2 GB) since :func:`seasonal_climatology_mean` only needs the per-month
+    average. Adds a ``month_of_year`` (1-12) coordinate on ``time`` for that
+    groupby.
     """
     ds = xr.open_dataset(path, decode_times=False, chunks={"TIME": time_chunk})
     da = ds[anomaly_var]
@@ -124,16 +97,9 @@ def load_rg_anomaly_series(
 def load_rg_extensions(year=2020, months=range(1, 13), path_template=RG_EXT_PATH_TEMPLATE):
     """Load the monthly RG extension files for *year* (default 2020).
 
-    Each file (e.g. ``RG_ArgoClim_202001_2019.nc``) contains one month of
-    ``ARGO_TEMPERATURE_ANOMALY`` relative to the 2004-2018 mean from
-    :func:`load_rg_mean`.  Adding the result to that mean gives the actual
-    observed RG temperature field for each month.
-
-    Returns
-    -------
-    xarray.DataArray
-        On ``(month: 1..12, pressure, latitude, longitude)`` with lon in
-        -180..180.
+    Each file has one month of ``ARGO_TEMPERATURE_ANOMALY`` relative to
+    :func:`load_rg_mean`'s static mean; add the two together for the actual
+    observed field for that month.
     """
     months = list(months)
     das = []
@@ -153,16 +119,9 @@ def load_rg_extensions(year=2020, months=range(1, 13), path_template=RG_EXT_PATH
 def seasonal_climatology_mean(mean_da, anomaly_da):
     """Calendar-month climatological mean temperature (Option A).
 
-    Averages ``anomaly_da`` (the 180-month 2004-2018 series from
-    :func:`load_rg_anomaly_series`) within each calendar month and adds
-    ``mean_da`` back, giving a 12-month seasonal mean -- as opposed to using
-    ``mean_da`` alone (Option B), a single time-invariant field with no seasonal
-    cycle at all.
-
-    Returns
-    -------
-    xarray.DataArray
-        Mean temperature on ``(month: 1..12, pressure, latitude, longitude)``.
+    Averages ``anomaly_da`` within each calendar month and adds ``mean_da``
+    back -- a 12-month seasonal mean, vs. ``mean_da`` alone (Option B), which
+    has no seasonal cycle.
     """
     seasonal_anom = anomaly_da.groupby("month_of_year").mean("time")
     return (mean_da + seasonal_anom).rename({"month_of_year": "month"})
@@ -171,20 +130,10 @@ def seasonal_climatology_mean(mean_da, anomaly_da):
 def climatological_ohc_field(mean_da, depths=ohc.DEPTHS):
     """Integrate a climatological mean temperature field over depth.
 
-    Same integration rule as :func:`ohc.truth_ohc_field`, applied to RG's mean
-    temperature on its native 1-degree / 58-level grid. Works for either
-    climatology option unchanged: ``mean_da`` may be the static field from
-    :func:`load_rg_mean` (Option B, on ``(latitude, longitude, pressure)``) or
-    the seasonal field from :func:`seasonal_climatology_mean` (Option A, with an
-    extra leading ``month`` dimension) -- ``apply_ufunc`` below broadcasts over
-    whatever leading dimensions are present.
-
-    Returns
-    -------
-    xarray.Dataset
-        ``ohc_700``, ``ohc_2000`` (J/m2), with the same non-depth dimensions as
-        ``mean_da`` (``(latitude, longitude)`` for Option B, ``(month,
-        latitude, longitude)`` for Option A).
+    Same integration rule as :func:`ohc.truth_ohc_field`. Works for either
+    climatology option unchanged -- Option A's ``mean_da`` carries an extra
+    leading ``month`` dimension, Option B doesn't; ``apply_ufunc`` broadcasts
+    over whichever is present.
     """
     theta = mean_da.transpose(..., "pressure")
     z = theta["pressure"].values
@@ -207,21 +156,8 @@ def climatological_ohc_field(mean_da, depths=ohc.DEPTHS):
 def climatology_at(clim_field, lat, lon, month=None):
     """Bilinear-interpolate the climatological OHC field onto matched points.
 
-    Parameters
-    ----------
-    clim_field : xarray.Dataset
-        Output of :func:`climatological_ohc_field` -- either Option A (with a
-        ``month`` dimension) or Option B (without one).
-    lat, lon : array-like
-        Matched 1-D point arrays (e.g. float profile positions).
-    month : array-like, optional
-        Calendar month (1-12) per point. Required if ``clim_field`` has a
-        ``month`` dimension (Option A); ignored otherwise (Option B).
-
-    Returns
-    -------
-    xarray.Dataset
-        Interpolated on dim ``"points"``.
+    ``month`` (calendar month 1-12 per point) is required if ``clim_field``
+    has a ``month`` dim (Option A); ignored otherwise (Option B).
     """
     lat = np.asarray(lat, dtype=float)
     lon = np.asarray(lon, dtype=float)
@@ -253,16 +189,12 @@ def climatology_on_grid(clim_field, lats, lons):
 
 
 def _select_month(field, month_timestamps):
-    """Select ``field``'s ``month`` (1-12) dim to match an array of calendar-month timestamps.
+    """Select ``field``'s ``month`` (1-12) dim to match calendar-month timestamps.
 
-    For each entry in ``month_timestamps`` (e.g. truth/GP-field month
-    timestamps), picks the matching calendar-month slice out of ``field``'s
-    12-entry seasonal ``month`` dimension, broadcasting across ``field``'s other
-    dims (e.g. latitude/longitude) -- an outer replacement, not the pointwise
-    selection in :func:`climatology_at`. The indexer's dim is named differently
-    from ``"month"`` to avoid a coordinate-name collision in ``.sel`` (xarray
-    would otherwise try to align the dropped 1-12 ``month`` coordinate against
-    the new timestamp one).
+    Outer replacement (broadcast across ``field``'s other dims), not the
+    pointwise selection in :func:`climatology_at`. The indexer's dim is named
+    differently from ``"month"`` to avoid a coordinate-name collision in
+    ``.sel``.
     """
     month_of_year = pd.DatetimeIndex(np.asarray(month_timestamps)).month
     idx = xr.DataArray(
@@ -275,19 +207,8 @@ def _select_month(field, month_timestamps):
 def float_ohc_anomalies(sim, clim_field, value_cols=("ohc_700", "ohc_2000")):
     """Per-profile OHC anomaly: synthetic-Argo OHC minus the RG climatological mean.
 
-    Parameters
-    ----------
-    sim : pandas.DataFrame
-        Per-profile synthetic-Argo OHC, the output of :func:`ohc.float_ohc`
-        (columns ``float_id, cycle, lat, lon, date, ohc_700, ohc_2000``).
-    clim_field : xarray.Dataset
-        Output of :func:`climatological_ohc_field`.
-
-    Returns
-    -------
-    pandas.DataFrame
-        ``sim`` plus a ``month`` (calendar-month timestamp) column and
-        ``<col>_anom`` for each of ``value_cols``.
+    Adds a ``month`` (calendar-month timestamp) column and ``<col>_anom`` for
+    each of ``value_cols`` to ``sim`` (output of :func:`ohc.float_ohc`).
     """
     df = sim.copy()
     df["date"] = pd.to_datetime(df["date"])
@@ -339,18 +260,12 @@ def build_pred_grid(lats, lons):
 def write_profile_csv(df, path, value_cols=("ohc_700", "ohc_2000"), suffix="_anom"):
     """Write the per-profile table the R Vecchia-GP script reads.
 
-    ``suffix="_anom"`` (default) writes ``<col>_anom`` columns -- the usual
-    anomaly-modeling workflow, ``df`` from :func:`float_ohc_anomalies` or
-    equivalent. Pass ``suffix=""`` to write the raw ``<col>`` values directly
-    instead -- GpGp then fits/predicts absolute OHC rather than an anomaly, and
-    no climatology needs adding back afterward (see :func:`load_gp_anomaly_field`).
-
-    The temporal coordinate written is the actual observation ``date`` (YYYY-MM-DD),
-    not the calendar month. ``ohc_gp_fit.R`` converts this to a continuous day
-    count for the spatio-temporal GP fit, and ``ohc_gp_predict.R`` uses a
-    configurable day within each calendar month (first/middle/last, controlled
-    by :func:`run_gp_predict`'s ``month_day`` argument) as the prediction
-    temporal coordinate.
+    ``suffix="_anom"`` (default) writes ``<col>_anom`` (anomaly-modeling
+    workflow); ``suffix=""`` writes raw ``<col>`` values so GpGp fits/predicts
+    absolute OHC directly (see :func:`load_gp_anomaly_field`). Writes the
+    actual observation date, not calendar month -- ``ohc_gp_fit.R`` converts
+    it to a continuous day count; ``ohc_gp_predict.R`` uses a configurable day
+    within each month (:func:`run_gp_predict`'s ``month_day``) for prediction.
     """
     out = df[["date", "lon", "lat"] + [f"{c}{suffix}" for c in value_cols]].copy()
     out["date"] = pd.to_datetime(out["date"]).dt.strftime("%Y-%m-%d")
@@ -382,21 +297,12 @@ def run_gp_predict(
 ):
     """Shell out to ``code/ohc_gp_predict.R`` to predict a fitted GP onto a grid.
 
-    ``model_cache`` is the ``.rds`` written by :func:`run_gp_fit`.
-
-    ``m`` controls exact vs Vecchia-approximate prediction: ``"exact"``
-    (default) conditions every prediction point on all observations -- correct
-    but scales poorly once there are thousands of pooled profiles (an
-    O(n_obs^2)-ish neighbour search, redone in the naive version once per
-    month even though it doesn't depend on the month at all). Pass a small
-    integer (e.g. 30, matching ``ohc_gp_fit.R``'s own ``m_seq``) for a fast,
-    approximate prediction that still returns a valid SE -- unlike
-    ``GpGp::predictions()``, which has no SE at all -- by reusing the same
-    ``find_ordered_nn``/``vecchia_Linv`` machinery with a bounded neighbour set
-    instead of full conditioning; see ``code/ohc_gp_predict.R`` for the detail.
-
-    ``month_day`` controls the temporal prediction point within each month:
-    ``"first"`` (1st), ``"middle"`` (15th, default), or ``"last"`` (last day).
+    ``m="exact"`` (default) conditions every point on all observations --
+    correct but scales poorly past a few thousand profiles. A small integer
+    (e.g. 30, matching ``ohc_gp_fit.R``'s ``m_seq``) switches to a fast
+    bounded-Vecchia approximation that still returns a valid SE, unlike
+    ``GpGp::predictions()``. ``month_day`` sets the day used within each
+    month: ``"first"``, ``"middle"`` (default), or ``"last"``.
     """
     if month_day not in ("first", "middle", "last"):
         raise ValueError(f"month_day must be 'first', 'middle', or 'last'; got {month_day!r}")
@@ -416,15 +322,9 @@ def run_levitus_interp(
 ):
     """Shell out to ``code/ohc_levitus_interp.R`` to run the Levitus-style kernel smoother.
 
-    Mirrors :func:`run_gp_predict`'s subprocess pattern. ``profiles_csv``/
-    ``grid_csv`` are the same files :func:`write_profile_csv`/
-    :func:`build_pred_grid` produce for the GP path -- both estimators read the
-    identical input format.
-
-    ``pooled=True`` pools every month's profiles into one fixed set (reasonable
-    since these are de-seasonalized anomalies) and writes one static,
-    time-invariant prediction per grid point -- ``out_csv`` then has no
-    ``month`` column at all; load it with
+    Mirrors :func:`run_gp_predict`'s subprocess pattern and input files.
+    ``pooled=True`` pools every month's profiles into one static prediction
+    per grid point (no ``month`` column in ``out_csv``) -- load with
     :func:`load_levitus_pooled_anomaly_field` instead of
     :func:`load_levitus_anomaly_field`.
     """
@@ -446,32 +346,11 @@ def run_gp_audit_fields(
 ):
     """Shell out to ``code/gp_audit_fields.R`` to audit the GpGp predictions.
 
-    Reproduces ``ohc_gp_predict.R``'s kriging_predict output using
-    ``fields::Krig`` with a hand-coded matern_spheretime correlation function
-    and the fitted parameters from ``model_cache`` (.rds).  Three prediction
-    columns are compared: GpGp custom kriging_predict, direct simple kriging
-    via R's Cholesky, and fields::Krig ordinary kriging.
-
-    Parameters
-    ----------
-    profiles_csv : str
-        Same profiles CSV used for the GP fit (columns: date, lon, lat,
-        ohc_700_anom, ohc_2000_anom).
-    grid_csv : str
-        Same prediction-grid CSV (columns: lon, lat).
-    gpgp_out_csv : str
-        GpGp prediction output CSV to audit (written by ``run_gp_predict``).
-    model_cache : str
-        Path to the ``.rds`` model cache written by ``run_gp_fit``
-        (``fits`` + ``too_few_overall`` + ``depth_cols``).
-    audit_out_csv : str, optional
-        Output path for the comparison CSV.  Defaults to
-        ``<gpgp_out_csv stem>_fields_audit.csv``.
-
-    Returns
-    -------
-    str
-        Path to the audit output CSV.
+    Reproduces ``kriging_predict``'s output using ``fields::Krig`` with a
+    hand-coded matern_spheretime correlation and the fitted ``model_cache``
+    parameters; compares GpGp's kriging_predict, a direct Cholesky simple
+    kriging, and fields::Krig ordinary kriging. Returns the audit CSV path
+    (defaults to ``<gpgp_out_csv stem>_fields_audit.csv``).
     """
     if audit_out_csv is None:
         stem = gpgp_out_csv.replace(".csv", "")
@@ -487,14 +366,9 @@ def run_gp_audit_fields(
 def load_gp_audit(audit_csv):
     """Load the fields-audit comparison CSV written by ``run_gp_audit_fields``.
 
-    Returns a DataFrame with columns:
-
-    ``month``, ``lon``, ``lat``, ``depth``,
-    ``pred_gpgp``, ``pred_sk``, ``pred_fields`` (J/m²),
-    ``se_gpgp``,  ``se_sk``,  ``se_fields``  (J/m²),
-    ``pred_sk_diff``, ``pred_fields_diff`` (J/m²),
-    ``se_sk_ratio``, ``se_fields_ratio``,
-    ``sigma2_gpgp``, ``sigma2_fields``.
+    Columns: month/lon/lat/depth; pred_gpgp/pred_sk/pred_fields and
+    se_gpgp/se_sk/se_fields (J/m2); pred_sk_diff/pred_fields_diff;
+    se_sk_ratio/se_fields_ratio; sigma2_gpgp/sigma2_fields.
     """
     df = pd.read_csv(audit_csv, parse_dates=["month"], low_memory=False)
     return df
@@ -503,13 +377,9 @@ def load_gp_audit(audit_csv):
 def load_gp_fit_summary(fit_summary_csv):
     """Load the pooled GP fit's parameter table written by ``ohc_gp_fit.R``.
 
-    One row per (depth, parameter): ``mean (intercept)`` plus the
-    ``matern_spheretime`` covariance parameters (variance, spatial_range,
-    temporal_range, smoothness, nugget). ``std_error``/``z_stat`` are NaN for
-    ``smoothness``, which is fixed rather than estimated (see
-    ``code/ohc_gp_fit.R:FIXED_SMOOTHNESS`` -- letting it float left the
-    likelihood unconverged). ``loglik``/``converged``/``n_obs`` repeat per row
-    for convenience but are constant within a depth.
+    One row per (depth, parameter). ``std_error``/``z_stat`` are NaN for
+    ``smoothness``, which is fixed rather than estimated -- letting it float
+    left the likelihood unconverged (see ``ohc_gp_fit.R:FIXED_SMOOTHNESS``).
     """
     return pd.read_csv(fit_summary_csv)
 
@@ -517,13 +387,11 @@ def load_gp_fit_summary(fit_summary_csv):
 def snap_grid_coords(field, lats, lons):
     """Replace ``field``'s latitude/longitude coordinates with authoritative arrays.
 
-    Guards against the float32 -> CSV -> float64 precision loss described in
-    :func:`build_pred_grid`: even after that fix, a CSV round-trip isn't
-    guaranteed to reproduce the exact bit pattern xarray needs for coordinate
-    alignment, and a near-miss fails *silently* (an inner join on the overlap,
-    not an error). Only valid when ``field``'s grid is known by construction to
-    be the same grid as ``(lats, lons)``, just re-derived from text -- asserts
-    the shapes match so a real mismatch still raises loudly.
+    Guards against the float32->CSV->float64 precision loss in
+    :func:`build_pred_grid`: even after that fix, a near-miss coordinate
+    mismatch fails silently (xarray inner-joins on the overlap instead of
+    raising). Only valid when ``field``'s grid is known by construction to
+    match ``(lats, lons)``; asserts shapes so a real mismatch still raises.
     """
     lats = np.asarray(lats, dtype=np.float64)
     lons = np.asarray(lons, dtype=np.float64)
@@ -541,24 +409,14 @@ def _load_anomaly_field(
 ):
     """Convert a long (month, lon, lat, ...) prediction table into an xarray field.
 
-    Shared by :func:`load_gp_anomaly_field` and :func:`load_levitus_anomaly_field`
-    -- they differ only in how many SE columns each estimator produces
-    (``se_suffixes``, e.g. ``("_se",)`` for the GP, ``("_se_a", "_se_0")`` for
-    the Levitus-style estimator).
+    Shared by :func:`load_gp_anomaly_field`/:func:`load_levitus_anomaly_field`,
+    differing only in ``se_suffixes`` (how many SE columns each estimator
+    produces). ``lats``/``lons`` are passed to :func:`snap_grid_coords` to undo
+    CSV round-trip precision loss. ``suffix`` must match what
+    :func:`write_profile_csv` wrote (``"_anom"`` default, ``""`` for raw values).
 
-    ``lats``/``lons`` are the authoritative prediction-grid coordinates (e.g.
-    ``truth_field``'s native lat/lon) -- passed straight to
-    :func:`snap_grid_coords` to undo any precision loss from the CSV round-trip
-    (both estimators run as standalone R scripts via subprocess), since this
-    field must align exactly with the truth grid for later comparison.
-
-    ``suffix`` must match what :func:`write_profile_csv` wrote the profiles
-    with -- ``"_anom"`` (default) for anomaly modeling, ``""`` for modeling the
-    raw value directly (see :func:`write_profile_csv`).
-
-    Returns a Dataset on ``(month, latitude, longitude)`` with ``<col><suffix>``
-    and ``<col><suffix><se_suffix>`` for each suffix in ``se_suffixes``, for each
-    of ``value_cols``, plus ``too_few_profiles``.
+    Returns ``(month, latitude, longitude)`` with ``<col><suffix>`` and
+    ``<col><suffix><se_suffix>`` per ``se_suffixes``, plus ``too_few_profiles``.
     """
     df = df.rename(columns={"lat": "latitude", "lon": "longitude"})
     cols = [f"{c}{suffix}_pred" for c in value_cols]
@@ -576,11 +434,8 @@ def load_gp_anomaly_field(out_csv, lats, lons, value_cols=("ohc_700", "ohc_2000"
     """Load the R script's prediction CSV into an xarray field.
 
     ``<col>_anom_se`` (or ``<col>_se`` if ``suffix=""``) is the GP's
-    Vecchia-approximation standard error (see
-    ``code/ohc_gp_predict.R:kriging_predict``; NaN for any (month, depth) where
-    there were too few profiles to fit a GP at all -- see ``too_few_profiles``).
-    See :func:`_load_anomaly_field` for the shared loading logic, including what
-    ``suffix=""`` means (model the raw value directly, not an anomaly).
+    Vecchia-approximation SE (NaN wherever ``too_few_profiles``). See
+    :func:`_load_anomaly_field` for the shared loading logic.
     """
     pred = pd.read_csv(out_csv, parse_dates=["month"])
     return _load_anomaly_field(
@@ -591,11 +446,8 @@ def load_gp_anomaly_field(out_csv, lats, lons, value_cols=("ohc_700", "ohc_2000"
 def load_levitus_anomaly_field(out_csv, lats, lons, value_cols=("ohc_700", "ohc_2000")):
     """Load the Levitus-style R script's prediction CSV into an xarray field.
 
-    ``<col>_anom_se_a``/``<col>_anom_se_0`` are the two SE variants the
-    Levitus-style estimator produces -- sigma_A (independence assumption) and
-    sigma_0 (the source doc's eq. 7, taken literally) -- see
-    ``code/ohc_levitus_interp.R``. See :func:`_load_anomaly_field` for the
-    shared loading logic.
+    ``<col>_anom_se_a``/``<col>_anom_se_0`` are the estimator's two SE variants
+    (independence-assumption sigma_A, and sigma_0 per the source doc's eq. 7).
     """
     pred = pd.read_csv(out_csv, parse_dates=["month"])
     return _load_anomaly_field(
@@ -608,11 +460,8 @@ def load_levitus_pooled_anomaly_field(
 ):
     """Load the Levitus R script's *pooled* prediction CSV (``run_levitus_interp(..., pooled=True)``).
 
-    Same columns as :func:`load_levitus_anomaly_field` minus ``month`` -- one
-    static, time-invariant prediction per grid point, pooling every month's
-    profiles into a single set. Returns a Dataset on ``(latitude, longitude)``
-    only (no ``month`` dim); pass it to :func:`assemble_levitus_pooled_field`
-    (not :func:`assemble_levitus_field`, which expects a ``month`` dim).
+    One static prediction per grid point, no ``month`` dim -- pass to
+    :func:`assemble_levitus_pooled_field`, not :func:`assemble_levitus_field`.
     """
     pred = pd.read_csv(out_csv)
     pred = pred.rename(columns={"lat": "latitude", "lon": "longitude"})
@@ -632,18 +481,12 @@ def _assemble_field(
 ):
     """Add the climatological mean back to a predicted-anomaly field.
 
-    Shared by :func:`assemble_gp_field` and :func:`assemble_levitus_field` --
-    they differ only in which SE columns get carried over (``se_suffixes``).
-    SE is unchanged by this step: the climatology is a fixed offset, so it adds
-    no uncertainty.
-
-    Where the anomaly itself is NaN (e.g. the Levitus estimator outside its
-    influence radius -- there are no observations to predict an anomaly from
-    at all), the absolute field falls back to the climatology alone (anomaly
-    treated as 0) rather than propagating NaN -- a real, fully-populated OHC
-    map rather than one with holes wherever a profile didn't happen to be
-    nearby. The anomaly field itself is untouched, so it still correctly shows
-    where that gap is.
+    Shared by :func:`assemble_gp_field`/:func:`assemble_levitus_field`,
+    differing only in ``se_suffixes``. SE is unchanged (climatology is a
+    fixed offset). Where the anomaly is NaN (e.g. Levitus outside its
+    influence radius), the absolute field falls back to the climatology
+    alone (anomaly treated as 0) instead of propagating NaN -- a
+    fully-populated map; the anomaly field itself is left untouched.
     """
     lats = anom_field["latitude"].to_numpy()
     lons = anom_field["longitude"].to_numpy()
@@ -667,10 +510,7 @@ def _assemble_field(
 def assemble_gp_field(gp_anom_field, clim_field, value_cols=("ohc_700", "ohc_2000")):
     """Add the climatological mean back to the GP-predicted anomaly field.
 
-    Returns absolute OHC (``ohc_700``, ``ohc_2000``) on the same grid as
-    ``gp_anom_field`` -- the GP estimator, directly comparable to
-    ``truth_field.resample(time="1MS").mean()`` -- plus ``<col>_se``. See
-    :func:`_assemble_field` for the shared assembly logic.
+    Returns absolute OHC on the same grid as ``gp_anom_field`` plus ``<col>_se``.
     """
     return _assemble_field(
         gp_anom_field, clim_field, se_suffixes=("_se",), value_cols=value_cols
@@ -698,12 +538,9 @@ def assemble_levitus_pooled_field(
 ):
     """Add the climatological mean back to the pooled (time-invariant) Levitus anomaly field.
 
-    ``pooled_anom_field`` (from :func:`load_levitus_pooled_anomaly_field`) has
-    no ``month`` dim -- one static anomaly correction for the whole year.
-    Broadcasting it onto ``months`` (actual calendar timestamps) before adding
-    the climatology means every month gets the *same* anomaly correction added
-    to that month's own seasonal climatology -- so the only month-to-month
-    variation in the result comes from the climatology, not the float data.
+    Broadcasts the single static anomaly onto ``months`` before adding each
+    month's own seasonal climatology, so month-to-month variation comes only
+    from the climatology, not the float data.
     """
     anom_field = pooled_anom_field.expand_dims(month=pd.DatetimeIndex(months))
     return _assemble_field(
@@ -717,13 +554,9 @@ def climatology_cells_table(
     """Climatological mean field on an arbitrary grid, as a cells table.
 
     The mean-field counterpart to :func:`to_cells_table` on the GP/Levitus
-    anomaly fields -- this is exactly what :func:`assemble_gp_field`/
-    :func:`assemble_levitus_field` add the predicted anomaly to, so plotting it
-    alongside them on the same colour scale shows how the two sum to the final
-    OHC map. ``months`` (actual calendar timestamps, e.g. a GP/Levitus field's
-    ``month`` coordinate) selects each one's matching calendar-month slice if
-    ``clim_field`` has a seasonal ``month`` dimension (Option A); ignored for
-    the static Option B field.
+    anomaly fields -- exactly what :func:`assemble_gp_field`/
+    :func:`assemble_levitus_field` add the anomaly to. ``months`` selects each
+    row's calendar-month slice for a seasonal (Option A) ``clim_field``.
     """
     grid = climatology_on_grid(clim_field, lats, lons)
     if "month" in grid.dims and months is not None:

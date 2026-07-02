@@ -27,18 +27,13 @@ FIXED_SMOOTHNESS <- 0.5
 
 profiles <- fread(profiles_path)
 
-# Matches either the anomaly-modeling columns (ohc_700_anom, ohc_2000_anom) or
-# the raw-value columns (ohc_700, ohc_2000) written by write_profile_csv's
-# suffix="" mode -- everything below is suffix-agnostic (just string-pastes
-# onto whatever depth_cols resolves to), so no other change is needed to model
-# OHC directly instead of its anomaly.
+# Matches either the anomaly (ohc_700_anom/ohc_2000_anom) or raw
+# (ohc_700/ohc_2000) columns write_profile_csv writes -- everything below
+# is suffix-agnostic.
 depth_cols <- intersect(c("ohc_700_anom", "ohc_2000_anom", "ohc_700", "ohc_2000"), names(profiles))
 
-# Continuous day count (not day-of-year) -- day-of-year would wrap every 366
-# days and treat e.g. Jan 2020 and Jan 2021 as temporally adjacent, capping
-# the fitted temporal range at within-year scale. A continuous count lets the
-# temporal_range parameter be estimated freely, including ranges spanning
-# multiple years, when profiles cover more than one year.
+# Continuous day count (not day-of-year), so the fitted temporal_range can
+# span multiple years instead of wrapping every 366 days.
 EPOCH <- as.Date("2020-01-01")
 profiles[, day_num := as.integer(as.Date(date) - EPOCH)]
 
@@ -53,19 +48,14 @@ fit_pooled <- function(y, lon, lat, day_num) {
   )
 }
 
-# Tidy parameter table for one depth's fit: the mean (intercept) plus the four
-# freely-estimated covariance parameters, each with its asymptotic standard
-# error from fit$info (the Fisher information, on the log scale fit_model
-# optimizes covariance parameters on -- propagated to natural units via the
-# delta method: se(theta) = theta * se(log(theta))). Smoothness has no SE since
-# it's fixed, not estimated.
+# Mean (intercept) + the four freely-estimated covariance params, each with
+# an asymptotic SE from fit$info (Fisher information, log scale) propagated
+# to natural units via the delta method: se(theta) = theta * se(log(theta)).
+# Smoothness has no SE (fixed, not estimated).
 #
-# fit$info is occasionally near-exactly singular (reciprocal condition number
-# as low as ~1e-45 observed) -- a real numerical artifact of GpGp's unseeded
-# neighbour-ordering jitter on some fits, not a bug here. solve() fails outright
-# in that case; since the asymptotic SE theory is meaningless right at a
-# singularity anyway, NA is the honest answer, not a regularized guess, so we
-# catch the error rather than letting it halt the whole script.
+# fit$info is occasionally near-singular (a real GpGp neighbour-ordering
+# jitter artifact, not a bug) -- solve() then fails, and NA is the honest
+# answer there, so the error is caught rather than halting the script.
 fit_summary_table <- function(fit, depth) {
   covparm_names <- c("variance", "spatial_range", "temporal_range", "smoothness", "nugget")
   free_idx <- c(1, 2, 3, 5) # smoothness (4) is fixed

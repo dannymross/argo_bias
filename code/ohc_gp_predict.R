@@ -16,14 +16,12 @@
 #
 # The `m` argument controls exact vs Vecchia-approximate prediction:
 # m="exact" (default) conditions every prediction point on *all* observations
-# -- correct, but the O(n_obs^2)-ish neighbour search and the O(n_obs)
-# conditioning per prediction point don't scale past a few hundred pooled
-# profiles. Pass a small integer (e.g. 30, matching ohc_gp_fit.R's own
-# m_seq) to switch to a real Vecchia approximation instead: same underlying
-# machinery (find_ordered_nn + vecchia_Linv, plus FNN::get.knnx for each
-# prediction point's own nearest observations), just a bounded neighbour set,
-# so it stays fast at any n_obs and still returns a valid (approximate) SE --
-# unlike GpGp::predictions(), which is fast but has no SE at all.
+# -- correct, but doesn't scale past a few hundred pooled profiles. Pass a
+# small integer (e.g. 30, matching ohc_gp_fit.R's own m_seq) for a real
+# Vecchia approximation instead: same find_ordered_nn/vecchia_Linv machinery
+# with a bounded neighbour set (each prediction point's own via
+# FNN::get.knnx), so it stays fast and still returns a valid SE -- unlike
+# GpGp::predictions(), which has no SE at all.
 
 suppressMessages(library(data.table))
 suppressMessages(library(GpGp))
@@ -86,19 +84,17 @@ to_scaled_space <- function(locs, rs, rt) {
 }
 
 # Vecchia kriging mean + SE at locs_pred, conditioned on the observation
-# neighbour structure NNarray_obs (hoisted once per depth, below -- see there
-# for why). Two modes:
-#   - exact: every point conditions on every observation. The neighbour
-#     *indices* don't depend on locs_pred at all -- not even for the
-#     prediction rows, since "condition on everyone" needs no nearest-neighbour
-#     search -- so both blocks are reused unchanged across all months.
-#   - bounded (else): a genuine Vecchia approximation. Each prediction point's
-#     own m nearest *observation* neighbours is found via FNN::get.knnx (a
-#     query-vs-reference search) rather than find_ordered_nn on the combined
-#     obs+pred array -- the latter would let a prediction point neighbour
-#     *other* prediction points (which have no known y value, so indexing
-#     y_obs with them silently returns NA), whenever those are closer than any
-#     real observation, which on a dense regular grid is most of the time.
+# neighbour structure NNarray_obs (hoisted once per depth, below). Two modes:
+#   - exact: every point conditions on every observation -- the neighbour
+#     indices don't depend on locs_pred, so both blocks are reused unchanged
+#     across all months.
+#   - bounded: each prediction point's own m nearest *observation* neighbours
+#     come from FNN::get.knnx (query-vs-reference) rather than
+#     find_ordered_nn on the combined obs+pred array, which would let a
+#     prediction point neighbour other prediction points (no known y, so
+#     indexing y_obs with them silently returns NA) whenever those are
+#     closer than any real observation -- true for most points on a dense
+#     regular grid.
 kriging_predict <- function(fit, locs_pred, NNarray_obs, exact) {
   y_obs <- fit$y
   locs_obs <- as.matrix(fit$locs)
@@ -140,12 +136,11 @@ kriging_predict <- function(fit, locs_pred, NNarray_obs, exact) {
 }
 
 # Hoist the observation-to-observation neighbour structure once per depth,
-# before the month loop -- it's month-invariant (doesn't depend on locs_pred
-# at all), so recomputing it 36 times (once per month, the previous behaviour)
-# was pure waste. Reused directly by both modes: as the (only) neighbour
-# structure in exact mode, and as the obs-block half of it in bounded mode
-# (where each prediction point's own neighbours still come from a fresh
-# FNN::get.knnx call per month, since those do depend on locs_pred).
+# before the month loop -- it's month-invariant, so recomputing it 36 times
+# (the previous behaviour) was pure waste. Reused as the full neighbour
+# structure in exact mode, and as the obs-block half in bounded mode (each
+# prediction point's own neighbours still come from a fresh FNN::get.knnx
+# call per month, since those depend on locs_pred).
 NNarray_obs_by_col <- list()
 for (col in depth_cols) {
   if (too_few_overall[[col]]) next
