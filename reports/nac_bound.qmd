@@ -31,81 +31,61 @@ average. Any estimate of regional-mean OHC built by interpolating float observat
 inherits a **sampling-induced bias**. This report states, explicitly, the mathematics we use to
 place a *rigorous upper bound* on that bias.
 
-Write $Y(s)$ for the OHC field over region $A$ (per depth horizon $0$--$700$ m or $0$--$2000$ m, per
-month). The **estimand** is the true area-mean OHC -- a property of the *continuous* field,
-independent of any grid:
+Write $Y(s)$ for the true OHC field over region $A$ (per depth horizon $0$--$700$ m or $0$--$2000$ m,
+per month) -- a *continuous* field on the sphere. The **estimand** is the true area-mean OHC:
 $$
 \mu \;=\; \frac{\int_A Y(s)\,dA(s)}{\int_A dA(s)} \;=\; \int_A a(s)\,Y(s)\,ds ,
 \qquad \int_A a(s)\,ds = 1,
 $$
-with $a(s)$ the cos-latitude area-weight density. Discretization belongs to the *estimation*, not the
-target. In practice $Y$ is only available on the GLORYS $1/12^\circ$ grid, so we approximate the
-integral by native-grid quadrature,
-$$
-\mu_N \;=\; \sum_c a_c\, Y_c , \qquad a_c = \int_c a(s)\,ds, \quad \sum_c a_c = 1,
-$$
-over cells $\{c\}$ with area weights $a_c$ and reference OHC $Y_c$ (`ohc.truth_domain_mean`, evaluated
-once at native resolution so the reference does not drift with the estimator's cell size). The
-quadrature gap $\mu_N - \mu$ is a deterministic property of the $1/12^\circ$ discretization, not of
-the float sampling; rather than assume it negligible we carry it explicitly as the term
-$B^{\mathrm{quad}}$ in the decomposition below.
+with $a(s)$ the cos-latitude area-weight density.
 
-A float deployment realizes a **sampled set** $S \subseteq \{c\}$ with per-cell profile counts
-$n_c \ge 0$. Two quantities appear below: the field averaged over the sampled cells,
-$$
-\bar Y_S \;=\; \frac{1}{|S|}\sum_{c\in S} Y_c ,
-$$
-and an **interpolated** estimator $\hat\mu$ (the Gaussian-process area-average of
-[`nac_gp.qmd`](nac_gp.qmd), or a simple cell-bin mean).
+Argo floats observe $Y$ **at their actual locations** $s_1,\dots,s_n \in A$ -- point measurements of
+the true field at arbitrary positions on the sphere, *not* values on any grid (each profile yields
+OHC at the float's lat/lon; we treat these as noise-free samples of $Y$, deferring instrument error).
+The locations form a spatial point pattern whose intensity may be **preferential** -- correlated with
+$Y$ through the advecting current. Since $Y$ is unobserved off the float track, $\mu$ must be
+estimated; write $\hat\mu$ for an estimator built from $\{Y(s_i)\}$ -- the Gaussian-process
+area-average of [`nac_gp.qmd`](nac_gp.qmd), or a simple cell-bin mean -- and $B = \hat\mu - \mu$ for
+its bias, the quantity we bound.
 
-**On "truth."** We never observe the true ocean state on a complete grid. What we have is the
-GLORYS12 reanalysis -- a data-assimilating model that is our best *proxy* for the gridded truth, not
-ground truth itself. Throughout this report "truth" is shorthand for this reanalysis proxy: taking
-$Y$ to be the GLORYS field lets us compute the bias of any realized sample directly, $B = \hat\mu -
-\mu$, and our goal is to bound $B$ and verify those bounds against this directly-computed proxy bias.
-A bound established this way is only as good as the proxy; quantifying the residual reanalysis
-uncertainty (e.g. spread across reanalysis products) is deferred, and the bounding machinery below is
-agnostic to which gridded field plays the role of $Y$.
+Crucially, **nothing in the bounds below assumes $Y$ is known off the float locations.** Verifying a
+bound, however, requires the realized bias and hence the full field; for that validation step alone we
+substitute a complete-coverage reanalysis (GLORYS12) as a proxy for $Y$. That is an explicit, scoped
+assumption -- examined in @sec-validation -- not one baked into the derivations.
 
 # Bias decomposition {#sec-decomp}
 
-Write $\mu_N = \sum_c a_c Y_c$ for the native-grid area-mean (the operational reference of the
-previous section). Extending the reference-invariant split in `ohc_bias.compute_bias` to the
-*continuous* estimand $\mu$, insert $\mu_N$ and $\bar Y_S$ to get an exact three-term decomposition:
+Fix an analysis resolution and partition $A$ into cells $\{c\}$ with area weights $a_c = \int_c a$,
+$\sum_c a_c = 1$, and let $Y_c = \tfrac{1}{a_c}\int_c a\,Y$ be the true area-average of the continuous
+field over cell $c$. With cell-averages the quadrature is *exact*, $\sum_c a_c Y_c = \int_A a\,Y = \mu$,
+so the cells are a device of the **estimator**, not an approximation of the target. A float deployment
+realizes a **sampled set** $S$ of cells (those containing at least one profile); write
+$\bar Y_S = \tfrac{1}{|S|}\sum_{c\in S} Y_c$ for the true field averaged over the sampled cells.
+Inserting $\bar Y_S$ gives the exact two-term decomposition (the split realized in
+`ohc_bias.compute_bias`):
 $$
 B \;=\; \hat\mu - \mu
-\;=\; \underbrace{\big(\bar Y_S - \mu_N\big)}_{\displaystyle B^{\mathrm{samp}}}
-\;+\; \underbrace{\big(\hat\mu - \bar Y_S\big)}_{\displaystyle B^{\mathrm{pred}}}
-\;+\; \underbrace{\big(\mu_N - \mu\big)}_{\displaystyle B^{\mathrm{quad}}} .
+\;=\; \underbrace{\big(\bar Y_S - \mu\big)}_{\displaystyle B^{\mathrm{samp}}}
+\;+\; \underbrace{\big(\hat\mu - \bar Y_S\big)}_{\displaystyle B^{\mathrm{pred}}} .
 $$
 
 - **$B^{\mathrm{samp}}$ -- the preferential-sampling (design) bias** depends only on *which* cells are
   observed, not on how we reconstruct the field. It is the pure "floats went to the warm/cold water"
-  effect, exact against the native-grid mean $\mu_N$; @sec-samp shows $B^{\mathrm{samp}} =
-  \operatorname{Cov}_a(w, Y)$.
+  effect; @sec-samp shows $B^{\mathrm{samp}} = \operatorname{Cov}_a(w, Y)$.
 - **$B^{\mathrm{pred}}$ -- the prediction bias** is the gap between the estimate and the observed-cell
   field $\bar Y_S$: the error incurred in turning sparse point observations into an areal field
   estimate. Its mechanism is a **change of support** -- reconciling the point-support observations
   with the block/areal quantity we actually want (the standard geostatistical name; @gelfand2001),
   the same effect called *representativeness error* in data assimilation [@janjic2018]. This is the
-  term `ohc_bias.compute_bias` records as `grid_bias` (estimate minus reference, over the sampled
-  cells).
-- **$B^{\mathrm{quad}}$ -- the quadrature error** is the gap between the native-grid mean and the
-  continuous estimand, $\mu_N - \mu = \sum_c a_c Y_c - \int_A a(s)\,Y(s)\,ds$. It is a deterministic
-  property of the $1/12^\circ$ discretization, *independent of the float sampling*; it vanishes when
-  $Y_c$ is the exact cell-average and otherwise is the (midpoint-rule) quadrature error. Like
-  $B^{\mathrm{pred}}$ it is a bounded linear functional of $Y$, capped by the RKHS machinery of
-  @sec-grid as $|B^{\mathrm{quad}}| \le R\,\|q\|_{\mathcal H}$ with $q = \sum_c a_c\, k(\cdot, s_c) -
-  \xi_L$.
+  term `ohc_bias.compute_bias` records as `grid_bias`.
 
-The split is exact for every realization. The three components admit different handles:
-$B^{\mathrm{samp}}$ is a *design* quantity (a covariance between sampling intensity and the field),
-bounded distribution-free; $B^{\mathrm{pred}}$ is an *approximation-theory* quantity (a
-linear-functional reconstruction error over a smoothness class); and $B^{\mathrm{quad}}$ is a
-deterministic discretization error of the reference grid. For the interpolate-everywhere GP estimator
-the RKHS machinery bounds the *total* error $\hat\mu - \mu$ against the continuous estimand in one
-step -- the target functional $L(Y) = \int_A a\,Y$ is the continuous mean, so both prediction and
-quadrature are already subsumed; the design split is what additionally isolates and caps the
+The split is exact for every realization. The two components admit different handles: $B^{\mathrm{samp}}$
+is a *design* quantity (a covariance between sampling intensity and the field), bounded
+distribution-free (@sec-samp); $B^{\mathrm{pred}}$ is an *approximation-theory* quantity (a
+linear-functional reconstruction error over a smoothness class), bounded through the interpolator's
+RKHS structure (@sec-grid). For the interpolate-everywhere GP estimator the RKHS machinery bounds the
+*total* error $\hat\mu - \mu$ against the continuous estimand in one step -- no grid enters, the target
+functional is $L(Y) = \int_A a\,Y$ -- so the design split is what additionally isolates and caps the
 preferential-sampling contribution on its own.
 
 # The preferential-sampling term {#sec-samp}
@@ -120,9 +100,10 @@ $$
 \qquad\text{i.e.}\qquad
 w_c \;=\; \frac{\mathbb{1}[c \in S]\, / |S|}{a_c}.
 $$
-By construction $\mathbb{E}_a[w] \equiv \sum_c a_c w_c = 1$. Subtracting $\mu_N = \sum_c a_c Y_c$
-(the native-grid mean, $=\mathbb{E}_a[Y]$) gives the identity at the heart of the preferential-sampling
-literature (the design-based view of @horvitz1952; the spatial formulation of @diggle2010):
+By construction $\mathbb{E}_a[w] \equiv \sum_c a_c w_c = 1$. Subtracting $\mu = \sum_c a_c Y_c$
+($=\mathbb{E}_a[Y]$, exact for cell-averages) gives the identity at the heart of the
+preferential-sampling literature (the design-based view of @horvitz1952; the spatial formulation of
+@diggle2010):
 $$
 \boxed{\;B^{\mathrm{samp}} \;=\; \sum_c a_c (w_c - 1)\, Y_c \;=\; \operatorname{Cov}_a(w,\, Y)\; }
 $$
@@ -135,9 +116,9 @@ the sampling intensity co-varies with the heat-content field.
 ## Derivation: the covariance identity
 
 Start from the two means and use $\sum_c a_c w_c = 1$ (so $\mathbb{E}_a[w]=1$) and
-$\mu_N = \sum_c a_c Y_c$ (so $\mathbb{E}_a[Y]=\mu_N$):
+$\mu = \sum_c a_c Y_c$ (so $\mathbb{E}_a[Y]=\mu$):
 $$
-B^{\mathrm{samp}} = \bar Y_S - \mu_N
+B^{\mathrm{samp}} = \bar Y_S - \mu
 = \sum_c a_c w_c Y_c - \sum_c a_c Y_c
 = \sum_c a_c (w_c - 1)\, Y_c .
 $$
@@ -145,12 +126,12 @@ The area-weighted covariance, expanded about its means, is
 $$
 \operatorname{Cov}_a(w, Y)
 = \sum_c a_c\,(w_c - \mathbb{E}_a[w])(Y_c - \mathbb{E}_a[Y])
-= \sum_c a_c\,(w_c - 1)(Y_c - \mu_N).
+= \sum_c a_c\,(w_c - 1)(Y_c - \mu).
 $$
-Distributing the $(Y_c - \mu_N)$ factor,
+Distributing the $(Y_c - \mu)$ factor,
 $$
 \operatorname{Cov}_a(w, Y)
-= \sum_c a_c (w_c - 1)\, Y_c \;-\; \mu_N \underbrace{\sum_c a_c (w_c - 1)}_{=\,\mathbb{E}_a[w]-1\,=\,0}
+= \sum_c a_c (w_c - 1)\, Y_c \;-\; \mu \underbrace{\sum_c a_c (w_c - 1)}_{=\,\mathbb{E}_a[w]-1\,=\,0}
 = \sum_c a_c (w_c - 1)\, Y_c = B^{\mathrm{samp}}.
 $$
 The cross term vanishes because the weights are normalized; no distributional assumption on $Y$ or on
@@ -172,9 +153,10 @@ $$
 \qquad
 \sigma_w^2 = \operatorname{Var}_a(w) = \sum_c a_c (w_c - 1)^2 .
 $$
-Both are **known**: $\sigma_Y$ is the spatial variability of the reference OHC field, read directly
-off the GLORYS proxy; $\sigma_w$ is the inhomogeneity of the sampling, read off the float density. The correlation
-$\rho_{w,Y}$ is the only unknown, and bounding it by $1$ gives the worst case.
+Both are estimable from data: $\sigma_Y$ is the spatial variability of the true OHC field (estimated
+from the observations, or read off the reanalysis in validation); $\sigma_w$ is the inhomogeneity of
+the sampling, read off the float density. The correlation $\rho_{w,Y}$ is the only unknown, and
+bounding it by $1$ gives the worst case.
 
 The cap has a transparent closed form under a mild idealization. If the $N$ cells are of (near-)
 equal area and the sampling intensity is roughly uniform over the $|S| = f N$ sampled cells (so
@@ -221,7 +203,7 @@ $\to 1$:
 
 ```{python}
 #| label: fig-amp
-#| fig-cap: "Worst-case sampling-bias amplification factor sqrt((1-f)/f) as a function of the sampled fraction f. The Cauchy-Schwarz cap on |B^samp| equals this factor times sigma_Y, the spatial standard deviation of the reference OHC field. Sparse coverage (small f) inflates the worst-case bias sharply."
+#| fig-cap: "Worst-case sampling-bias amplification factor sqrt((1-f)/f) as a function of the sampled fraction f. The Cauchy-Schwarz cap on |B^samp| equals this factor times sigma_Y, the spatial standard deviation of the true OHC field. Sparse coverage (small f) inflates the worst-case bias sharply."
 #| code-summary: "Illustrative: the amplification factor (self-contained, no data)"
 f = np.linspace(0.01, 1.0, 400)
 amp = np.sqrt((1 - f) / f)
@@ -375,9 +357,9 @@ kriging weights $\omega$ enters -- no knowledge of $Y$ is required to evaluate t
 
 This is exactly the kriging (posterior) variance of the area-mean functional, and since
 $\Delta(Y) = L(Y) - \sum_i \omega_i Y(s_i) = \mu - \hat\mu$, the bound caps the estimator's **total**
-bias $|B|$. The radius $R$ is calibrated from the data we already hold -- the empirical RKHS norm of
-the GLORYS reference field, or equivalently the fitted process variance $\sigma^2$ -- giving the
-deterministic cap $|B| \le R\, \|\eta\|_{\mathcal{H}}$.
+bias $|B|$. The radius $R$ sets the assumed smoothness scale of the field ($\|Y\|_{\mathcal H} \le R$);
+it is estimated from the data via the fitted process variance $\sigma^2$ (and cross-checked against
+the reanalysis in validation), giving the deterministic cap $|B| \le R\, \|\eta\|_{\mathcal{H}}$.
 
 ## Link to the posterior standard error already computed
 
@@ -425,7 +407,7 @@ $\tau^2$ simply replaces $K$ by $K + \tau^2 I$ throughout, adding the usual meas
 the posterior variance; the identity is otherwise unchanged.)
 :::
 
-# Bounding strategy and validation against the reference field {#sec-combine}
+# Bounding strategy {#sec-combine}
 
 The two error sources give **complementary** guarantees rather than a single additive cap.
 
@@ -437,7 +419,7 @@ $$
 |B| \;\lesssim\; z_{0.975}\,\mathrm{SE}_{\mathrm{post}} \quad(\text{probabilistic},\ z_{0.975}\approx 1.96),
 $$
 because the observation geometry -- including any preferential clustering -- is already encoded in
-the kriging weights $\omega_i$.
+the kriging weights $\omega_i$. No grid enters; the target functional is the continuous mean.
 
 **Design-based bound on the preferential-sampling component.** Independently, and with no smoothness
 model at all, the preferential-sampling term is capped distribution-free,
@@ -450,20 +432,39 @@ $$
 These are complementary lenses on the same bias: the RKHS bound answers "how far can the interpolated
 estimate sit from the domain mean," while the design bound isolates and caps the part attributable
 specifically to *where* the floats sampled -- an attribution the RKHS bound alone cannot provide. (A
-fully distribution-free bound on the *total* would instead add the sampling cap to the RKHS caps on
-the prediction and quadrature terms, $|B^{\mathrm{samp}}| + R\|\eta\|_{\mathcal H} + R\|q\|_{\mathcal H}$.)
+fully distribution-free bound on the *total* would add the sampling cap to a change-of-support cap on
+$B^{\mathrm{pred}}$.)
 
-The decisive advantage of this design is that **we can check the bounds**. With $Y$ taken as the
-GLORYS proxy on the full grid, `ohc_bias.compute_bias` returns the realized $B$, $B^{\mathrm{samp}}$,
-$B^{\mathrm{pred}}$, and $B^{\mathrm{quad}}$ for the actual float sampling, month by month. We
-therefore report, per month and depth horizon:
+# Validation against a complete-coverage reanalysis {#sec-validation}
+
+The bounds above are properties of the true field $Y$ and the realized float locations; they never
+assume $Y$ is known between floats. To *check* them we need the realized bias, which requires the full
+field. For this step we take the **GLORYS12 reanalysis** -- a data-assimilating model with complete
+spatiotemporal coverage -- as a proxy for $Y$: an explicit, scoped assumption, invoked here and
+nowhere in the derivations. With the proxy field in hand, `ohc_bias.compute_bias` returns the realized
+$B$, $B^{\mathrm{samp}}$, and $B^{\mathrm{pred}}$ for the actual sampling, month by month.
+
+Two reanalysis-specific points enter here and *only* here:
+
+- **Grid quadrature.** GLORYS supplies values on its $1/12^\circ$ grid, so the reference mean is a
+  quadrature $\mu \approx \mu_N = \sum_c a_c Y_c$ over grid nodes (`ohc.truth_domain_mean`) rather than
+  the exact cell-average of @sec-decomp. The resulting quadrature error
+  $B^{\mathrm{quad}} = \mu_N - \mu = \sum_c a_c Y_c - \int_A a\,Y$ is a deterministic property of the
+  grid -- itself a bounded linear functional of $Y$, capped by the RKHS machinery of @sec-grid
+  ($|B^{\mathrm{quad}}| \le R\|q\|_{\mathcal H}$, $q = \sum_c a_c k(\cdot,s_c) - \xi_L$) and negligible
+  at $1/12^\circ$.
+- **Proxy fidelity.** The realized bias is computed against the reanalysis, not the ocean; validation
+  certifies the *bounding machinery*, with reanalysis error a separate, acknowledged layer (cross-
+  reanalysis spread is deferred).
+
+We then report, per month and depth horizon:
 
 - **Coverage** -- that each bound dominates the realized quantity it bounds (Cauchy--Schwarz *must*
   hold identically for $B^{\mathrm{samp}}$; the permutation quantile and the RKHS / posterior-SE cap
   should dominate their realized targets).
 - **Tightness** -- the ratio of bound to realized bias, quantifying the slack each guarantee carries.
 - **Calibration** -- the permutation $p$-values, and the GP interval coverage rates against the
-  reference field.
+  reanalysis.
 
 A bound that is provably valid *and* demonstrably covers the directly-computed proxy bias is what
 makes the result credible rather than merely formal -- subject to the reanalysis-proxy caveat above.
