@@ -1,11 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://dannymross.github.io/argo_bias/reports/pilot_simulation.html</loc>
-    <lastmod>2026-06-29T20:39:25.161Z</lastmod>
+    <loc>https://dannymross.github.io/argo_bias/reports/nac_gp.html</loc>
+    <lastmod>2026-07-02T20:07:54.477Z</lastmod>
+  </url>
+  <url>
+    <loc>https://dannymross.github.io/argo_bias/reports/nac_bound.html</loc>
+    <lastmod>2026-07-02T19:55:35.294Z</lastmod>
   </url>
   <url>
     <loc>https://dannymross.github.io/argo_bias/index.html</loc>
-    <lastmod>2026-06-29T21:14:30.725Z</lastmod>
+    <lastmod>2026-07-01T19:24:36.405Z</lastmod>
+  </url>
+  <url>
+    <loc>https://dannymross.github.io/argo_bias/reports/nac.html</loc>
+    <lastmod>2026-07-01T21:07:27.109Z</lastmod>
   </url>
 </urlset>
