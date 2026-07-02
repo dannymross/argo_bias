@@ -36,6 +36,11 @@ exist in CI (see below).
 
 - **Concise, vectorized code.** Prefer numpy/xarray/pandas vectorized operations (Python) and
   `data.table`/vectorized ops (R) over explicit loops.
+- **Build summary tables concisely on the first pass, not as later cleanup.** When a table needs a
+  per-group breakdown plus an overall summary row (e.g. per-month stats + a trailing "Year"/"Total"
+  row), compute both from the same `.agg([...])` call — grouped, then again on the ungrouped data —
+  rather than hand-writing each statistic twice in a separate dict/row construction. See
+  `make_gp_table` in `reports/nac_gp.qmd` for the pattern.
 - **Write generalized functions.** New helpers (especially in `ohc.py`/`ohc_bias.py`/
   `ohc_climatology.py`) should flexibly handle argument variations (e.g. depth, resolution, value
   columns) rather than being one-off/single-callsite — see "cells table" note below.
