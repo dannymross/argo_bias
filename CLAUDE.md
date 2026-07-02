@@ -10,6 +10,18 @@ VirtualFleet-simulated Argo floats sample it sparsely, and the study compares sp
 (and interpolated) OHC estimates against that truth. Results are published as a Quarto website
 of analysis reports (`reports/*.qmd`) to GitHub Pages.
 
+## Mathematical and statistical rigor
+
+This work targets a publishable paper in a statistics journal, so mathematical and statistical rigor
+is a hard requirement, not a nicety. In both reports (`reports/*.qmd`) and code: define estimands
+precisely and distinguish them from estimators (e.g. a continuous spatial integral vs. its
+discretized approximation); carry approximation/error terms explicitly (quadrature, discretization,
+truncation, Monte-Carlo error) rather than silently assuming them negligible; state every assumption
+a result depends on; keep exact identities exact (with remainder terms) instead of quietly replacing
+them with informal approximations; distinguish deterministic (worst-case) from probabilistic
+guarantees and name the coverage/probability level; and use standard, literature-consistent
+terminology and notation. When a shortcut or heuristic is unavoidable, flag it explicitly as such.
+
 ## Environments
 
 Two separate environments, used for different parts of the pipeline:
