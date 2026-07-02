@@ -17,7 +17,7 @@ table.dataframe { width: auto; max-width: 90%; font-size: 0.85em; margin-left: a
 #| include: false
 
 DEPTH_LABEL = {"ohc_700": "0–700 m", "ohc_2000": "0–2000 m"}
-TABSET_FIGW, TABSET_FIGH = 8, 5
+TABSET_FIGW, TABSET_FIGH = 17, 5
 
 def _emit(md):
     print("\n" + md + "\n")
@@ -366,39 +366,30 @@ def make_gp_map(c, kind, d, res_label):
             width=TABSET_FIGW, ncols=12, cbar_label="predicted-truth gap, by nested CI band",
             title=f"Prediction-interval band, {d} ({res_label})")
 
-GP_MAP_KINDS = [("obs", "Observed Argo OHC"),
-                ("obs_table", "Observed Argo OHC table"),
-                ("gp", "GP-interpolated Argo OHC"),
-                ("gp_se", "GP standard error"),
-                ("truth_native", "GLORYS truth"),
-                ("gp_bias", "GP - truth bias"),
-                ("gp_bias_se", "GP - truth bias (SE units)"),
-                ("gp_coverage", "Prediction-interval band map")]
+# test
+
+GP_MAP_KINDS = [("obs", "Observed OHC"),
+                ("obs_table", "Observed OHC table"),
+                ("gp", "Predicted OHC"),
+                ("gp_se", "Prediction Standard Error"),
+                ("truth_native", "True OHC"),
+                ("gp_bias", "Prediction Error"),
+                ("gp_bias_se", "Prediction Error (standardized)"),
+                ("gp_coverage", "Prediction Interval Bands")]
 
 def make_gp_table(c, d):
     profiles = c.get("obs_profiles")
     if profiles is None:
         return None
-    col = d
-    s = profiles[col]
-    grp = profiles.groupby(pd.to_datetime(profiles["date"]).dt.to_period("M"))[col]
-    raw = grp.agg(["count", "mean", "std", "min", "max"])
-    tbl = raw.assign(
-        mean=(raw["mean"] * ohc_bias.J_TO_GJ).round(3),
-        std=(raw["std"]   * ohc_bias.J_TO_GJ).round(3),
-        min=(raw["min"]   * ohc_bias.J_TO_GJ).round(3),
-        max=(raw["max"]   * ohc_bias.J_TO_GJ).round(3),
-    ).rename(columns={"count": "n", "std": "sd"})
-    tbl.index = tbl.index.astype(str)
+    month = pd.to_datetime(profiles["date"]).dt.to_period("M").astype(str)
+    tbl = profiles.groupby(month)[d].agg(["count", "mean", "std", "min", "max"])
+    tbl.loc["Year"] = profiles[d].agg(["count", "mean", "std", "min", "max"])
     tbl.index.name = "month"
-    year_row = pd.DataFrame([{
-        "n":    s.count(),
-        "mean": round(s.mean() * ohc_bias.J_TO_GJ, 3),
-        "sd":   round(s.std()  * ohc_bias.J_TO_GJ, 3),
-        "min":  round(s.min()  * ohc_bias.J_TO_GJ, 3),
-        "max":  round(s.max()  * ohc_bias.J_TO_GJ, 3),
-    }], index=pd.Index(["Year"], name="month"))
-    return pd.concat([tbl, year_row])
+    tbl = tbl.rename(columns={"count": "n", "std": "sd"})
+    scale_cols = ["mean", "sd", "min", "max"]
+    tbl[scale_cols] = (tbl[scale_cols] * ohc_bias.J_TO_GJ).round(3)
+    tbl["n"] = tbl["n"].astype(int)
+    return tbl
 
 def emit_gp_map_tabset(ctx):
     _emit("::: {.panel-tabset}")

@@ -525,13 +525,41 @@ def plot_monthly_cell_maps(
     nrows = int(np.ceil(len(months) / ncols))
     if width is None:
         width = plt.rcParams["figure.figsize"][0]
+    # Panel aspect = lon span / lat span (each cell is ~1x1 deg, set_aspect("equal")
+    # below), not assumed square -- so a wide/short domain gets wide/short panels
+    # instead of a square panel with wasted letterboxing.
+    lat_span = lats.max() - lats.min()
+    lon_span = lons.max() - lons.min()
+    panel_aspect = lon_span / lat_span if lat_span > 0 else 1.0
+
+    # Almost no horizontal gap (panels are the same width, nothing to separate
+    # month-to-month), but room between rows for each panel's own title.
+    wspace, hspace = 0.05, 0.45
+    # Margins in fixed inches, not fractions -- they clear fixed-point-size text
+    # (tick/title labels, the colorbar), so they shouldn't scale with figure size.
+    # left/top/right just clear the shared y-tick labels / a small edge buffer;
+    # bottom clears the last row's x-tick labels, a gap, and the colorbar bar
+    # itself (the colorbar's own ticks/label draw below that and are picked up
+    # by the caller's bbox_inches="tight" save / inline-display tight bbox).
+    left_in, right_in, top_in, bottom_in = 0.4, 0.1, 0.35, 0.5
+    box_width_in = width - left_in - right_in
+    axw = box_width_in / (ncols + (ncols - 1) * wspace)
+    axh = axw / panel_aspect
+    box_height_in = axh * (nrows + (nrows - 1) * hspace)
+    height = box_height_in + top_in + bottom_in
+
     fig, axes = plt.subplots(
         nrows,
         ncols,
-        figsize=(width, width / ncols * nrows),
+        figsize=(width, height),
         sharex=True,
         sharey=True,
         squeeze=False,
+        gridspec_kw=dict(
+            left=left_in / width, right=1 - right_in / width,
+            top=1 - top_in / height, bottom=bottom_in / height,
+            wspace=wspace, hspace=hspace,
+        ),
     )
     axes = axes.ravel()
     mesh = None
@@ -576,8 +604,18 @@ def plot_monthly_cell_maps(
     for ax in axes[len(months) :]:
         ax.axis("off")
     if mesh is not None:
-        cb = fig.colorbar(mesh, ax=axes.tolist(), shrink=0.7, pad=0.02, ticks=ticks)
+        # A manually-placed cax (fixed inches within the bottom margin reserved
+        # above), not fig.colorbar(ax=axes.tolist()) -- the latter auto-shrinks
+        # the axes grid *after* the fact to make room, which throws off the
+        # panel_aspect solve above and reintroduces the letterboxing gap.
+        cax_height_in = 0.15
+        cax_bottom_in = 0.05
+        cax = fig.add_axes([
+            0.3, cax_bottom_in / height, 0.4, cax_height_in / height,
+        ])
+        cb = fig.colorbar(mesh, cax=cax, orientation="horizontal", ticks=ticks)
         cb.set_label(cbar_label or f"{value_col}  (GJ m$^{{-2}}$)")
+        cb.ax.tick_params(labelsize=7)
         if tick_labels is not None:
             cb.set_ticklabels(tick_labels)
     if title:
