@@ -366,8 +366,6 @@ def make_gp_map(c, kind, d, res_label):
             width=TABSET_FIGW, ncols=12, cbar_label="predicted-truth gap, by nested CI band",
             title=f"Prediction-interval band, {d} ({res_label})")
 
-# test
-
 GP_MAP_KINDS = [("obs", "Observed OHC"),
                 ("obs_table", "Observed OHC table"),
                 ("gp", "Predicted OHC"),
