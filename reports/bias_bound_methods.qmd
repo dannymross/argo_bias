@@ -37,11 +37,16 @@ $$
 \mu \;=\; \frac{\int_A Y(s)\,dA(s)}{\int_A dA(s)} \;=\; \int_A a(s)\,Y(s)\,ds ,
 \qquad \int_A a(s)\,ds = 1,
 $$
-with $a(s)$ the cos-latitude area-weight density.
+with $a(s)$ the area-weight density. We take the intensive (mean) OHC as primary
+because the entire bounding apparatus below is built on the normalized weight $a$ ($\int_A a = 1$),
+which is what makes $w$ a proper weight, $\sigma_Y$ a spatial standard deviation, and $\rho_{w,Y}$
+a correlation; the extensive **total** OHC is the fixed rescaling $T = |A|\,\mu$ by the known region
+area $|A| = \int_A dA(s)$, so every bias and bound carries over by multiplying through by the constant
+$|A|$ (e.g. $B_{\mathrm{total}} = |A|\,B$, and each cap scales identically).
 
 Argo floats observe $Y$ **at their actual locations** $s_1,\dots,s_n \in A$ -- point measurements of
 the true field at arbitrary positions on the sphere, *not* values on any grid (each profile yields
-OHC at the float's lat/lon; we treat these as noise-free samples of $Y$, deferring instrument error).
+OHC at the float's lat/lon; we treat these as noise-free samples of $Y$, deferring error from drift during the profile cycle).
 The locations form a spatial point pattern whose intensity may be **preferential** -- correlated with
 $Y$ through the advecting current. Since $Y$ is unobserved off the float track, $\mu$ must be
 estimated; write $\hat\mu$ for an estimator built from $\{Y(s_i)\}$ -- the Gaussian-process
