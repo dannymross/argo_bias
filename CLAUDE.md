@@ -22,6 +22,47 @@ them with informal approximations; distinguish deterministic (worst-case) from p
 guarantees and name the coverage/probability level; and use standard, literature-consistent
 terminology and notation. When a shortcut or heuristic is unavoidable, flag it explicitly as such.
 
+**Measure-theoretic standard (methodological reports).** In methodological report writing use
+measure-theoretic probability and Lebesgue integration, not informal calculus notation. Name the
+base measure explicitly (e.g. surface measure on the analysis domain, and the normalized area
+*probability* measure derived from it) and integrate against it (`$\int_A Y\,d\alpha$`, not
+`$\int_A a(s)Y(s)\,ds$` with an unnamed `$ds$`); define reweightings as Radon-Nikodym derivatives and
+state the absolute-continuity / dominating-measure conditions they require; write expectations,
+variances, covariances, and $L^2$ inner products with respect to a named measure; and treat sampling
+designs as point processes via their intensity *measures* (Campbell's theorem, etc.). Keep exact
+identities exact at the measure-theoretic level rather than falling back on Riemann-sum or density
+heuristics.
+
+## Key background references
+
+Two papers under `literature/` set the methodological and scientific bar for this work. They are
+**background/level-setting references, not templates** — each addresses a statistical problem
+distinct from ours (we bound preferential-sampling bias in an OHC integral; neither of them does):
+
+- **`literature/baugh_ohc.pdf`** — Baugh & McKinnon, "Hierarchical Bayesian Modeling of Ocean Heat
+  Content and its Uncertainty" (advisor's paper; submitted to *Ann. Appl. Stat.*, arXiv:2110.09717).
+  Establishes the scientific/statistical framing we build on: OHC as a continuous depth-then-area
+  integral of a spatial field (same seawater-constant depth integral as `ohc.py`), the target as a
+  **linear functional** of that field, and a GP giving the functional's posterior mean + variance
+  directly (their Eq. 9, $a^\top\Sigma a$ in the area-weight vector) with any grid entering only as
+  quadrature of the integral. Their problem is estimation + credible intervals for the OHC trend;
+  ours is bounding sampling bias. **Not yet in `reports/references.bib` — add it when first cited.**
+- **`literature/geopref_tingli.pdf`** — Diggle, Menezes & Su (2010), "Geostatistical inference under
+  preferential sampling" (JRSS-C; already in `references.bib` as `diggle2010`). The canonical
+  continuous formulation of preferential sampling: field $S(x)$ + point process $X$, preferential
+  iff $[S,X]\neq[S][X]$, intensity $\lambda(x)=\exp\{\alpha+\beta S(x)\}$. We cite it for the
+  *phenomenon and its continuous definition*; note their remedy is **model-based** (fit a shared
+  latent GP), whereas our sampling-bias bound is **design-based** (a distribution-free covariance
+  identity + Cauchy--Schwarz/permutation caps) -- complementary lenses, not the same estimator.
+
+**Non-stationarity (flag).** The stationary Matern (`matern_spheretime`) used in `nac_gp.qmd` and
+assumed by the RKHS smoothness class in `bias_bound_methods.qmd` is a **preliminary-analysis choice
+only**. OHC is strongly non-stationary -- variance and correlation ranges vary sharply across
+current regions, and the NAC/Gulf-Stream box is exactly such a region (the Baugh & McKinnon paper
+models this explicitly with a non-stationary kernel-convolution covariance). The methodology needs
+to account for this non-stationarity; treat any result resting on stationarity as provisional and
+state the assumption explicitly.
+
 ## Environments
 
 Two separate environments, used for different parts of the pipeline:
@@ -157,7 +198,15 @@ absolute first since cwd is being redirected.
   sweep plots). The common interchange format across this module is a **"cells table"**:
   columns `month, cell_lat, cell_lon, <value_cols...>` — new metrics should conform to this shape
   to reuse the existing plotting functions. Values are J/m² internally; `J_TO_GJ = 1e-9` converts
-  for display.
+  for display. **Caveat (bias decomposition):** the bias-decomposition code presently in the repo
+  (`compute_bias`'s sampling-bias/grid-bias split, and everything downstream of `grid_cells`) is
+  **exploratory only** — it is not rigorous enough to serve as the paper's bias decomposition. It
+  presupposes a fixed analysis grid, so the "sampled cells", sampled fraction, and the resulting
+  bias components are all resolution-dependent artifacts rather than well-defined functionals of the
+  continuous OHC field. Treat these outputs as diagnostics, not as the estimand-level decomposition;
+  the rigorous formulation (see `reports/bias_bound_methods.qmd`) is being reworked to define the
+  decomposition continuously, with any grid appearing only as an explicit quadrature approximation
+  carrying its own error term.
 - **`ohc_climatology.py`** — builds the RG Argo Climatology mean/anomaly field (Option A: seasonal
   12-month climatology from `ARGO_TEMPERATURE_MEAN` + `ARGO_TEMPERATURE_ANOMALY`, recommended;
   Option B: static 15-yr mean only — see the module docstring for why A is preferred), samples it

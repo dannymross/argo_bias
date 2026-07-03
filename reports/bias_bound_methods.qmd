@@ -32,17 +32,21 @@ inherits a **sampling-induced bias**. This report states, explicitly, the mathem
 place a *rigorous upper bound* on that bias.
 
 Write $Y(s)$ for the true OHC field over region $A$ (per depth horizon $0$--$700$ m or $0$--$2000$ m,
-per month) -- a *continuous* field on the sphere. The **estimand** is the true area-mean OHC:
+per month) -- a *continuous* field on the sphere. Let $|\cdot|$ denote surface (area) measure on
+$A \subset S^2$ and $\alpha$ the induced **normalized area probability measure**,
+$\alpha(E) = |E|/|A|$ for measurable $E \subseteq A$, so $\alpha(A) = 1$. The **estimand** is the true
+area-mean OHC, the Lebesgue integral of $Y$ against $\alpha$:
 $$
-\mu \;=\; \frac{\int_A Y(s)\,dA(s)}{\int_A dA(s)} \;=\; \int_A a(s)\,Y(s)\,ds ,
-\qquad \int_A a(s)\,ds = 1,
+\mu \;=\; \int_A Y \,d\alpha \;=\; \mathbb{E}_\alpha[Y] .
 $$
-with $a(s)$ the area-weight density. We take the intensive (mean) OHC as primary
-because the entire bounding apparatus below is built on the normalized weight $a$ ($\int_A a = 1$),
-which is what makes $w$ a proper weight, $\sigma_Y$ a spatial standard deviation, and $\rho_{w,Y}$
-a correlation; the extensive **total** OHC is the fixed rescaling $T = |A|\,\mu$ by the known region
-area $|A| = \int_A dA(s)$, so every bias and bound carries over by multiplying through by the constant
-$|A|$ (e.g. $B_{\mathrm{total}} = |A|\,B$, and each cap scales identically).
+(In lat/lon coordinates $d\alpha(s) = a(s)\,ds$, with the density $a \propto \cos(\mathrm{lat})$ the
+Radon--Nikodym derivative of $\alpha$ w.r.t. coordinate Lebesgue measure and $\int_A a\,ds = 1$; this
+is only the computational form of $\alpha$.) We take the intensive (mean) OHC as primary because
+integrating against a *probability* measure $\alpha$ is what makes $\mathbb{E}_\alpha$ an expectation,
+$\sigma_Y$ a genuine standard deviation, and $\rho_{w,Y}$ a correlation; the extensive **total** OHC
+is the fixed rescaling $T = |A|\,\mu$ by the known region area $|A|$, so every bias and bound carries
+over by multiplying through by the constant $|A|$ (e.g. $B_{\mathrm{total}} = |A|\,B$, and each cap
+scales identically).
 
 Argo floats observe $Y$ **at their actual locations** $s_1,\dots,s_n \in A$ -- point measurements of
 the true field at arbitrary positions on the sphere, *not* values on any grid (each profile yields
@@ -50,8 +54,8 @@ OHC at the float's lat/lon; we treat these as noise-free samples of $Y$, deferri
 The locations form a spatial point pattern whose intensity may be **preferential** -- correlated with
 $Y$ through the advecting current. Since $Y$ is unobserved off the float track, $\mu$ must be
 estimated; write $\hat\mu$ for an estimator built from $\{Y(s_i)\}$ -- the Gaussian-process
-area-average of [`nac_gp.qmd`](nac_gp.qmd), or a simple cell-bin mean -- and $B = \hat\mu - \mu$ for
-its bias, the quantity we bound.
+area-average of [`nac_gp.qmd`](nac_gp.qmd), or a simple average of the observations -- and
+$B = \hat\mu - \mu$ for its bias, the quantity we bound.
 
 Crucially, **nothing in the bounds below assumes $Y$ is known off the float locations.** Verifying a
 bound, however, requires the realized bias and hence the full field; for that validation step alone we
@@ -60,147 +64,165 @@ assumption -- examined in @sec-validation -- not one baked into the derivations.
 
 # Bias decomposition {#sec-decomp}
 
-Fix an analysis resolution and partition $A$ into cells $\{c\}$ with area weights $a_c = \int_c a$,
-$\sum_c a_c = 1$, and let $Y_c = \tfrac{1}{a_c}\int_c a\,Y$ be the true area-average of the continuous
-field over cell $c$. With cell-averages the quadrature is *exact*, $\sum_c a_c Y_c = \int_A a\,Y = \mu$,
-so the cells are a device of the **estimator**, not an approximation of the target. A float deployment
-realizes a **sampled set** $S$ of cells (those containing at least one profile); write
-$\bar Y_S = \tfrac{1}{|S|}\sum_{c\in S} Y_c$ for the true field averaged over the sampled cells.
-Inserting $\bar Y_S$ gives the exact two-term decomposition (the split realized in
-`ohc_bias.compute_bias`):
+The floats realize a spatial point process $N$ on $A$ with intensity measure
+$\Lambda(E) = \mathbb{E}[N(E)]$. Assume $\Lambda \ll \alpha$ (the sampling has no singular part
+relative to area) and encode the design by the **sampling density**
+$$
+w \;=\; \frac{d\pi}{d\alpha} \in L^2(\alpha),
+\qquad \pi \;=\; \frac{\Lambda}{\Lambda(A)},
+\qquad \int_A w \,d\alpha \;=\; \mathbb{E}_\alpha[w] \;=\; 1 ,
+$$
+the Radon--Nikodym derivative of the normalized design measure $\pi$ with respect to $\alpha$
+(square-integrability is what makes $\sigma_w$ below finite). Area-representative (non-preferential)
+sampling is $\pi = \alpha$, i.e. $w \equiv 1$; preferential sampling is any $w \not\equiv 1$ that
+co-varies with $Y$. The canonical generative instance is the shared-latent-process model of
+@diggle2010, whose log-linear intensity $d\Lambda/d\alpha \propto \exp\{\beta\,Y\}$ makes
+$w(s) \propto \exp\{\beta\,Y(s)\}$, with $\beta \ne 0$ the degree of preferentiality. Define the
+**design-mean** -- the intensity-weighted true-field average that naive averaging of the float
+observations targets --
+$$
+\mu_w \;=\; \int_A Y \,d\pi \;=\; \int_A w\,Y \,d\alpha \;=\; \mathbb{E}_\alpha[w\,Y] .
+$$
+Inserting $\mu_w$ between the estimate and the estimand gives an exact, **grid-free** two-term
+decomposition -- no partition of $A$ is introduced, so it lives on the same continuous domain as the
+estimand of @sec-setup:
 $$
 B \;=\; \hat\mu - \mu
-\;=\; \underbrace{\big(\bar Y_S - \mu\big)}_{\displaystyle B^{\mathrm{samp}}}
-\;+\; \underbrace{\big(\hat\mu - \bar Y_S\big)}_{\displaystyle B^{\mathrm{pred}}} .
+\;=\; \underbrace{\big(\mu_w - \mu\big)}_{\displaystyle B^{\mathrm{samp}}}
+\;+\; \underbrace{\big(\hat\mu - \mu_w\big)}_{\displaystyle B^{\mathrm{pred}}} .
 $$
+The split is an algebraic identity, exact for every realization and for any $w$ with
+$\mathbb{E}_\alpha[w] = 1$.
 
-- **$B^{\mathrm{samp}}$ -- the preferential-sampling (design) bias** depends only on *which* cells are
-  observed, not on how we reconstruct the field. It is the pure "floats went to the warm/cold water"
-  effect; @sec-samp shows $B^{\mathrm{samp}} = \operatorname{Cov}_a(w, Y)$.
-- **$B^{\mathrm{pred}}$ -- the prediction bias** is the gap between the estimate and the observed-cell
-  field $\bar Y_S$: the error incurred in turning sparse point observations into an areal field
-  estimate. Its mechanism is a **change of support** -- reconciling the point-support observations
-  with the block/areal quantity we actually want (the standard geostatistical name; @gelfand2001),
-  the same effect called *representativeness error* in data assimilation [@janjic2018]. This is the
-  term `ohc_bias.compute_bias` records as `grid_bias`.
+- **$B^{\mathrm{samp}}$ -- the preferential-sampling (design) bias** depends only on *where* the floats
+  sample (through $w$) and the field, not on how we reconstruct it: the gap between the
+  intensity-weighted mean and the area mean. It is the pure "floats went to the warm/cold water"
+  effect; @sec-samp shows $B^{\mathrm{samp}} = \operatorname{Cov}_\alpha(w, Y)$.
+- **$B^{\mathrm{pred}}$ -- the prediction bias** is the estimator's departure from the design-mean
+  $\mu_w$: the error incurred in turning sparse point observations into an areal field estimate. Its
+  mechanism is a **change of support** -- reconciling the point-support observations with the
+  block/areal quantity we actually want (the standard geostatistical name; @gelfand2001), the same
+  effect called *representativeness error* in data assimilation [@janjic2018].
 
-The split is exact for every realization. The two components admit different handles: $B^{\mathrm{samp}}$
-is a *design* quantity (a covariance between sampling intensity and the field), bounded
-distribution-free (@sec-samp); $B^{\mathrm{pred}}$ is an *approximation-theory* quantity (a
-linear-functional reconstruction error over a smoothness class), bounded through the interpolator's
-RKHS structure (@sec-grid). For the interpolate-everywhere GP estimator the RKHS machinery bounds the
-*total* error $\hat\mu - \mu$ against the continuous estimand in one step -- no grid enters, the target
-functional is $L(Y) = \int_A a\,Y$ -- so the design split is what additionally isolates and caps the
-preferential-sampling contribution on its own.
+The realized design bias is estimated directly and grid-free by
+$\hat B^{\mathrm{samp}} = \tfrac{1}{n}\sum_i Y(s_i) - \mu$ -- the mean of the float OHC observations
+minus the domain mean. By Campbell's theorem $\mathbb{E}\big[\sum_i Y(s_i)\big] = \int_A Y\,d\Lambda$,
+so the empirical measure $\tfrac{1}{n}\sum_i \delta_{s_i}$ estimates $\pi$ and $\hat B^{\mathrm{samp}}$
+is consistent for $B^{\mathrm{samp}}$, up to $O(n^{-1/2})$ Monte-Carlo error inflated by the pattern's
+clustering. The two components admit different handles: $B^{\mathrm{samp}}$ is a *design*
+quantity (a covariance between sampling intensity and the field), bounded distribution-free
+(@sec-samp); $B^{\mathrm{pred}}$ is an *approximation-theory* quantity (a linear-functional
+reconstruction error over a smoothness class), bounded through the interpolator's RKHS structure
+(@sec-grid). For the interpolate-everywhere GP estimator the RKHS machinery bounds the *total* error
+$\hat\mu - \mu$ against the continuous estimand in one step -- the target functional is
+$L(Y) = \int_A Y\,d\alpha$, no grid enters -- so the design split is what additionally isolates and
+caps the preferential-sampling contribution on its own.
 
 # The preferential-sampling term {#sec-samp}
 
 ## A design-based covariance identity
 
-Encode the sampling design by a normalized weight $w_c \ge 0$ defined so that the sampled-cell mean
-is a reweighting of the population mean,
+Subtracting $\mu = \mathbb{E}_\alpha[Y]$ from the design-mean $\mu_w = \mathbb{E}_\alpha[wY]$ and using
+$\mathbb{E}_\alpha[w] = 1$ gives the identity at the heart of the preferential-sampling literature (the
+design-based view of @horvitz1952; the spatial formulation of @diggle2010):
 $$
-\bar Y_S \;=\; \sum_c a_c\, w_c\, Y_c ,
-\qquad \sum_c a_c\, w_c = 1 ,
-\qquad\text{i.e.}\qquad
-w_c \;=\; \frac{\mathbb{1}[c \in S]\, / |S|}{a_c}.
+\boxed{\;B^{\mathrm{samp}} \;=\; \mathbb{E}_\alpha[w\,Y] - \mathbb{E}_\alpha[Y]
+\;=\; \mathbb{E}_\alpha[(w-1)\,Y] \;=\; \operatorname{Cov}_\alpha(w,\, Y)\; }
 $$
-By construction $\mathbb{E}_a[w] \equiv \sum_c a_c w_c = 1$. Subtracting $\mu = \sum_c a_c Y_c$
-($=\mathbb{E}_a[Y]$, exact for cell-averages) gives the identity at the heart of the
-preferential-sampling literature (the design-based view of @horvitz1952; the spatial formulation of
-@diggle2010):
-$$
-\boxed{\;B^{\mathrm{samp}} \;=\; \sum_c a_c (w_c - 1)\, Y_c \;=\; \operatorname{Cov}_a(w,\, Y)\; }
-$$
-where $\operatorname{Cov}_a$ is the area-weighted covariance. **The preferential-sampling bias is
-exactly the covariance between the sampling intensity and the field.** If floats sample independently
-of OHC, $w \perp Y$ and the bias vanishes in expectation; bias arises precisely to the extent that
-the sampling intensity co-varies with the heat-content field.
+where $\operatorname{Cov}_\alpha(w,Y) = \int_A (w-1)(Y-\mu)\,d\alpha$ is the covariance under $\alpha$.
+**The preferential-sampling bias is exactly the covariance between the sampling intensity and the
+field.** If floats sample independently of OHC, $w \perp Y$ and the bias vanishes; bias arises
+precisely to the extent that the sampling intensity co-varies with the heat-content field
+(equivalently, $\beta \ne 0$ in the log-linear intensity of @sec-decomp).
 
 ::: {.callout-note collapse="true"}
 ## Derivation: the covariance identity
 
-Start from the two means and use $\sum_c a_c w_c = 1$ (so $\mathbb{E}_a[w]=1$) and
-$\mu = \sum_c a_c Y_c$ (so $\mathbb{E}_a[Y]=\mu$):
+Expand the covariance under $\alpha$ about its means, using $\mathbb{E}_\alpha[w] = 1$ and
+$\mathbb{E}_\alpha[Y] = \mu$:
 $$
-B^{\mathrm{samp}} = \bar Y_S - \mu
-= \sum_c a_c w_c Y_c - \sum_c a_c Y_c
-= \sum_c a_c (w_c - 1)\, Y_c .
+\operatorname{Cov}_\alpha(w, Y)
+= \int_A (w - 1)(Y - \mu)\,d\alpha
+= \int_A (w-1)\,Y\,d\alpha \;-\; \mu\underbrace{\int_A (w-1)\,d\alpha}_{=\,\mathbb{E}_\alpha[w]-1\,=\,0} .
 $$
-The area-weighted covariance, expanded about its means, is
-$$
-\operatorname{Cov}_a(w, Y)
-= \sum_c a_c\,(w_c - \mathbb{E}_a[w])(Y_c - \mathbb{E}_a[Y])
-= \sum_c a_c\,(w_c - 1)(Y_c - \mu).
-$$
-Distributing the $(Y_c - \mu)$ factor,
-$$
-\operatorname{Cov}_a(w, Y)
-= \sum_c a_c (w_c - 1)\, Y_c \;-\; \mu \underbrace{\sum_c a_c (w_c - 1)}_{=\,\mathbb{E}_a[w]-1\,=\,0}
-= \sum_c a_c (w_c - 1)\, Y_c = B^{\mathrm{samp}}.
-$$
-The cross term vanishes because the weights are normalized; no distributional assumption on $Y$ or on
-the sampling is used, so the identity is exact for every realization.
+The second term vanishes because the intensity is normalized, leaving
+$\operatorname{Cov}_\alpha(w,Y) = \int_A (w-1)\,Y\,d\alpha = \mathbb{E}_\alpha[wY] - \mu = B^{\mathrm{samp}}$.
+No distributional assumption on $Y$ or on the sampling is used, and no grid: the identity is exact for
+every realization.
 :::
 
 ## A distribution-free hard cap (Cauchy--Schwarz)
 
-Applying the Cauchy--Schwarz inequality to the covariance gives a bound that holds for *any* field
-and *any* design:
+Applying the Cauchy--Schwarz inequality in $L^2(\alpha)$ to the covariance gives a bound that holds for
+*any* field and *any* design:
 $$
 \big| B^{\mathrm{samp}} \big|
 \;=\; \big|\rho_{w,Y}\big|\; \sigma_w\, \sigma_Y
 \;\le\; \sigma_w\, \sigma_Y ,
 $$
-with the area-weighted spatial standard deviations
+with the standard deviations under $\alpha$
 $$
-\sigma_Y^2 = \operatorname{Var}_a(Y) = \sum_c a_c (Y_c - \mu)^2 ,
+\sigma_Y^2 = \operatorname{Var}_\alpha(Y) = \int_A (Y - \mu)^2\,d\alpha ,
 \qquad
-\sigma_w^2 = \operatorname{Var}_a(w) = \sum_c a_c (w_c - 1)^2 .
+\sigma_w^2 = \operatorname{Var}_\alpha(w) = \int_A (w - 1)^2\,d\alpha = \mathbb{E}_\alpha[w^2] - 1 .
 $$
-Both are estimable from data: $\sigma_Y$ is the spatial variability of the true OHC field (estimated
-from the observations, or read off the reanalysis in validation); $\sigma_w$ is the inhomogeneity of
-the sampling, read off the float density. The correlation $\rho_{w,Y}$ is the only unknown, and
-bounding it by $1$ gives the worst case.
-
-The cap has a transparent closed form under a mild idealization. If the $N$ cells are of (near-)
-equal area and the sampling intensity is roughly uniform over the $|S| = f N$ sampled cells (so
-$w_c = 1/f$ on $S$ and $0$ off it), then $\sigma_w^2 = (1-f)/f$ and
-$$
-\boxed{\;\big| B^{\mathrm{samp}} \big| \;\le\; \sigma_Y \sqrt{\tfrac{1-f}{f}}\;}
-$$
-where $f = |S|/N$ is the **sampled fraction**. The worst-case preferential-sampling bias is set by
-just two numbers -- the spatial variability of OHC and how much of the region the floats cover.
+Both are estimable, continuous functionals: $\sigma_Y$ is the spatial variability of the true OHC
+field over $A$ (estimated from the observations, or read off the reanalysis in validation); $\sigma_w$
+is the coefficient of variation of the sampling intensity under $\alpha$ -- a resolution-free measure
+of how inhomogeneous the sampling is, read off the float density. The correlation $\rho_{w,Y}$ is the
+only unknown, and bounding it by $1$ gives the worst case.
 
 ::: {.callout-note collapse="true"}
-## Derivation: Cauchy--Schwarz cap and the closed form for $\sigma_w$
+## Derivation: the Cauchy--Schwarz cap
 
-*Cauchy--Schwarz step.* Treat $a_c$ as a probability weighting. For any two vectors indexed by $c$,
+In $L^2(\alpha)$, for any two square-integrable $u, v$,
 $$
-\Big| \sum_c a_c\, u_c\, v_c \Big| \le \Big(\sum_c a_c\, u_c^2\Big)^{1/2}\Big(\sum_c a_c\, v_c^2\Big)^{1/2}.
+\Big| \int_A u\, v\,d\alpha \Big| \le \Big(\int_A u^2\,d\alpha\Big)^{1/2}\Big(\int_A v^2\,d\alpha\Big)^{1/2}.
 $$
-Applying this to $u_c = w_c - 1$ and $v_c = Y_c - \mu$ and using the identity above,
+Applying this to $u = w - 1$ and $v = Y - \mu$ and using the identity above,
 $$
-\big|B^{\mathrm{samp}}\big| = \big|\operatorname{Cov}_a(w,Y)\big|
-\le \sqrt{\operatorname{Var}_a(w)}\,\sqrt{\operatorname{Var}_a(Y)} = \sigma_w\,\sigma_Y,
+\big|B^{\mathrm{samp}}\big| = \big|\operatorname{Cov}_\alpha(w,Y)\big|
+\le \sqrt{\operatorname{Var}_\alpha(w)}\,\sqrt{\operatorname{Var}_\alpha(Y)} = \sigma_w\,\sigma_Y,
 $$
-with equality iff $w_c - 1 \propto Y_c - \mu$; writing the ratio as the correlation $\rho_{w,Y}$ gives
+with equality iff $w - 1 \propto Y - \mu$; writing the ratio as the correlation $\rho_{w,Y}$ gives
 $|B^{\mathrm{samp}}| = |\rho_{w,Y}|\,\sigma_w\,\sigma_Y$.
+:::
 
-*Closed form for $\sigma_w^2$.* Take equal-area cells $a_c = 1/N$ and uniform sampling over the
-$|S| = fN$ sampled cells. Then $w_c = \mathbb{1}[c\in S]\,/(|S|\,a_c) = 1/f$ on $S$ and $0$ off it.
-Splitting the sum over sampled and unsampled cells,
+The cap $\sigma_w\sigma_Y$ is the primary, resolution-free guarantee. It takes a transparent closed
+form under one explicit idealization of the intensity: suppose the floats cover a sub-region
+$A_f \subseteq A$ of measure $f = \alpha(A_f)$ uniformly and sample nowhere else -- a "hard-footprint"
+design $\pi = \alpha(\cdot \cap A_f)/\alpha(A_f)$, whose density is $w = 1/f$ on $A_f$ and $w = 0$ off
+it. Then $\sigma_w^2 = (1-f)/f$ and
 $$
-\sigma_w^2 = \sum_c a_c (w_c - 1)^2
-= \frac{1}{N}\Big[\underbrace{fN}_{c\in S}\big(\tfrac{1}{f}-1\big)^2 + \underbrace{(1-f)N}_{c\notin S}(0-1)^2\Big]
-= f\Big(\tfrac{1-f}{f}\Big)^2 + (1-f).
+\big| B^{\mathrm{samp}} \big| \;\le\; \sigma_Y \sqrt{\tfrac{1-f}{f}} .
 $$
-Factor out $(1-f)$:
+
+::: {.callout-important collapse="true"}
+## Heuristic: what the covered fraction $f$ requires
+
+This closed form is an *illustration*, not the operative bound. The empirical measure
+$\tfrac{1}{n}\sum_i \delta_{s_i}$ of a finite point pattern is purely atomic, hence *not* absolutely
+continuous with respect to $\alpha$ and admitting no density $w \in L^2(\alpha)$; the covered fraction
+$f = \alpha(\bigcup_i \text{footprint}(s_i))$ is defined only after each float is assigned a
+representativeness footprint (e.g. a disc of one correlation length) that smooths the atoms into a
+design $\pi \ll \alpha$. Unlike the general cap $\sigma_w\sigma_Y$, a functional of the intensity
+alone, the closed form inherits a dependence on that footprint scale, and shrinking the scale drives
+$f \to 0$ and the cap $\to \infty$. We therefore report $\sigma_w\sigma_Y$ as the operative cap and
+$\sigma_Y\sqrt{(1-f)/f}$ only for interpretation.
+:::
+
+::: {.callout-note collapse="true"}
+## Derivation: the closed form for $\sigma_w$
+
+Take the hard-footprint density $w = 1/f$ on $A_f$ (with $\alpha(A_f) = f$) and $w = 0$ on
+$A \setminus A_f$ (with $\alpha$-measure $1-f$). Then
 $$
-\sigma_w^2 = \frac{(1-f)^2}{f} + (1-f) = (1-f)\Big(\frac{1-f}{f} + 1\Big) = \frac{1-f}{f}.
+\sigma_w^2 = \int_A (w - 1)^2\,d\alpha
+= f\Big(\tfrac{1}{f}-1\Big)^2 + (1-f)(0-1)^2
+= \frac{(1-f)^2}{f} + (1-f) = (1-f)\Big(\frac{1-f}{f} + 1\Big) = \frac{1-f}{f}.
 $$
-Hence $|B^{\mathrm{samp}}| \le \sigma_Y\sqrt{(1-f)/f}$. (Unequal cell areas or non-uniform intensity
-only change $\sigma_w$; the general cap $\sigma_w\sigma_Y$ still holds exactly.)
+Hence $|B^{\mathrm{samp}}| \le \sigma_Y\sqrt{(1-f)/f}$; any other intensity only changes $\sigma_w$,
+with the general cap $\sigma_w\sigma_Y$ still holding exactly.
 :::
 
 The amplification factor $\sqrt{(1-f)/f}$ diverges as coverage $\to 0$ and vanishes as coverage
@@ -208,13 +230,13 @@ $\to 1$:
 
 ```{python}
 #| label: fig-amp
-#| fig-cap: "Worst-case sampling-bias amplification factor sqrt((1-f)/f) as a function of the sampled fraction f. The Cauchy-Schwarz cap on |B^samp| equals this factor times sigma_Y, the spatial standard deviation of the true OHC field. Sparse coverage (small f) inflates the worst-case bias sharply."
+#| fig-cap: "Illustrative amplification factor sqrt((1-f)/f) vs the covered area fraction f, under the idealized hard-footprint intensity. In that special case the cap on |B^samp| equals this factor times sigma_Y, the spatial standard deviation of the true OHC field; the operative bound is the general sigma_w * sigma_Y, and f depends on an assumed representativeness footprint (see note). Sparse coverage (small f) inflates the worst-case bias sharply."
 #| code-summary: "Illustrative: the amplification factor (self-contained, no data)"
 f = np.linspace(0.01, 1.0, 400)
 amp = np.sqrt((1 - f) / f)
 fig, ax = plt.subplots(figsize=(7, 4.2))
 ax.plot(f, amp, color="#1f77b4", lw=2)
-ax.set_xlabel("sampled fraction  f = |S| / N")
+ax.set_xlabel("covered area fraction  f")
 ax.set_ylabel(r"amplification  $\sqrt{(1-f)/f}$")
 ax.set_ylim(0, 6)
 ax.grid(alpha=0.3)
@@ -236,19 +258,21 @@ violated. Its price is looseness -- it is attained only if the sampling intensit
 To tighten the cap we ask how large $|B^{\mathrm{samp}}|$ plausibly gets when the sampling pattern is
 *not* tied to the field. This is a randomization test with null hypothesis
 $$
-H_0:\quad \text{the sampling pattern } S \text{ is independent of the field } Y .
+H_0:\quad \text{the float locations } \{s_i\} \text{ are independent of the field } Y .
 $$
 We realize $H_0$ by applying **area-preserving isometries** -- rotations and reflections of the
-region, together with (toroidal) shifts -- to the observed sampling pattern relative to $Y$. Writing
-$g_b$ for the $b$-th such transformation applied to the weights, we recompute
+region, together with (toroidal) shifts -- to the observed float locations relative to $Y$. Writing
+$g_b$ for the $b$-th such transformation, we recompute the design bias with the pattern moved and the
+field held fixed,
 $$
-B^{\mathrm{samp}}_{(b)} \;=\; \operatorname{Cov}_a\big(w \circ g_b,\; Y\big),
+B^{\mathrm{samp}}_{(b)} \;=\; \operatorname{Cov}_\alpha\big(w \circ g_b,\; Y\big)
+\;\approx\; \tfrac{1}{n}\sum_i Y(g_b\, s_i) - \mu ,
 \qquad b = 1,\dots,B .
 $$
 Crucially, these transformations **preserve the sampling pattern's own spatial autocorrelation**
 (clustering, coverage, geometry) while destroying only its alignment with the field. This is the
 standard remedy in tests of spatial association [@clifford1989; @mantel1967]: naive independent
-shuffling of cell labels would break the pattern's autocorrelation and yield an anti-conservative --
+relabelling of locations would break the pattern's autocorrelation and yield an anti-conservative --
 too narrow -- null.
 
 The randomization delivers two things:
@@ -272,6 +296,12 @@ Gaussian-process model ([`nac_gp.qmd`](nac_gp.qmd)) fits a stationary Matérn co
 reproducing-kernel Hilbert space (RKHS) $\mathcal{H}_k$ is the natural smoothness class for the field
 [@stein1999], and we assume $Y \in \mathcal{H}_k$.
 
+The stationary Matérn is a **preliminary** modeling choice. OHC is markedly non-stationary in this
+western-boundary-current region -- its variance and correlation ranges vary sharply across the NAC
+front -- so a non-stationary kernel (e.g. the kernel-convolution covariance of @baugh2022) is
+ultimately required; the radius $R$ and representer norm $\|\eta\|_{\mathcal{H}}$ below should be read
+as provisional under the stationarity assumption.
+
 ## Linearity and the worst-case (minimax) bound
 
 Both the interpolated estimator and the target are **linear functionals** of the field. The kriging
@@ -280,7 +310,7 @@ $$
 \hat\mu \;=\; \sum_{i=1}^{n} \omega_i\, Y(s_i),
 $$
 a fixed linear combination of the $n$ observations at float locations $s_1,\dots,s_n$ with
-area-integrated kriging weights $\omega_i$; the target is $L(Y) = \mu = \int_A a(s)\, Y(s)\, ds$.
+area-integrated kriging weights $\omega_i$; the target is $L(Y) = \mu = \int_A Y\, d\alpha$.
 Their difference is the residual functional
 $$
 \Delta(Y) \;=\; L(Y) - \sum_i \omega_i\, Y(s_i).
@@ -295,26 +325,28 @@ $$
 \qquad
 \eta \;=\; \xi_L - \sum_i \omega_i\, k(\cdot, s_i),
 \qquad
-\xi_L(\cdot) = \int_A a(s)\, k(\cdot, s)\, ds ,
+\xi_L(\cdot) = \int_A k(\cdot, s)\, d\alpha(s) ,
 \;}
 $$
 where $\xi_L \in \mathcal{H}$ is the Riesz representer of the area-mean functional
-($\langle \xi_L, f\rangle_{\mathcal{H}} = L(f)$ for all $f$).
+($\langle \xi_L, f\rangle_{\mathcal{H}} = L(f)$ for all $f$); the defining integral is a Bochner
+integral in $\mathcal{H}$, well defined since $k$ is bounded and $\alpha$ finite.
 
 ::: {.callout-note collapse="true"}
 ## Derivation: the residual functional is $\langle Y, \eta\rangle$, and its worst case is $R\|\eta\|$
 
 The one fact that makes everything linear-in-$Y$ collapse is the **reproducing property**: for every
 $f \in \mathcal{H}_k$ and location $s$, $f(s) = \langle f, k(\cdot, s)\rangle_{\mathcal{H}}$. Hence each
-point evaluation is an inner product, and so is the area-mean functional, by exchanging the (bounded)
-integral with the inner product:
+point evaluation is an inner product, and so is the area-mean functional, by exchanging the (Bochner)
+integral with the inner product -- valid since $s \mapsto k(\cdot,s)$ is Bochner-$\alpha$-integrable
+($k$ bounded, $\alpha$ finite):
 $$
-L(Y) = \int_A a(s)\, Y(s)\, ds
-= \int_A a(s)\, \langle Y, k(\cdot,s)\rangle\, ds
-= \Big\langle Y,\ \int_A a(s)\, k(\cdot,s)\, ds \Big\rangle
+L(Y) = \int_A Y(s)\, d\alpha(s)
+= \int_A \langle Y, k(\cdot,s)\rangle\, d\alpha(s)
+= \Big\langle Y,\ \int_A k(\cdot,s)\, d\alpha(s) \Big\rangle
 = \langle Y, \xi_L\rangle .
 $$
-This identifies the Riesz representer $\xi_L(\cdot) = \int_A a(s)\,k(\cdot,s)\,ds$. Writing the point
+This identifies the Riesz representer $\xi_L(\cdot) = \int_A k(\cdot,s)\,d\alpha(s)$. Writing the point
 evaluations the same way, the residual functional becomes a single inner product:
 $$
 \Delta(Y) = \langle Y, \xi_L\rangle - \sum_i \omega_i \langle Y, k(\cdot,s_i)\rangle
@@ -333,8 +365,8 @@ The norm of the residual representer is computable in closed form from the kerne
 $$
 \big\| \eta \big\|_{\mathcal{H}}^2
 =
-\underbrace{\iint_{A\times A} a(s)\,a(s')\,k(s,s')\,ds\,ds'}_{\langle \xi_L,\xi_L\rangle}
-\;-\; 2\sum_i \omega_i \int_A a(s)\, k(s, s_i)\, ds
+\underbrace{\iint_{A\times A} k(s,s')\,d\alpha(s)\,d\alpha(s')}_{\langle \xi_L,\xi_L\rangle}
+\;-\; 2\sum_i \omega_i \int_A k(s, s_i)\, d\alpha(s)
 \;+\; \sum_{i,j} \omega_i\, \omega_j\, k(s_i, s_j).
 $$
 
@@ -352,11 +384,11 @@ $$
 Each inner product is evaluated by the reproducing property, $\langle g, k(\cdot, s)\rangle = g(s)$:
 
 - $\langle k(\cdot, s_i), k(\cdot, s_j)\rangle = k(s_i, s_j)$ -- the Gram matrix of the observations;
-- $\langle \xi_L, k(\cdot, s_i)\rangle = \xi_L(s_i) = \int_A a(s)\, k(s, s_i)\, ds$ -- the mean-to-obs
+- $\langle \xi_L, k(\cdot, s_i)\rangle = \xi_L(s_i) = \int_A k(s, s_i)\, d\alpha(s)$ -- the mean-to-obs
   cross terms;
-- $\langle \xi_L, \xi_L\rangle = \int_A a(s)\, \xi_L(s)\, ds = \iint_{A\times A} a(s)\,a(s')\,k(s,s')\,ds\,ds'$.
+- $\langle \xi_L, \xi_L\rangle = \int_A \xi_L(s)\, d\alpha(s) = \iint_{A\times A} k(s,s')\,d\alpha(s)\,d\alpha(s')$.
 
-Substituting gives the boxed formula. Nothing but the kernel $k$, the area weights $a$, and the
+Substituting gives the boxed formula. Nothing but the kernel $k$, the area measure $\alpha$, and the
 kriging weights $\omega$ enters -- no knowledge of $Y$ is required to evaluate the bound.
 :::
 
@@ -389,7 +421,7 @@ deterministic one at the cost of the single dimensionless constant $R$.
 ## Derivation: why $\mathrm{SE}_{\mathrm{post}} = \|\eta^\star\|_{\mathcal{H}}$
 
 Write the observation Gram matrix $K_{ij} = k(s_i, s_j)$ and the mean-to-obs vector
-$c_i = \xi_L(s_i) = \int_A a(s)\,k(s,s_i)\,ds$. The (noiseless) simple-kriging weights minimize
+$c_i = \xi_L(s_i) = \int_A k(s,s_i)\,d\alpha(s)$. The (noiseless) simple-kriging weights minimize
 $\|\eta\|^2$ over $\omega$; setting the gradient of the closed-form norm to zero,
 $$
 \nabla_\omega\Big(\langle\xi_L,\xi_L\rangle - 2\,\omega^\top c + \omega^\top K \omega\Big) = 0
@@ -405,7 +437,7 @@ This is identically the Gaussian-process posterior variance of the linear functi
 observations,
 $$
 \operatorname{Var}\!\big(L(Y) \mid Y(s_1),\dots,Y(s_n)\big)
-= \underbrace{\textstyle\iint a\,a'\,k}_{\langle\xi_L,\xi_L\rangle} - c^\top K^{-1} c ,
+= \underbrace{\textstyle\iint k\,d\alpha\,d\alpha}_{\langle\xi_L,\xi_L\rangle} - c^\top K^{-1} c ,
 $$
 so $\mathrm{SE}_{\mathrm{post}} = \|\eta^\star\|_{\mathcal{H}}$. (A nugget/observation-error variance
 $\tau^2$ simply replaces $K$ by $K + \tau^2 I$ throughout, adding the usual measurement-noise term to
@@ -429,7 +461,7 @@ the kriging weights $\omega_i$. No grid enters; the target functional is the con
 **Design-based bound on the preferential-sampling component.** Independently, and with no smoothness
 model at all, the preferential-sampling term is capped distribution-free,
 $$
-|B^{\mathrm{samp}}| \;\le\; \sigma_Y\sqrt{(1-f)/f} \quad(\text{deterministic}),
+|B^{\mathrm{samp}}| \;\le\; \sigma_w\,\sigma_Y \quad(\text{deterministic}),
 \qquad
 |B^{\mathrm{samp}}| \;\lesssim\; q^{\mathrm{perm}}_{0.975} \quad(\text{permutation}).
 $$
@@ -446,27 +478,34 @@ The bounds above are properties of the true field $Y$ and the realized float loc
 assume $Y$ is known between floats. To *check* them we need the realized bias, which requires the full
 field. For this step we take the **GLORYS12 reanalysis** -- a data-assimilating model with complete
 spatiotemporal coverage -- as a proxy for $Y$: an explicit, scoped assumption, invoked here and
-nowhere in the derivations. With the proxy field in hand, `ohc_bias.compute_bias` returns the realized
-$B$, $B^{\mathrm{samp}}$, and $B^{\mathrm{pred}}$ for the actual sampling, month by month.
+nowhere in the derivations. With the proxy field in hand we form the realized quantities grid-free,
+month by month: the total bias $B = \hat\mu - \mu$ from the GP area-mean of
+[`nac_gp.qmd`](nac_gp.qmd) against the proxy domain mean $\mu$, and the design bias
+$\hat B^{\mathrm{samp}} = \tfrac{1}{n}\sum_i Y(s_i) - \mu$ -- the proxy field at the float locations
+minus its domain mean. (The exploratory, grid-based `ohc_bias.compute_bias` is a diagnostic, not the
+rigorous decomposition.)
 
 Two reanalysis-specific points enter here and *only* here:
 
-- **Grid quadrature.** GLORYS supplies values on its $1/12^\circ$ grid, so the reference mean is a
-  quadrature $\mu \approx \mu_N = \sum_c a_c Y_c$ over grid nodes (`ohc.truth_domain_mean`) rather than
-  the exact cell-average of @sec-decomp. The resulting quadrature error
-  $B^{\mathrm{quad}} = \mu_N - \mu = \sum_c a_c Y_c - \int_A a\,Y$ is a deterministic property of the
-  grid -- itself a bounded linear functional of $Y$, capped by the RKHS machinery of @sec-grid
-  ($|B^{\mathrm{quad}}| \le R\|q\|_{\mathcal H}$, $q = \sum_c a_c k(\cdot,s_c) - \xi_L$) and negligible
-  at $1/12^\circ$.
+- **Grid quadrature.** GLORYS supplies values on its $1/12^\circ$ grid, so the domain mean is a
+  quadrature $\mu \approx \mu_N = \sum_c a_c Y_c$ with nodal weights $a_c = \alpha(c)$ over grid cells
+  $c$ (`ohc.truth_domain_mean`, $\sum_c a_c = 1$) -- a numerical evaluation of the estimand's defining
+  integral $\mu = \int_A Y\,d\alpha$ of @sec-setup, the area-measure quadrature of @baugh2022, and the
+  sole place any grid enters the report. The resulting quadrature error
+  $B^{\mathrm{quad}} = \mu_N - \mu = \sum_c \alpha(c)\, Y_c - \int_A Y\,d\alpha$ is a deterministic
+  property of the grid -- itself a bounded linear functional of $Y$, capped by the RKHS machinery of
+  @sec-grid ($|B^{\mathrm{quad}}| \le R\|q\|_{\mathcal H}$, $q = \sum_c \alpha(c)\, k(\cdot,s_c) - \xi_L$)
+  and negligible at $1/12^\circ$.
 - **Proxy fidelity.** The realized bias is computed against the reanalysis, not the ocean; validation
   certifies the *bounding machinery*, with reanalysis error a separate, acknowledged layer (cross-
   reanalysis spread is deferred).
 
 We then report, per month and depth horizon:
 
-- **Coverage** -- that each bound dominates the realized quantity it bounds (Cauchy--Schwarz *must*
-  hold identically for $B^{\mathrm{samp}}$; the permutation quantile and the RKHS / posterior-SE cap
-  should dominate their realized targets).
+- **Coverage** -- that each bound dominates the realized quantity it bounds (the Cauchy--Schwarz cap
+  holds for the population $B^{\mathrm{samp}}$ by construction, up to the $O(n^{-1/2})$ estimation
+  error in $\hat B^{\mathrm{samp}}$; the permutation quantile and the RKHS / posterior-SE cap should
+  dominate their realized targets).
 - **Tightness** -- the ratio of bound to realized bias, quantifying the slack each guarantee carries.
 - **Calibration** -- the permutation $p$-values, and the GP interval coverage rates against the
   reanalysis.
@@ -478,9 +517,10 @@ makes the result credible rather than merely formal -- subject to the reanalysis
 
 The bounds above are analytic and design-based. As an independent, physically-grounded check we will
 (in a later phase) generate an ensemble of float samplings under the *real* GLORYS advection using
-VirtualFleet, mapping each realization through the same
-`run_simulation` $\to$ `float_ohc` $\to$ `grid_cells` $\to$ `compute_bias` pipeline the real-Argo
-analysis uses. The simulator is currently deterministic (one realization per configuration), so an
+VirtualFleet, mapping each realization through the same `run_simulation` $\to$ `float_ohc` pipeline
+and computing its realized bias grid-free as in @sec-validation (design bias
+$\tfrac{1}{n}\sum_i Y(s_i) - \mu$; total bias the GP area-mean minus truth). The simulator is
+currently deterministic (one realization per configuration), so an
 ensemble requires injecting controlled randomness -- deployment jitter, and optionally a stochastic
 turbulent-diffusion kernel -- to obtain independent members. The empirical distribution of the
 physically-realized bias, wrapped in a nonparametric one-sided tolerance bound, then serves as a
