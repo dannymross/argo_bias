@@ -306,13 +306,137 @@ for fv in (0.05, 0.1, 0.25, 0.5):
 _show_fig(fig)
 ```
 
+## An RKHS worst-case bound {#sec-samp-rkhs}
+
+The Cauchy--Schwarz cap $\sigma_w\sigma_Y$ is *distribution-free*: it assumes nothing about the field
+beyond a finite variance. If we are additionally willing to assume the field is **smooth** -- that it
+lives in the RKHS $\mathcal{H}_k$ of a covariance kernel $k$, the very assumption already made for the
+total bias in @sec-grid -- we obtain a *second*, complementary deterministic cap, computed with the
+same representer machinery and often tighter.
+
+The observation that unlocks it is that, **conditional on the design** (so $w$ is fixed), the sampling
+bias is a *bounded linear functional of the field*,
+\begin{gather*}
+B^{\mathrm{samp}} \;=\; \int_{A\times\mathcal{T}} (w-1)\,Y\,d(\alpha\otimes\tau) \;=:\; L_{\mathrm{samp}}(Y),
+\end{gather*}
+linear in $Y$ because $w$ does not depend on it. On an RKHS every bounded linear functional is an inner
+product against a single element of the space -- its **Riesz representer** (the fact that makes RKHS
+methods work; see @wahba1990 or, for a statistics-oriented introduction, @berlinet2004). Here that
+representer is
+\begin{gather*}
+\psi \;=\; \int_{A\times\mathcal{T}} (w-1)\,k(\cdot,x)\,d(\alpha\otimes\tau)(x)
+\;=\; \xi_\pi - \xi_L,
+\qquad
+\xi_\pi(\cdot) \;=\; \int_{A\times\mathcal{T}} k(\cdot,x)\,d\pi(x),
+\end{gather*}
+the representer of the design-mean functional $\mu_w = \int Y\,d\pi$ minus that of the estimand
+$\mu = \int Y\,d(\alpha\otimes\tau)$ -- the RKHS shadow of the identity $B^{\mathrm{samp}} = \mu_w - \mu$
+from @sec-samp. (Recall $d\pi = w\,d(\alpha\otimes\tau)$, so $\xi_\pi - \xi_L = \int(w-1)k(\cdot,x)\,
+d(\alpha\otimes\tau)$.)
+
+Maximizing the functional over the smoothness ball $\{Y : \|Y\|_{\mathcal{H}} \le R\}$ is then a single
+application of Cauchy--Schwarz **in $\mathcal{H}_k$** -- the optimal-recovery / minimax-linear-functional
+duality [@micchelli1977; @donoho1994]:
+\begin{gather*}
+\boxed{\;
+\sup_{\|Y\|_{\mathcal{H}} \le R} \big| B^{\mathrm{samp}} \big|
+\;=\; R\,\|\psi\|_{\mathcal{H}},
+\qquad
+\|\psi\|_{\mathcal{H}}^2
+= \iint (w-1)(w'-1)\,k(x,x')\,d(\alpha\otimes\tau)(x)\,d(\alpha\otimes\tau)(x')
+\;}
+\end{gather*}
+(shorthand $w=w(x)$, $w'=w(x')$), attained at the worst-case field
+$Y^\star = R\,\psi/\|\psi\|_{\mathcal{H}}$. This is exactly parallel to the total-bias bound
+$R\|\eta\|_{\mathcal{H}}$ of @sec-grid, with the residual representer $\eta$ replaced by the
+design-contrast representer $\psi$.
+
+::: {.callout-note collapse="true"}
+## Derivation: the sampling-bias representer and its worst case
+
+Insert the reproducing property $Y(x) = \langle Y, k(\cdot,x)\rangle_{\mathcal{H}}$ into
+$L_{\mathrm{samp}}$ and exchange the (Bochner) integral with the inner product -- valid since
+$x \mapsto (w(x)-1)\,k(\cdot,x)$ is Bochner-integrable ($k$ bounded so $\|k(\cdot,x)\|_{\mathcal{H}} =
+\sqrt{k(x,x)}$ is bounded, and $w-1 \in L^1(\alpha\otimes\tau)$):
+\begin{align*}
+L_{\mathrm{samp}}(Y)
+&= \int_{A\times\mathcal{T}} (w-1)\,\langle Y, k(\cdot,x)\rangle\,d(\alpha\otimes\tau)(x) \\
+&= \Big\langle Y,\ \int_{A\times\mathcal{T}} (w-1)\,k(\cdot,x)\,d(\alpha\otimes\tau)(x) \Big\rangle
+= \langle Y, \psi\rangle .
+\end{align*}
+Cauchy--Schwarz in $\mathcal{H}_k$ gives $|\langle Y,\psi\rangle| \le \|Y\|_{\mathcal{H}}\|\psi\|_{\mathcal{H}}
+\le R\|\psi\|_{\mathcal{H}}$, with equality at $Y^\star = R\,\psi/\|\psi\|_{\mathcal{H}}$. Expanding
+$\|\psi\|^2 = \langle \xi_\pi - \xi_L,\ \xi_\pi - \xi_L\rangle$ and evaluating each inner product by the
+reproducing property (as in @sec-grid) gives the double-integral closed form; in the notation of the
+recipe in @sec-grid-recipe it is $\|\psi\|^2 = v_\pi - 2\,v_{\pi L} + v$, with
+$v_\pi = \iint k\,d\pi\,d\pi$, $v_{\pi L} = \iint k\,d\pi\,d(\alpha\otimes\tau)$, and
+$v = \iint k\,d(\alpha\otimes\tau)^2$. No field values enter: like the total-bias bound, $\|\psi\|$ is a
+functional of the kernel and the design alone.
+:::
+
+### What the two caps "see" {#sec-samp-intuition}
+
+Both caps are Cauchy--Schwarz applied to the *same* covariance
+$\int (w-1)(Y-\mu)\,d(\alpha\otimes\tau)$, but in **different inner-product spaces** -- and that changes
+which fields the worst case ranges over.
+
+- **In $L^2(\alpha\otimes\tau)$** (the cap $\sigma_w\sigma_Y$): the worst-case field is
+  $Y-\mu \propto w-1$ -- a field that copies the sampling weight's every wiggle. There is no smoothness
+  penalty, so this adversary may be arbitrarily rough. Distribution-free, but pessimistic.
+- **In $\mathcal{H}_k$** (the cap $R\|\psi\|$): the worst-case field is $Y^\star \propto \psi$ -- the
+  same alignment with $w-1$, but first **passed through the kernel**. Writing the covariance integral
+  operator $(\mathcal{K}g)(x) = \int k(x,x')\,g(x')\,d(\alpha\otimes\tau)(x')$,
+  \begin{gather*}
+  \|\psi\|_{\mathcal{H}}^2 = \big\langle\, w-1,\ \mathcal{K}(w-1)\,\big\rangle_{L^2}
+  \qquad\text{versus}\qquad
+  \sigma_w^2 = \big\langle\, w-1,\ w-1\,\big\rangle_{L^2},
+  \end{gather*}
+  so the RKHS cap replaces the raw fluctuation $w-1$ by its **kernel-smoothed** version
+  $\mathcal{K}(w-1)$. Fine-scale structure in the sampling pattern -- clustering below the correlation
+  length -- is damped by $\mathcal{K}$, because a smooth field simply cannot correlate with it. When
+  the field really is smooth at the kernel's scale, the $L^2$ worst-case aligner $w-1$ is *inadmissible*
+  in the smoothness ball (its RKHS norm blows up), and $R\|\psi\|$ is correspondingly smaller. The two
+  agree only in the white-noise limit $\mathcal{K}\to\text{const}\cdot\mathrm{Id}$, where the kernel
+  imposes no smoothing.
+
+A unifying way to read the whole construction: estimating $\mu$ is **numerical integration**
+(quadrature) of the field, and $B^{\mathrm{samp}}$ is the error of integrating with the floats' own
+*sampling measure* $\pi$ in place of the target measure $\alpha\otimes\tau$. The worst-case error of a
+quadrature rule over an RKHS ball is precisely a representer norm of this kind -- the cornerstone of
+worst-case/average-case integration and of Bayesian quadrature [@ohagan1991], and of optimal recovery
+of linear functionals more broadly [@micchelli1977]. In that language $\|\psi\|_{\mathcal{H}}$ is the
+worst-case quadrature error of the *mis-weighted* rule $\pi$ relative to $\alpha\otimes\tau$, and
+$R\|\psi\|_{\mathcal{H}}$ scales it by the field's assumed roughness.
+
+### Assumptions, observability, and which cap to report {#sec-samp-which}
+
+The RKHS cap buys tightness by spending assumptions, so it is genuinely complementary to
+$\sigma_w\sigma_Y$ rather than a replacement:
+
+- **Smoothness / correct specification.** $R\|\psi\|$ inherits the assumptions of @sec-grid -- $k$
+  correctly specified (non-stationary, per that section) and $Y \in \mathcal{H}_k$. If the kernel is
+  wrong, the cap can be optimistic. The Cauchy--Schwarz cap needs none of this.
+- **The design $\pi$.** Forming $\xi_\pi$ (hence $\psi$) requires the sampling intensity $\pi$, i.e. an
+  *estimated* weight $\hat w$ -- the same ingredient $\sigma_w$ already needs (@sec-samp). Neither cap
+  needs the field off-track; both need $R$ or $\sigma_Y$, which do (via the GP or the proxy, per
+  @sec-setup).
+- **The radius $R$.** Shared with @sec-grid and calibrated the same way (recipe @sec-grid-recipe).
+
+We therefore report **both** deterministic caps. When the smoothness model is granted, the operative
+deterministic bound on the preferential-sampling bias is the smaller of the two,
+\begin{gather*}
+\big|B^{\mathrm{samp}}\big| \;\le\; \min\!\big\{\, \sigma_w\,\sigma_Y,\;\; R\,\|\psi\|_{\mathcal{H}} \,\big\},
+\end{gather*}
+with the gap between them quantifying how much the smoothness assumption tightens the distribution-free
+worst case.
+
 ## Permutation test: a null distribution, not a bound
 
-The Cauchy--Schwarz cap of the previous section is the operative worst-case bound, and it is **not**
-improved by what follows. The permutation construction produces a *different object* -- a **reference
-(null) distribution** for the preferential-sampling bias under the hypothesis of no temperature
-preference -- which we use to interpret the realized bias and to gauge how conservative the
-Cauchy--Schwarz cap is, never as a tighter bound.
+The deterministic caps above -- Cauchy--Schwarz and its RKHS refinement -- are the operative worst-case
+bounds, and neither is improved by what follows. The permutation construction produces a *different
+object* -- a **reference (null) distribution** for the preferential-sampling bias under the hypothesis
+of no temperature preference -- which we use to interpret the realized bias and to gauge how
+conservative the deterministic caps are, never as a tighter bound.
 
 **Choosing the null.** The hypothesis we want is "the floats show no preference for warm/cold water,"
 i.e. the sampling intensity does not co-vary with $Y$. The stronger statement "the sampling locations
@@ -371,22 +495,22 @@ For the interpolate-everywhere estimator the total bias $B = \hat\mu - \mu$ is i
 functional of the field, and can be bounded using the structure of the interpolator (this subsumes the
 prediction term $B^{\mathrm{pred}}$, since the sampling geometry is carried by the weights). Write
 $x = (s,t) \in A\times\mathcal{T}$ for a space-time location and $x_i = (s_i,t_i)$ for the profiles.
-Our Gaussian-process model ([`nac_gp.qmd`](nac_gp.qmd)) fits a Matérn covariance $k(x,x')$
-(`matern_spheretime`, smoothness $\nu = 1/2$) on the sphere-plus-time domain, with
-reproducing-kernel Hilbert space (RKHS) $\mathcal{H}_k$ as the candidate smoothness class for the field
-[@stein1999].
+OHC is markedly non-stationary in this western-boundary-current region -- its variance and correlation
+ranges vary sharply across the NAC front [cf. @baugh2022] -- so we fit a **non-stationary**
+Gaussian-process covariance $k(x,x')$ on the sphere-plus-time domain and take its reproducing-kernel
+Hilbert space (RKHS) $\mathcal{H}_k$ as the smoothness class for the field [@stein1999]. Nothing in the
+derivation below assumes stationarity: the reproducing property, the Riesz representer, the closed-form
+$\|\eta\|_{\mathcal{H}}$, and the posterior-SE identity all hold verbatim for a general symmetric
+positive-definite $k$.
 
 The resulting bound is **not automatic**: it holds only under a set of assumptions, which we state
 rather than assume away.
 
-- **Kernel correctly specified.** The bound is only as trustworthy as $\mathcal{H}_k$'s description of
-  the field, and this is the *binding* assumption here. OHC is markedly non-stationary in this
-  western-boundary-current region -- its variance and correlation ranges vary sharply across the NAC
-  front -- whereas `matern_spheretime` is **stationary**. That stationary Matérn is therefore a
-  *preliminary* choice only; a non-stationary kernel (e.g. the kernel-convolution covariance of
-  @baugh2022) is ultimately required, and everything downstream -- $\mathcal{H}_k$, the assumption
-  $Y \in \mathcal{H}_k$, the radius $R$, the representer norm $\|\eta\|_{\mathcal{H}}$, and every number
-  they produce -- is **provisional under an assumption known to be violated here**, not a settled result.
+- **Correctly specified kernel.** The bound is only as trustworthy as $\mathcal{H}_k$'s description of
+  the field, and this is the *binding* assumption. A non-stationary $k$ is what makes it plausible: it
+  can match OHC's spatially varying variance and range across the front, whereas a stationary kernel
+  cannot. It remains an assumption -- $k$ must be well specified, with $Y \in \mathcal{H}_k$ -- that we
+  flag rather than treat as settled.
 - **Target in the RKHS, with known scale.** $Y \in \mathcal{H}_k$ and $\|Y\|_{\mathcal{H}} \le R$; the
   radius $R$ is estimated below, so the *computed* cap is itself an estimate.
 - **Noiseless point evaluations** at the profiles (an observation-error variance $\tau^2$ is
@@ -513,6 +637,12 @@ for the probabilistic version of this bound: if the nominal intervals cover it a
 the posterior SE is a trustworthy (probabilistic) bound on $B$; the minimax result upgrades it to a
 deterministic one at the cost of the single dimensionless constant $R$.
 
+The $\mathrm{SE}_{\mathrm{post}} = \|\eta^\star\|_{\mathcal{H}}$ identity and this coverage check are
+kernel-agnostic and hold for the non-stationary $k$ above. The specific figures currently produced by
+[`nac_gp.qmd`](nac_gp.qmd) come from its exploratory stationary `matern_spheretime` fit and are shown
+as **illustrative**, pending the non-stationary implementation; the identities carry over unchanged
+once $k$ is replaced.
+
 ::: {.callout-note collapse="true"}
 ## Derivation: why $\mathrm{SE}_{\mathrm{post}} = \|\eta^\star\|_{\mathcal{H}}$
 
@@ -541,12 +671,71 @@ $\tau^2$ simply replaces $K$ by $K + \tau^2 I$ throughout, adding the usual meas
 the posterior variance; the identity is otherwise unchanged.)
 :::
 
+## Computing the bound: what must be estimated {#sec-grid-recipe}
+
+Stripped to essentials, the minimax bound is $|B| \le R\,\mathrm{SE}_{\mathrm{post}}$: the
+**posterior standard error** of the space-time-mean -- a number the GP pipeline already produces --
+times a single **smoothness radius** $R$. Everything else is deterministic kernel bookkeeping and needs
+*no* knowledge of the field $Y$. Three objects carry the meaning:
+
+- $\xi_L$, the **Riesz representer of the mean functional**: the (unique) element of $\mathcal{H}_k$
+  whose inner product with any field returns that field's space-time average. It is computed once from
+  the kernel, $\xi_L(\cdot) = \int_{A\times\mathcal{T}} k(\cdot,x)\,d(\alpha\otimes\tau)(x)$.
+- $\eta = \xi_L - \sum_i \omega_i\,k(\cdot,x_i)$, the **residual representer**: what the estimator, a
+  weighted sum of point evaluations, fails to capture of $\xi_L$. Its norm $\|\eta\|_{\mathcal{H}}$ is
+  the worst-case leverage the unknown part of the field has on the bias, and at the kriging-optimal
+  weights it equals $\mathrm{SE}_{\mathrm{post}}$.
+- $R = \|Y\|_{\mathcal{H}_k}$, the **smoothness radius**: how "large" (rough/variable) the true field is
+  allowed to be in the kernel's geometry. It is the one input beyond the kernel, and the only genuinely
+  field-dependent quantity in the bound.
+
+The high-level recipe (deliberately omitting numerical specifics like quadrature rules) has
+**inputs** the profile space-time locations $x_1,\dots,x_n = (s_i,t_i)$ and the domain
+$A\times\mathcal{T}$ with its measure $\alpha\otimes\tau$ -- *no* field values $Y$ are needed for the
+bound itself -- and proceeds in five steps:
+
+1. **Fit the covariance kernel $k$.** Fit the (non-stationary) GP covariance to the profiles:
+   estimate the hyperparameters -- process variance $\sigma^2$, spatial and temporal length-scales,
+   smoothness, nugget $\tau^2$, and any non-stationarity parameters. This fixes $k$ and hence the
+   smoothness class $\mathcal{H}_k$.
+
+2. **Assemble three kernel quantities** (deterministic given $k$; no $Y$):
+
+   - the **Gram matrix** $K_{ij} = k(x_i, x_j)$, of size $n\times n$;
+   - the **mean-to-obs vector** $c_i = \int_{A\times\mathcal{T}} k(x, x_i)\,d(\alpha\otimes\tau)(x)$, of
+     length $n$ (by quadrature);
+   - the **mean-to-mean scalar** $v = \iint k(x, x')\,d(\alpha\otimes\tau)(x)\,d(\alpha\otimes\tau)(x')$
+     (by quadrature).
+
+3. **Posterior SE of the space-time mean** (this equals $\|\eta^\star\|_{\mathcal{H}}$). Solve the
+   kriging system $\omega^\star = (K + \tau^2 I)^{-1} c$ and form
+   \begin{gather*}
+   \mathrm{SE}_{\mathrm{post}}^2 \;=\; v \;-\; c^\top (K + \tau^2 I)^{-1} c .
+   \end{gather*}
+   Equivalently, read $\mathrm{SE}_{\mathrm{post}}$ straight from the GP predictor's output for the
+   space-time-mean functional -- it already computes this.
+
+4. **Choose the smoothness radius $R = \|Y\|_{\mathcal{H}_k}$.** Write $k = \sigma^2\, r$ with $r$ the
+   unit-variance correlation kernel; then $R = \rho/\sigma$, where $\rho$ is the dimensionless RKHS norm
+   of the standardized field. Calibrate $R$ (equivalently $\rho$) from the data or the reanalysis so the
+   implied worst-case field is physically plausible. This is the assumption-laden step; steps 1--3 are
+   not.
+
+5. **The minimax bound:** $\;|B| \le R\,\mathrm{SE}_{\mathrm{post}}$.
+
+Reading the recipe back: steps 1--3 turn the kernel and the sampling geometry into
+$\mathrm{SE}_{\mathrm{post}}$, entirely field-free; step 4 supplies the single smoothness scale $R$ that
+converts "how much the observations fail to pin down the mean" into "how far the bias can actually be";
+step 5 multiplies them. Sparse or clustered profiles enlarge $\mathrm{SE}_{\mathrm{post}}$ (and thus the
+bound), as they should, and a rougher assumed field (larger $R$) enlarges it further.
+
 # Bounding strategy {#sec-combine}
 
 The report delivers **three conceptually distinct objects**. They are complementary, and we keep them
 separate rather than collapsing them into a single number.
 
-**1. Deterministic worst-case upper bounds** -- two caps, from independent principles.
+**1. Deterministic worst-case upper bounds** -- from two independent principles, all sharing the
+representer/minimax structure of a bounded linear functional on the field.
 
 - *Model-based, on the total bias.* For the GP predictor $\hat\mu = \sum_i \omega_i Y(x_i)$ the RKHS
   minimax result of @sec-grid caps the whole bias,
@@ -556,12 +745,19 @@ separate rather than collapsing them into a single number.
   because the observation geometry -- including any preferential clustering -- is already encoded in
   the kriging weights $\omega_i$. It holds under the smoothness assumptions of @sec-grid (kernel
   correctly specified above all), and $R$ is estimated, so the computed cap is itself an estimate.
-- *Design-based, on the preferential-sampling component.* Independently, with no smoothness model, the
-  preferential-sampling term is capped distribution-free given the design,
+- *Design-based, on the preferential-sampling component* -- **two variants**, capping the same
+  $B^{\mathrm{samp}} = \operatorname{Cov}_{\alpha\otimes\tau}(w,Y)$ over different classes of field:
   \begin{gather*}
-  |B^{\mathrm{samp}}| \;\le\; \sigma_w\,\sigma_Y ,
+  |B^{\mathrm{samp}}| \;\le\; \sigma_w\,\sigma_Y \quad(\text{distribution-free; }L^2),
+  \qquad
+  |B^{\mathrm{samp}}| \;\le\; R\,\|\psi\|_{\mathcal{H}} \quad(\text{smoothness-aware; RKHS}),
   \end{gather*}
-  with $\sigma_w, \sigma_Y$ estimated (or read off the proxy in validation).
+  where $\psi = \xi_\pi - \xi_L$ is the sampling-bias representer (@sec-samp-rkhs). The first assumes
+  no smoothness (needs only $\sigma_w,\sigma_Y$); the second adds the RKHS model of @sec-grid but
+  restricts the adversary to smooth fields, so it is typically tighter. When smoothness is granted the
+  operative design cap is $\min\{\sigma_w\sigma_Y,\ R\|\psi\|_{\mathcal{H}}\}$, and the gap between the
+  two measures what the smoothness assumption buys. All of $\sigma_w,\sigma_Y,\psi,R$ are estimated (or
+  read off the proxy in validation).
 
 **2. A probabilistic guarantee.** From the same posterior, the GP interval gives
 \begin{gather*}
