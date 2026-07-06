@@ -378,15 +378,44 @@ functional of the field*,
 L(Y) = \int_{\mathcal X} Y(x)\bigl(w(x)-1\bigr)\,d\nu(x),
 \end{gather*}
 ```
-linear in $Y$ because $w$ does not depend on it. By the Riesz Representation Theorem -- the fact that
-makes RKHS methods work; see @wahba1990 or, for a statistics-oriented introduction, @berlinet2004 --
-there exists a unique $\psi\in\mathcal H_k$ satisfying $L(Y) = \langle Y,\psi\rangle_{\mathcal H_k}$,
+linear in $Y$ because $w$ does not depend on it. By the Riesz Representation Theoremthere exists a unique $\psi\in\mathcal H_k$ satisfying $L(Y) = \langle Y,\psi\rangle_{\mathcal H_k}$,
 given by
 ```{=latex}
 \begin{gather*}
 \psi(\cdot) = \int_{\mathcal X} k(\cdot,x)\bigl(w(x)-1\bigr)\,d\nu(x) 
 \end{gather*}
 ```
+
+where $k(\cdot,x)$ is the kernel function.
+
+Let $\pi$ be the **realized sampling measure**, $d\pi = w\,d\nu$ (so $\pi(\mathcal X) = \int_{\mathcal X}
+w\,d\nu = 1$: a genuine probability measure, the distribution the floats actually realize), and recall
+$\nu$ is the **uniform space-time target measure** already fixed in @sec-setup -- the measure that
+defines the estimand $\mu = \int Y\,d\nu$. For a probability measure $P$ on $\mathcal X$, its **kernel
+mean embedding** into $\mathcal H_k$ is the single RKHS element
+```{=latex}
+\begin{gather*}
+\mu_k(P)(\cdot) \;:=\; \int_{\mathcal X} k(\cdot,x)\,dP(x),
+\end{gather*}
+```
+which reproduces $P$-expectations of every $f \in \mathcal H_k$ via $\langle f, \mu_k(P)\rangle_{\mathcal
+H_k} = \int_{\mathcal X} f\,dP$ [@smola2007; @muandet2017]. Write $\xi_\pi := \mu_k(\pi)$ for the
+embedding of the sampling measure and $\xi_L := \mu_k(\nu)$ for the embedding of the target measure (the
+same $\xi_L$ that reappears as the Riesz representer of the mean functional in @sec-grid). Then $\psi$
+is exactly their difference,
+```{=latex}
+\begin{gather*}
+\boxed{\; \psi \;=\; \xi_\pi - \xi_L \;=\; \mu_k(\pi) - \mu_k(\nu). \;}
+\end{gather*}
+```
+immediate from linearity of the integral in $dP$ and $d\pi = w\,d\nu$: $\int k(\cdot,x)(w(x)-1)\,d\nu(x)
+= \int k(\cdot,x)\,d\pi(x) - \int k(\cdot,x)\,d\nu(x)$. This gives $\psi$ a direct geometric reading: it
+is the **displacement, in the RKHS, between where the floats actually sampled and the uniform target
+measure** -- exactly zero when $\pi = \nu$ (non-preferential sampling), and its norm
+$\|\psi\|_{\mathcal H_k} = \|\mu_k(\pi) - \mu_k(\nu)\|_{\mathcal H_k}$ is precisely the **(kernel)
+maximum mean discrepancy** between $\pi$ and $\nu$ [@gretton2012] -- so the RKHS worst-case cap below is
+$R$ times an MMD between the realized sampling distribution and the target.
+
 Applying the Cauchy--Schwarz inequality in the RKHS,
 ```{=latex}
 \begin{gather*}
@@ -403,6 +432,7 @@ minimax-linear-functional duality [@micchelli1977; @donoho1994]:
 attained at the worst-case field $Y^\star = R\psi/\|\psi\|_{\mathcal H_k}$.Compared with the $L^2$ bound, the RKHS bound exploits the smoothness encoded by the kernel; since the admissible class of functions is substantially
 smaller than all of $L^2(\nu)$, this bound is typically much tighter.
 
+$\|\psi\|$ measures how capable the sampling design of producing bias, if sampling is uniform then $w \approx 1$ and $\psi \approx 0$.
 
 
 ## Computing the RKHS Norm of the Representer
@@ -415,6 +445,8 @@ The RKHS norm of the representer admits the closed-form expression
 ```
 Importantly, this quantity depends only on the sampling design and the chosen
 covariance kernel, not on the unknown OHC field.
+
+We can use a non-stationary covariance kernel from our GP fit.
 
 Since the sampling density $w$ is unknown, it must first be estimated from the
 observed float locations. Possible approaches include
@@ -443,10 +475,9 @@ R=\|Y\|_{\mathcal H_k},
 \end{gather*}
 ```
 measures the complexity of the unknown true field relative to the chosen
-kernel, and is shared with the total-bias bound of @sec-grid (recipe @sec-grid-recipe). Unlike
-$\|\psi\|_{\mathcal H_k}$, it cannot be computed directly.
+kernel.
 
-Several practical strategies are available.
+Possible approaches include
 
 **1. Plug-in estimate from the fitted Gaussian process.**
 Let $\hat Y$ denote the posterior mean from a fitted Gaussian process model.
@@ -465,6 +496,9 @@ and
 \boxed{\; \|\hat Y\|_{\mathcal H_k}^2 = y^\top K^{-1}y. \;}
 \end{gather*}
 ```
+
+Where $K_{ij} = k(x_i,x_j)$, the GP covariance matrix.
+
 Since this interpolant is the minimum-RKHS-norm function matching the data,
 ```{=latex}
 \begin{gather*}
@@ -496,80 +530,21 @@ Both bounds are Cauchy--Schwarz applied to the *same* covariance
 $\int (w-1)(Y-\mu)\,d\nu$, but in **different inner-product spaces** -- and that changes
 which fields the worst case ranges over.
 
-- **In $L^2(\nu)$** (the cap $\sigma_w\sigma_Y$): the worst-case field is
-  $Y-\mu \propto w-1$ -- a field that copies the sampling weight's every wiggle. There is no smoothness
-  penalty, so this adversary may be arbitrarily rough. Distribution-free, but pessimistic.
-- **In $\mathcal{H}_k$** (the cap $R\|\psi\|$): the worst-case field is $Y^\star \propto \psi$ -- the
-  same alignment with $w-1$, but first **passed through the kernel**. Writing the covariance integral
-  operator $(\mathcal{K}g)(x) = \int k(x,x')\,g(x')\,d\nu(x')$,
-```{=latex}
-  \begin{gather*}
-  \|\psi\|_{\mathcal{H}}^2 = \big\langle\, w-1,\ \mathcal{K}(w-1)\,\big\rangle_{L^2}
-  \qquad\text{versus}\qquad \sigma_w^2 = \big\langle\, w-1,\ w-1\,\big\rangle_{L^2},
-  \end{gather*}
-```
-  so the RKHS cap replaces the raw fluctuation $w-1$ by its **kernel-smoothed** version
-  $\mathcal{K}(w-1)$. Fine-scale structure in the sampling pattern -- clustering below the correlation
-  length -- is damped by $\mathcal{K}$, because a smooth field simply cannot correlate with it. When
-  the field really is smooth at the kernel's scale, the $L^2$ worst-case aligner $w-1$ is *inadmissible*
-  in the smoothness ball (its RKHS norm blows up), and $R\|\psi\|$ is correspondingly smaller. The two
-  agree only in the white-noise limit $\mathcal{K}\to\text{const}\cdot\mathrm{Id}$, where the kernel
-  imposes no smoothing.
+- **In $L^2(\nu)$** (the bound $\sigma_w\sigma_Y$): the worst-case field is
+  $Y-\mu \propto w-1$. Distribution-free, but pessimistic.
+- **In $\mathcal{H}_k$** (the bound $R\|\psi\|$): the worst-case field is $Y^\star \propto \psi$.
 
-A unifying way to read the whole construction: estimating $\mu$ is **numerical integration**
-(quadrature) of the field, and $B_{\mathrm{samp}}$ is the error of integrating with the floats' own
-*sampling measure* $\pi$ in place of the target measure $\nu$. The worst-case error of a
-quadrature rule over an RKHS ball is precisely a representer norm of this kind -- the cornerstone of
-worst-case/average-case integration and of Bayesian quadrature [@ohagan1991], and of optimal recovery
-of linear functionals more broadly [@micchelli1977]. In that language $\|\psi\|_{\mathcal{H}}$ is the
-worst-case quadrature error of the *mis-weighted* rule $\pi$ relative to $\nu$, and
-$R\|\psi\|_{\mathcal{H}}$ scales it by the field's assumed roughness.
-The $L^2$ and RKHS bounds differ in the assumptions imposed on the unknown field, and hence in what they
-cost to compute:
-```{=latex}
-\begin{gather*}
-|B_{\mathrm{samp}}| \le \sigma_w\,\sigma_Y \quad(\text{distribution-free}), \qquad
-|B_{\mathrm{samp}}| \le R\,\|\psi\|_{\mathcal H_k} \quad(\text{smoothness-aware}).
-\end{gather*}
-```
-The first needs only finite second moments; the second additionally assumes $Y \in \mathcal{H}_k$ for a
-correctly specified kernel (non-stationary, per @sec-grid), buying a bound that is typically sharper
-because it restricts the worst case to smooth fields -- the $L^2$ worst-case aligner $w-1$ is
-inadmissible once the field is required to be smooth (above). Neither needs the field off
-the float track directly; both route through the same bridges as the rest of the report -- an estimated
-intensity $\hat w$ (both $\sigma_w$ and $\psi$ need it), a fitted-GP $\hat\sigma_Y$ or $R$
-(@sec-grid-recipe), or the reanalysis proxy in validation (@sec-validation) -- so the *computed* caps
-are themselves estimates.
-
-We therefore report **both** deterministic caps. When the smoothness model is granted, the operative
-bound on the preferential-sampling bias is the smaller of the two,
-```{=latex}
-\begin{gather*}
-\boxed{\;\big|B_{\mathrm{samp}}\big| \;\le\; \min\big\{\, \sigma_w\,\sigma_Y,\;\; R\,\|\psi\|_{\mathcal{H}_k} \,\big\}, \;}
-\end{gather*}
-```
-with the gap between them quantifying how much the smoothness assumption tightens the distribution-free
-worst case.
 
 # Permutation Test
 
-The deterministic caps above -- Cauchy--Schwarz and its RKHS refinement -- are the operative worst-case
-bounds, and neither is improved by what follows. The permutation construction produces a *different
-object* -- a **reference (null) distribution** for the preferential-sampling bias under the hypothesis
-of no temperature preference -- which we use to interpret the realized bias and to gauge how
-conservative the deterministic caps are, never as a tighter bound.
+The permutation construction below produces a *different a **reference (null) distribution** for the preferential-sampling bias under the hypothesis
+of no temperature preference, which we could use to interpret the realized bias and to gauge how conservative the deterministic caps are, never as a tighter bound.
 
-**Choosing the null.** The hypothesis we want is "the floats show no preference for warm/cold water,"
-i.e. the sampling intensity does not co-vary with $Y$. The stronger statement "the sampling locations
-are statistically independent of $Y$" is *not* it: Argo positions are constrained by bathymetry,
-coastlines, deployment logistics, and the advecting circulation, so independence can fail even with no
-temperature preference at all, and a test against pure independence would confound those physical
-constraints with genuine preferential sampling. We therefore hold the constraints fixed and vary only
-the alignment with $Y$.
+Consider the null hypothesis "the floats show no preference for warm/cold water,"
+i.e. the sampling intensity does not co-vary with $Y$.
 
 **Constrained-null resampling.** Let $\lambda_0$ be an estimated **non-preferential** intensity on
-$\mathcal{X}$ -- the sampling intensity expected from the physical constraints alone (land
-mask/bathymetry, deployment and drift geometry, seasonal cycle) with no dependence on $Y$; in practice
+$\mathcal{X}$; in practice
 a smooth intensity fit to the realized pattern with the field regressed out, or a mechanistic
 deployment-and-advection intensity, normalized to the probability measure
 $\pi_0 \propto \lambda_0$. For $b = 1,\dots,B$ we draw a null configuration
@@ -580,16 +555,6 @@ preferential-sampling statistic against the field held fixed:
 B_{\mathrm{samp}}^{(b)} \;=\; \tfrac{1}{n}\sum_i Y\big(x_i^{(b)}\big) - \mu , \qquad b = 1,\dots,B .
 \end{gather*}
 ```
-Its expectation is the design bias of the non-preferential intensity,
-$\operatorname{Cov}(w_0, Y)$ with $w_0 = d\pi_0/d\nu$; the spread
-across $b$ is the sampling variability of that geometry. Because the draws come from $\pi_0$, they
-inherit the pattern's clustering, coverage, land mask,
-and temporal spread while carrying no built-in alignment with $Y$; and since the resampling lives
-natively on $\mathcal{X}$, **temporal structure is preserved by construction**. This is the
-space-time, domain-valid replacement for area-preserving isometries, which do *not* apply on a
-land-masked irregular region (rotations and toroidal shifts move points onto land or outside $A$). It
-follows the standard logic of tests of spatial association [@clifford1989; @mantel1967]: preserve the
-nuisance structure, destroy only the association under test.
 
 **Observability.** Both $B_{\mathrm{samp}}^{(b)}$ and the realized statistic $\bar Y - \mu$ depend on
 $\mu$ and on $Y$ away from the profiles, so -- exactly as in @sec-decomp -- the permutation test is
@@ -613,7 +578,7 @@ p \;=\; \frac{1 + \#\{\, b : |B_{\mathrm{samp}}^{(b)}| \ge |\bar Y - \mu| \,\}}{
    $\sigma_w\sigma_Y$ measures how much slack the worst-case bound carries. That quantile is a property
    of the null, **not** an upper bound on the realized $B_{\mathrm{samp}}$.
 
-# The prediction bias: interpolation and change of support {#sec-grid}
+# Prediction Bias Bounds {#sec-grid}
 
 For the interpolate-everywhere estimator the total bias $B = \hat\mu - \mu$ is itself a linear
 functional of the field, and can be bounded using the structure of the interpolator (this subsumes the
