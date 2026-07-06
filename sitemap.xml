@@ -2,18 +2,38 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://dannymross.github.io/argo_bias/reports/nac_gp.html</loc>
-    <lastmod>2026-07-02T20:07:54.477Z</lastmod>
+    <lastmod>2026-07-06T21:22:15.662Z</lastmod>
   </url>
   <url>
-    <loc>https://dannymross.github.io/argo_bias/reports/nac_bound.html</loc>
-    <lastmod>2026-07-02T19:55:35.294Z</lastmod>
+    <loc>https://dannymross.github.io/argo_bias/reports/bias_bound_outlook.html</loc>
+    <lastmod>2026-07-06T21:22:15.627Z</lastmod>
+  </url>
+  <url>
+    <loc>https://dannymross.github.io/argo_bias/reports/bias_bound_prediction.html</loc>
+    <lastmod>2026-07-06T21:22:15.634Z</lastmod>
+  </url>
+  <url>
+    <loc>https://dannymross.github.io/argo_bias/reports/bias_bound_sampling.html</loc>
+    <lastmod>2026-07-06T21:22:15.642Z</lastmod>
   </url>
   <url>
     <loc>https://dannymross.github.io/argo_bias/index.html</loc>
-    <lastmod>2026-07-01T19:24:36.405Z</lastmod>
+    <lastmod>2026-07-02T20:11:36.642Z</lastmod>
+  </url>
+  <url>
+    <loc>https://dannymross.github.io/argo_bias/reports/bias_bound_motivation.html</loc>
+    <lastmod>2026-07-06T21:22:15.623Z</lastmod>
+  </url>
+  <url>
+    <loc>https://dannymross.github.io/argo_bias/reports/bias_bound_permutation.html</loc>
+    <lastmod>2026-07-06T21:22:15.630Z</lastmod>
+  </url>
+  <url>
+    <loc>https://dannymross.github.io/argo_bias/reports/bias_bound_validation.html</loc>
+    <lastmod>2026-07-06T21:22:15.647Z</lastmod>
   </url>
   <url>
     <loc>https://dannymross.github.io/argo_bias/reports/nac.html</loc>
-    <lastmod>2026-07-01T21:07:27.109Z</lastmod>
+    <lastmod>2026-07-06T21:22:15.654Z</lastmod>
   </url>
 </urlset>
