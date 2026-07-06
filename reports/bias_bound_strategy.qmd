@@ -1,0 +1,57 @@
+---
+title: "Bounding Strategy"
+---
+
+# Bounding strategy {#sec-combine}
+
+The report delivers **three conceptually distinct objects**. They are complementary, and we keep them
+separate rather than collapsing them into a single number.
+
+**1. Deterministic worst-case upper bounds** -- from two independent principles, all sharing the
+representer/minimax structure of a bounded linear functional on the field.
+
+- *Model-based, on the total bias.* For the GP predictor $\hat\mu = \sum_i \omega_i Y(x_i)$ the RKHS
+  minimax result of [Prediction Bias Bounds](bias_bound_prediction.qmd#sec-grid) caps the whole bias,
+```{=latex}
+  \begin{gather*}
+  |B| = |\hat\mu - \mu| \;\le\; R\,\|\eta\|_{\mathcal{H}},
+  \end{gather*}
+```
+  because the observation geometry -- including any preferential clustering -- is already encoded in
+  the kriging weights $\omega_i$. It holds under the smoothness assumptions of [Prediction Bias Bounds](bias_bound_prediction.qmd#sec-grid) (kernel
+  correctly specified above all), and $R$ is estimated, so the computed cap is itself an estimate.
+- *Design-based, on the preferential-sampling component* -- **two variants**, capping the same
+  $B_{\mathrm{samp}} = \operatorname{Cov}(w,Y)$ over different classes of field:
+```{=latex}
+  \begin{gather*}
+  |B_{\mathrm{samp}}| \;\le\; \sigma_w\,\sigma_Y \quad(\text{distribution-free; }L^2), \qquad
+  |B_{\mathrm{samp}}| \;\le\; R\,\|\psi\|_{\mathcal{H}} \quad(\text{smoothness-aware; RKHS}),
+  \end{gather*}
+```
+  where $\psi = \xi_\pi - \xi_\nu$ is the sampling-bias representer ([RKHS Worst-Case Bound](bias_bound_sampling.qmd#sec-samp-rkhs)). The first assumes
+  no smoothness (needs only $\sigma_w,\sigma_Y$); the second adds the RKHS model of [Prediction Bias Bounds](bias_bound_prediction.qmd#sec-grid) but
+  restricts the adversary to smooth fields, so it is typically tighter. When smoothness is granted the
+  operative design cap is $\min\{\sigma_w\sigma_Y,\ R\|\psi\|_{\mathcal{H}}\}$, and the gap between the
+  two measures what the smoothness assumption buys. All of $\sigma_w,\sigma_Y,\psi,R$ are estimated (or
+  read off the proxy in validation).
+
+**2. A probabilistic guarantee.** From the same posterior, the GP interval gives
+```{=latex}
+\begin{gather*}
+|B| \;\lesssim\; z_{0.975}\,\mathrm{SE}_{\mathrm{post}} \qquad (z_{0.975}\approx 1.96),
+\end{gather*}
+```
+a coverage statement at the stated $95\%$ level -- weaker than the deterministic cap, but free of the
+radius $R$, and calibrated by the interval coverage-rate check of [Validation](bias_bound_validation.qmd#sec-validation).
+
+**3. A permutation null distribution -- not a bound.** The construction of [Preferential Sampling Bounds](bias_bound_sampling.qmd#sec-samp) yields a reference
+distribution for $B_{\mathrm{samp}}$ under no temperature preference: a $p$-value for preferential
+sampling, and -- through the gap between an upper null quantile and $\sigma_w\sigma_Y$ -- a measure of
+how conservative the deterministic design cap is. Its quantiles describe the null and are **not** upper
+bounds on the realized bias.
+
+These are complementary lenses on the same bias: the RKHS cap answers "how far can the interpolated
+estimate sit from the domain mean," while the design cap isolates the part attributable specifically to
+*where and when* the floats sampled -- an attribution the RKHS cap alone cannot provide. (A fully
+distribution-free bound on the *total* would add the sampling cap to a change-of-support cap on
+$B_{\mathrm{pred}}$.)

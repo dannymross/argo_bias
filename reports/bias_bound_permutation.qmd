@@ -1,0 +1,46 @@
+---
+title: "Permutation Test"
+---
+
+# Permutation Test
+
+The permutation construction below produces a **reference (null) distribution** for the preferential-sampling bias under the hypothesis
+of no temperature preference, which we could use to interpret the realized bias and to gauge how conservative the deterministic caps are, never as a tighter bound.
+
+Consider the null hypothesis "the floats show no preference for warm/cold water,"
+i.e. the sampling intensity does not co-vary with $Y$.
+
+**Constrained-null resampling.** Let $\lambda_0$ be an estimated **non-preferential** intensity on
+$\mathcal{X}$; in practice
+a smooth intensity fit to the realized pattern with the field regressed out, or a mechanistic
+deployment-and-advection intensity, normalized to the probability measure
+$\pi_0 \propto \lambda_0$. For $b = 1,\dots,B$ we draw a null configuration
+$\{x_i^{(b)}\}_{i=1}^{n}$ (each $x_i^{(b)} = (s_i^{(b)}, t_i^{(b)})$) as an i.i.d. sample from $\pi_0$ and recompute the realized
+preferential-sampling statistic against the field held fixed:
+```{=latex}
+\begin{gather*}
+B_{\mathrm{samp}}^{(b)} \;=\; \tfrac{1}{n}\sum_i Y\big(x_i^{(b)}\big) - \mu , \qquad b = 1,\dots,B .
+\end{gather*}
+```
+
+**Observability.** Both $B_{\mathrm{samp}}^{(b)}$ and the realized statistic $\bar Y - \mu$ depend on
+$\mu$ and on $Y$ away from the profiles, so -- exactly as in [Bias decomposition](bias_bound_motivation.qmd#sec-decomp) -- the permutation test is
+**computed against the proxy field** (or a GP estimate $\hat Y$), not from float observations alone. It
+is a validation-stage diagnostic, not a field-free guarantee.
+
+**What it delivers.**
+
+1. **Evidence for preferential sampling** -- a Monte-Carlo $p$-value locating the realized bias in the
+   null,
+```{=latex}
+\begin{gather*}
+p \;=\; \frac{1 + \#\{\, b : |B_{\mathrm{samp}}^{(b)}| \ge |\bar Y - \mu| \,\}}{B + 1}.
+\end{gather*}
+ ```
+   A realized bias in the tail is evidence that floats sample $Y$ preferentially, over and above the
+   physical constraints encoded in $\lambda_0$.
+2. **A conservativeness diagnostic** -- the spread of $\{B_{\mathrm{samp}}^{(b)}\}$ is the bias the
+   sampling *geometry alone* would produce with no temperature preference; the gap between an upper
+   null quantile $q_{0.975}\big(\{\,|B_{\mathrm{samp}}^{(b)}|\,\}\big)$ and the Cauchy--Schwarz cap
+   $\sigma_w\sigma_Y$ measures how much slack the worst-case bound carries. That quantile is a property
+   of the null, **not** an upper bound on the realized $B_{\mathrm{samp}}$.

@@ -1,0 +1,18 @@
+---
+title: "Outlook -- Physical Validation by Trajectory Ensemble"
+---
+
+# Outlook: physical validation by trajectory ensemble {#sec-outlook}
+
+The bounds above are analytic and design-based. As an independent, physically-grounded check we will
+(in a later phase) generate an ensemble of float samplings under the *real* GLORYS advection using
+VirtualFleet, mapping each realization through the same `run_simulation` $\to$ `float_ohc` pipeline
+and computing its realized bias against the proxy as in [Validation](bias_bound_validation.qmd#sec-validation) (realized
+preferential-sampling bias $\tfrac{1}{n}\sum_i Y(x_i) - \mu$; total bias the GP space-time mean minus
+truth). The simulator is
+currently deterministic (one realization per configuration), so an
+ensemble requires injecting controlled randomness -- deployment jitter, and optionally a stochastic
+turbulent-diffusion kernel -- to obtain independent members. The empirical distribution of the
+physically-realized bias, wrapped in a nonparametric one-sided tolerance bound, then serves as a
+reality check that the analytic caps derived here actually cover the bias produced by floats drifting
+in a genuine western-boundary-current field.

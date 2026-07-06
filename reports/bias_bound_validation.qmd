@@ -1,0 +1,58 @@
+---
+title: "Validation Against a Complete-Coverage Reanalysis"
+bibliography: references.bib
+---
+
+# Validation against a complete-coverage reanalysis {#sec-validation}
+
+The bounds above are properties of the true field $Y$ and the realized float locations; the
+*inequalities* never assume $Y$ is known between profiles. To *check* them, however, we need the
+realized bias -- hence the full field and $\mu$ -- so this is the one section where the observability
+bridge of [Motivation and estimand](bias_bound_motivation.qmd#sec-setup) is cashed in: we take the **GLORYS12 reanalysis** as a proxy for $Y$ (hence
+$\mu$), an explicit, scoped assumption invoked here and nowhere in the derivations. With the proxy
+field in hand we form the realized quantities over the space-time domain: the total bias
+$B = \hat\mu - \mu$ (GP space-time mean of [`nac_gp.qmd`](nac_gp.qmd) minus the proxy domain mean), and
+the realized preferential-sampling bias $\bar Y - \mu = \tfrac{1}{n}\sum_i Y(x_i) - \mu$ (the proxy
+field at the profiles minus its domain mean). Neither is observable without the proxy -- which is
+exactly why they live here. (The exploratory, grid-based per-month `ohc_bias.compute_bias` is a
+diagnostic, not the rigorous decomposition.)
+
+**The identities are grid-free; the evaluations are not.** Every realized quantity above, and every
+ingredient of the caps -- $\mu$, $\sigma_Y$, $\sigma_w$, the representer norm $\|\eta\|_{\mathcal{H}}$,
+and the permutation statistics -- is computed numerically: by quadrature on the GLORYS grid, on the GP
+prediction grid, or by Monte-Carlo integration, each carrying its own (bounded or estimated) error. The
+mathematics of [Bias decomposition](bias_bound_motivation.qmd#sec-decomp) through [Prediction Bias Bounds](bias_bound_prediction.qmd#sec-grid) is grid-free; the implementation is not. Two points enter here
+and *only* here:
+
+- **Grid quadrature.** GLORYS supplies values on its $1/12^\circ$ grid over the resolved times, so the
+  domain mean is a space-time quadrature $\mu \approx \mu_N = \sum_c \nu(c)\, Y_c$ over
+  space-time cells $c$ ($\sum_c \nu(c) = 1$) -- a numerical evaluation of the estimand's
+  defining integral $\mu = \int_{\mathcal{X}} Y\,d\nu$ of [Motivation and estimand](bias_bound_motivation.qmd#sec-setup), in the
+  spirit of the area-measure quadrature of @baugh2022. (The per-month `ohc.truth_domain_mean` is the
+  exploratory, spatial-only version; the rigorous estimand aggregates over $\mathcal{X}$.) The
+  resulting quadrature error $B_{\mathrm{quad}} = \mu_N - \mu$ is a deterministic bounded linear
+  functional of $Y$, capped by the RKHS machinery of [Prediction Bias Bounds](bias_bound_prediction.qmd#sec-grid)
+  ($|B_{\mathrm{quad}}| \le R\|q\|_{\mathcal H}$, $q = \sum_c \nu(c)\, k(\cdot,x_c) - \xi_\nu$)
+  and negligible at $1/12^\circ$.
+- **Proxy fidelity.** The realized bias is computed against the reanalysis, not the ocean; validation
+  certifies the *bounding machinery*, with reanalysis error a separate, acknowledged layer (cross-
+  reanalysis spread is deferred).
+
+We then report, per depth horizon:
+
+- **Coverage** -- that each deterministic cap dominates the realized quantity it bounds. The
+  Cauchy--Schwarz cap holds for the design-defined $B_{\mathrm{samp}}$ exactly (given the design); its
+  proxy realization $\bar Y - \mu$ is dominated up to the point-process sampling variability of
+  [Bias decomposition](bias_bound_motivation.qmd#sec-decomp), and the RKHS / posterior-SE cap should dominate the realized total bias.
+- **Tightness** -- the ratio of bound to realized bias, quantifying the slack each guarantee carries.
+- **Calibration** -- the permutation $p$-values, and the GP interval coverage rates against the proxy
+  (the honesty check for the probabilistic bound of [Prediction Bias Bounds](bias_bound_prediction.qmd#sec-grid)).
+
+A bound that is provably valid *and* demonstrably covers the directly-computed proxy bias is what
+makes the result credible rather than merely formal -- subject to the reanalysis-proxy caveat above.
+
+
+# References {.unnumbered}
+
+::: {#refs}
+:::

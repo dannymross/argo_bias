@@ -1,0 +1,264 @@
+---
+title: "Prediction Bias Bounds"
+bibliography: references.bib
+---
+
+# Prediction Bias Bounds {#sec-grid}
+
+For the interpolate-everywhere estimator the total bias $B = \hat\mu - \mu$ is itself a linear
+functional of the field, and can be bounded using the structure of the interpolator (this subsumes the
+prediction term $B_{\mathrm{pred}}$, since the sampling geometry is carried by the weights).
+OHC is markedly non-stationary in this western-boundary-current region -- its variance and correlation
+ranges vary sharply across the NAC front [cf. @baugh2022] -- so we fit a **non-stationary**
+Gaussian-process covariance $k(x,x')$ on the sphere-plus-time domain and take its reproducing-kernel
+Hilbert space (RKHS) $\mathcal{H}_k$ as the smoothness class for the field [@stein1999; @muandet2017].
+Nothing in the
+derivation below assumes stationarity: the reproducing property, the Riesz representer, the closed-form
+$\|\eta\|_{\mathcal{H}}$, and the posterior-SE identity all hold verbatim for a general symmetric
+positive-definite $k$.
+
+The resulting bound is **not automatic**: it holds only under a set of assumptions, which we state
+rather than assume away.
+
+- **Correctly specified kernel.** The bound is only as trustworthy as $\mathcal{H}_k$'s description of
+  the field, and this is the *binding* assumption. A non-stationary $k$ is what makes it plausible: it
+  can match OHC's spatially varying variance and range across the front, whereas a stationary kernel
+  cannot. It remains an assumption -- $k$ must be well specified, with $Y \in \mathcal{H}_k$ -- that we
+  flag rather than treat as settled.
+- **Target in the RKHS, with known scale.** $Y \in \mathcal{H}_k$ and $\|Y\|_{\mathcal{H}} \le R$; the
+  radius $R$ is estimated below, so the *computed* cap is itself an estimate.
+- **Noiseless point evaluations** at the profiles (an observation-error variance $\tau^2$ is
+  accommodated by the final callout of this section).
+- **Fill distance / conditioning** of the observation set governs the size of
+  $\|\eta\|_{\mathcal{H}}$: sparse or clustered space-time sampling inflates it, as it should.
+
+## Linearity and the worst-case (minimax) bound
+
+Both the interpolated estimator and the target are **linear functionals** of the field. The kriging
+predictor of the space-time mean is
+```{=latex}
+\begin{gather*}
+\hat\mu \;=\; \sum_{i=1}^{n} \omega_i\, Y(x_i),
+\end{gather*}
+```
+a fixed linear combination of the $n$ observations at $x_1,\dots,x_n$ with kriging weights $\omega_i$;
+the target is $L(Y) = \mu = \int_{\mathcal{X}} Y\, d\nu$. Their difference is the
+residual functional
+```{=latex}
+\begin{gather*}
+\Delta(Y) \;=\; L(Y) - \sum_i \omega_i\, Y(x_i).
+\end{gather*}
+```
+Over an RKHS ball $\{\, Y : \|Y\|_{\mathcal{H}} \le R \,\}$, the worst-case reconstruction bias has a
+closed form (the minimax linear-estimation duality of @donoho1994; the representer theorem,
+@wahba1990):
+```{=latex}
+\begin{gather*}
+\boxed{\; \sup_{\|Y\|_{\mathcal{H}} \le R} \big| \Delta(Y) \big| \;=\; R\, \big\| \eta \big\|_{\mathcal{H}}, \qquad
+\eta \;=\; \xi_\nu - \sum_i \omega_i\, k(\cdot, x_i), \qquad
+\xi_\nu(\cdot) = \int_{\mathcal{X}} k(\cdot, x)\, d\nu(x) , \;}
+\end{gather*}
+```
+where $\xi_\nu \in \mathcal{H}$ is the Riesz representer of the space-time-mean functional
+($\langle \xi_\nu, f\rangle_{\mathcal{H}} = L(f)$ for all $f$); the defining integral is a Bochner
+integral in $\mathcal{H}$, well defined since $k$ is bounded and $\nu$ finite.
+
+::: {.callout-note collapse="true"}
+## Derivation: the residual functional is $\langle Y, \eta\rangle$, and its worst case is $R\|\eta\|$
+
+The one fact that makes everything linear-in-$Y$ collapse is the **reproducing property**: for every
+$f \in \mathcal{H}_k$ and location $x$, $f(x) = \langle f, k(\cdot, x)\rangle_{\mathcal{H}}$
+[@muandet2017]. Hence each
+point evaluation is an inner product, and so is the space-time-mean functional, by exchanging the
+(Bochner) integral with the inner product -- valid since $x \mapsto k(\cdot,x)$ is
+Bochner-$\nu$-integrable ($k$ bounded, $\nu$ finite):
+```{=latex}
+\begin{align*}
+L(Y) &= \int_{\mathcal{X}} Y(x)\, d\nu(x)
+= \int_{\mathcal{X}} \langle Y, k(\cdot,x)\rangle\, d\nu(x) \\
+&= \Big\langle Y,\ \int_{\mathcal{X}} k(\cdot,x)\, d\nu(x) \Big\rangle
+= \langle Y, \xi_\nu\rangle .
+\end{align*}
+```
+This identifies the Riesz representer $\xi_\nu(\cdot) = \int_{\mathcal{X}} k(\cdot,x)\,
+d\nu(x)$. Writing the point evaluations the same way, the residual functional becomes a
+single inner product:
+```{=latex}
+\begin{align*}
+\Delta(Y) &= \langle Y, \xi_\nu\rangle - \sum_i \omega_i \langle Y, k(\cdot,x_i)\rangle \\
+&= \Big\langle Y,\ \xi_\nu - \sum_i \omega_i\, k(\cdot,x_i)\Big\rangle
+= \langle Y, \eta\rangle .
+\end{align*}
+```
+Maximizing over the ball is then just Cauchy--Schwarz in $\mathcal{H}$:
+```{=latex}
+\begin{gather*}
+\sup_{\|Y\|_{\mathcal{H}} \le R} \big|\langle Y, \eta\rangle\big| = R\,\|\eta\|_{\mathcal{H}},
+\end{gather*}
+```
+attained at the worst-case field $Y^\star = R\,\eta/\|\eta\|_{\mathcal{H}}$ -- the smoothest field of
+norm $R$ that the observations cannot pin down.
+:::
+
+The norm of the residual representer is computable in closed form from the kernel alone:
+```{=latex}
+\begin{gather*}
+\big\| \eta \big\|_{\mathcal{H}}^2 = \underbrace{\iint k(x,x')\,d\nu(x)\,d\nu(x')}_{\langle \xi_\nu,\xi_\nu\rangle}
+\;-\; 2\sum_i \omega_i \int k(x, x_i)\, d\nu(x) \;+\; \sum_{i,j} \omega_i\, \omega_j\, k(x_i, x_j).
+\end{gather*}
+```
+
+::: {.callout-note collapse="true"}
+## Derivation: the closed-form representer norm
+
+Expand $\|\eta\|^2 = \langle \eta, \eta\rangle$ with $\eta = \xi_\nu - \sum_i \omega_i k(\cdot, x_i)$
+bilinearly:
+```{=latex}
+\begin{gather*}
+\|\eta\|_{\mathcal{H}}^2 = \langle \xi_\nu, \xi_\nu\rangle - 2\sum_i \omega_i\, \langle \xi_\nu, k(\cdot, x_i)\rangle
++ \sum_{i,j}\omega_i\,\omega_j\, \langle k(\cdot, x_i), k(\cdot, x_j)\rangle .
+\end{gather*}
+```
+Each inner product is evaluated by the reproducing property, $\langle g, k(\cdot, x)\rangle = g(x)$:
+
+- $\langle k(\cdot, x_i), k(\cdot, x_j)\rangle = k(x_i, x_j)$ -- the Gram matrix of the observations;
+- $\langle \xi_\nu, k(\cdot, x_i)\rangle = \xi_\nu(x_i) = \int_{\mathcal{X}} k(x, x_i)\,
+  d\nu(x)$ -- the mean-to-obs cross terms;
+- $\langle \xi_\nu, \xi_\nu\rangle = \int_{\mathcal{X}} \xi_\nu(x)\, d\nu(x)
+  = \iint k(x,x')\,d\nu(x)\,d\nu(x')$.
+
+Substituting gives the boxed formula. Nothing but the kernel $k$, the space-time measure
+$\nu$, and the kriging weights $\omega$ enters -- no knowledge of $Y$ is required to
+evaluate the bound (though $k$ must be the correctly specified kernel, per the assumptions above).
+:::
+
+This is exactly the kriging (posterior) variance of the space-time-mean functional, and since
+$\Delta(Y) = L(Y) - \sum_i \omega_i Y(x_i) = \mu - \hat\mu$, the bound caps the estimator's **total**
+bias $|B|$ (under the assumptions above). The radius $R$ sets the assumed smoothness scale of the field
+($\|Y\|_{\mathcal H} \le R$); it is estimated from the data via the fitted process variance $\sigma^2$
+(and cross-checked against the reanalysis in validation), so the deterministic cap
+$|B| \le R\, \|\eta\|_{\mathcal{H}}$ is itself an estimate rather than a quantity known a priori.
+
+## Link to the posterior standard error already computed
+
+When the weights $\omega$ are the kriging-optimal ones -- exactly those our GP predictor uses -- the
+residual-representer norm **equals** the GP posterior standard deviation of the space-time mean,
+$\mathrm{SE}_{\mathrm{post}} = \|\eta^\star\|_{\mathcal{H}}$. Hence the deterministic minimax cap is a
+**known multiple of the posterior SE**,
+```{=latex}
+\begin{gather*}
+\big| B \big| \;\le\; R\,\|\eta^\star\|_{\mathcal{H}} \;=\; R\cdot \mathrm{SE}_{\mathrm{post}}, \qquad R = \|Y\|_{\mathcal{H}_k} \;=\; \rho/\sigma,
+\end{gather*}
+```
+where $\rho = \|Y\|_{\mathcal{H}_r}$ is the reference field's norm in the unit-variance correlation
+kernel and $\sigma$ the fitted process standard deviation. That posterior SE is precisely what
+`ohc_gp_predict.R::kriging_predict` already returns and what [`nac_gp.qmd`](nac_gp.qmd) already turns
+into $\pm 1$ SE and $\pm 1.96$ SE prediction intervals. The existing $\pm 1.96\,\mathrm{SE}$
+coverage-rate calibration against the reference field is therefore precisely the **honesty check**
+for the probabilistic version of this bound: if the nominal intervals cover it at their stated rate,
+the posterior SE is a trustworthy (probabilistic) bound on $B$; the minimax result upgrades it to a
+deterministic one at the cost of the single dimensionless constant $R$.
+
+The $\mathrm{SE}_{\mathrm{post}} = \|\eta^\star\|_{\mathcal{H}}$ identity and this coverage check are
+kernel-agnostic and hold for the non-stationary $k$ above. The specific figures currently produced by
+[`nac_gp.qmd`](nac_gp.qmd) come from its exploratory stationary `matern_spheretime` fit and are shown
+as **illustrative**, pending the non-stationary implementation; the identities carry over unchanged
+once $k$ is replaced.
+
+::: {.callout-note collapse="true"}
+## Derivation: why $\mathrm{SE}_{\mathrm{post}} = \|\eta^\star\|_{\mathcal{H}}$
+
+Write the observation Gram matrix $K_{ij} = k(x_i, x_j)$ and the mean-to-obs vector
+$c_i = \xi_\nu(x_i) = \int_{\mathcal{X}} k(x,x_i)\,d\nu(x)$. The (noiseless)
+simple-kriging weights minimize $\|\eta\|^2$ over $\omega$; setting the gradient of the closed-form
+norm to zero,
+```{=latex}
+\begin{gather*}
+\nabla_\omega\Big(\langle\xi_\nu,\xi_\nu\rangle - 2\,\omega^\top c + \omega^\top K \omega\Big) = 0 \;\Longrightarrow\; \omega^\star = K^{-1} c .
+\end{gather*}
+```
+Substituting back,
+```{=latex}
+\begin{align*}
+\|\eta^\star\|_{\mathcal{H}}^2
+&= \langle\xi_\nu,\xi_\nu\rangle - 2\,\omega^{\star\top} c + \omega^{\star\top} K \omega^\star \\
+&= \langle\xi_\nu,\xi_\nu\rangle - c^\top K^{-1} c .
+\end{align*}
+```
+This is identically the Gaussian-process posterior variance of the linear functional $L(Y)$ given the
+observations,
+```{=latex}
+\begin{gather*}
+\operatorname{Var}\!\big(L(Y) \mid Y(x_1),\dots,Y(x_n)\big) = \underbrace{\textstyle\iint k\,d\nu\,d\nu}_{\langle\xi_\nu,\xi_\nu\rangle} - c^\top K^{-1} c ,
+\end{gather*}
+```
+so $\mathrm{SE}_{\mathrm{post}} = \|\eta^\star\|_{\mathcal{H}}$. (A nugget/observation-error variance
+$\tau^2$ simply replaces $K$ by $K + \tau^2 I$ throughout, adding the usual measurement-noise term to
+the posterior variance; the identity is otherwise unchanged.)
+:::
+
+## Computing the bound: what must be estimated {#sec-grid-recipe}
+
+Stripped to essentials, the minimax bound is $|B| \le R\,\mathrm{SE}_{\mathrm{post}}$: the
+**posterior standard error** of the space-time-mean -- a number the GP pipeline already produces --
+times a single **smoothness radius** $R$. Everything else is deterministic kernel bookkeeping and needs
+*no* knowledge of the field $Y$. Three objects carry the meaning:
+
+- $\xi_\nu$, the **Riesz representer of the mean functional**: the (unique) element of $\mathcal{H}_k$
+  whose inner product with any field returns that field's space-time average. It is computed once from
+  the kernel, $\xi_\nu(\cdot) = \int_{\mathcal{X}} k(\cdot,x)\,d\nu(x)$.
+- $\eta = \xi_\nu - \sum_i \omega_i\,k(\cdot,x_i)$, the **residual representer**: what the estimator, a
+  weighted sum of point evaluations, fails to capture of $\xi_\nu$. Its norm $\|\eta\|_{\mathcal{H}}$ is
+  the worst-case leverage the unknown part of the field has on the bias, and at the kriging-optimal
+  weights it equals $\mathrm{SE}_{\mathrm{post}}$.
+- $R = \|Y\|_{\mathcal{H}_k}$, the **smoothness radius**: how "large" (rough/variable) the true field is
+  allowed to be in the kernel's geometry. It is the one input beyond the kernel, and the only genuinely
+  field-dependent quantity in the bound.
+
+The high-level recipe (deliberately omitting numerical specifics like quadrature rules) has
+**inputs** the profile space-time locations $x_1,\dots,x_n$ and the domain
+$\mathcal{X}$ with its measure $\nu$ -- *no* field values $Y$ are needed for the
+bound itself -- and proceeds in five steps:
+
+1. **Fit the covariance kernel $k$.** Fit the (non-stationary) GP covariance to the profiles:
+   estimate the hyperparameters -- process variance $\sigma^2$, spatial and temporal length-scales,
+   smoothness, nugget $\tau^2$, and any non-stationarity parameters. This fixes $k$ and hence the
+   smoothness class $\mathcal{H}_k$.
+
+2. **Assemble three kernel quantities** (deterministic given $k$; no $Y$):
+
+   - the **Gram matrix** $K_{ij} = k(x_i, x_j)$, of size $n\times n$;
+   - the **mean-to-obs vector** $c_i = \int_{\mathcal{X}} k(x, x_i)\,d\nu(x)$, of
+     length $n$ (by quadrature);
+   - the **mean-to-mean scalar** $v = \iint k(x, x')\,d\nu(x)\,d\nu(x')$
+     (by quadrature).
+
+3. **Posterior SE of the space-time mean** (this equals $\|\eta^\star\|_{\mathcal{H}}$). Solve the
+   kriging system $\omega^\star = (K + \tau^2 I)^{-1} c$ and form
+```{=latex}
+   \begin{gather*}
+   \mathrm{SE}_{\mathrm{post}}^2 \;=\; v \;-\; c^\top (K + \tau^2 I)^{-1} c .
+   \end{gather*}
+ ```
+   Equivalently, read $\mathrm{SE}_{\mathrm{post}}$ straight from the GP predictor's output for the
+   space-time-mean functional -- it already computes this.
+
+4. **Choose the smoothness radius $R = \|Y\|_{\mathcal{H}_k}$.** Write $k = \sigma^2\, r$ with $r$ the
+   unit-variance correlation kernel; then $R = \rho/\sigma$, where $\rho$ is the dimensionless RKHS norm
+   of the standardized field. Calibrate $R$ (equivalently $\rho$) from the data or the reanalysis so the
+   implied worst-case field is physically plausible. This is the assumption-laden step; steps 1--3 are
+   not.
+
+5. **The minimax bound:** $\;|B| \le R\,\mathrm{SE}_{\mathrm{post}}$.
+
+Reading the recipe back: steps 1--3 turn the kernel and the sampling geometry into
+$\mathrm{SE}_{\mathrm{post}}$, entirely field-free; step 4 supplies the single smoothness scale $R$ that
+converts "how much the observations fail to pin down the mean" into "how far the bias can actually be";
+step 5 multiplies them. Sparse or clustered profiles enlarge $\mathrm{SE}_{\mathrm{post}}$ (and thus the
+bound), as they should, and a rougher assumed field (larger $R$) enlarges it further.
+
+
+# References {.unnumbered}
+
+::: {#refs}
+:::
