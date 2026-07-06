@@ -44,19 +44,25 @@ $(A \times \mathcal{T},\, \mathcal{B}(A)\otimes\mathcal{B}(\mathcal{T}))$; every
 below is taken on it. Let $|\cdot|$ denote surface (area) measure on $(A, \mathcal{B}(A))$ and
 $\alpha$ the induced **normalized area probability measure**, $\alpha(E) = |E|/|A|$ for
 $E \in \mathcal{B}(A)$, and let $\tau$ be a **normalized (probability) measure on $\mathcal{T}$**
-(uniform over the study period unless stated otherwise). Then $(A \times \mathcal{T},\;
-\mathcal{B}(A)\otimes\mathcal{B}(\mathcal{T}),\; \alpha\otimes\tau)$ is a probability space, and the
-**estimand** is the true space-time-mean OHC, the Lebesgue integral of $Y$ against the product measure:
+(uniform over the study period unless stated otherwise). Write $\nu := \alpha\otimes\tau$ for the
+resulting **space-time probability measure** on $A\times\mathcal{T}$; then
+$(A \times \mathcal{T},\; \mathcal{B}(A)\otimes\mathcal{B}(\mathcal{T}),\; \nu)$ is a probability space,
+and the **estimand** is the true space-time-mean OHC, the Lebesgue integral of $Y$ against $\nu$:
 \begin{gather*}
-\mu \;=\; \int_{A\times\mathcal{T}} Y \,d(\alpha\otimes\tau) \;=\; \mathbb{E}_{\alpha\otimes\tau}[Y] .
+\mu \;=\; \int_{A\times\mathcal{T}} Y \,d\nu \;=\; \mathbb{E}[Y] .
 \end{gather*}
-(In lat/lon/time coordinates $d(\alpha\otimes\tau)(s,t) = a(s)\,\theta(t)\,ds\,dt$, with
+**Notational convention.** Throughout, unsubscripted expectations $\mathbb{E}$, variances
+$\operatorname{Var}$, covariances $\operatorname{Cov}$, standard deviations ($\sigma_Y$, $\sigma_w$),
+correlations ($\rho_{w,Y}$), and $L^2$ inner products are all taken with respect to $\nu$; we drop the
+subscript. Expectations over the sampling *point process* carry an explicit subscript $\mathbb{E}_N$ to
+keep the two kinds of averaging distinct.
+(In lat/lon/time coordinates $d\nu(s,t) = a(s)\,\theta(t)\,ds\,dt$, with
 $a \propto \cos(\mathrm{lat})$ the Radon--Nikodym derivative of $\alpha$ w.r.t. coordinate Lebesgue
 measure ($\int_A a\,ds = 1$) and $\theta$ that of $\tau$ ($\int_{\mathcal{T}} \theta\,dt = 1$); this is
 only the computational form.) A purely spatial, synoptic estimand is the special case $\tau =
 \delta_{t_0}$, giving $\mu_{t_0} = \int_A Y(\cdot,t_0)\,d\alpha$; every identity and bound below
 specializes to it verbatim. We take the intensive (mean) OHC as primary because integrating against a
-*probability* measure is what makes $\mathbb{E}_{\alpha\otimes\tau}$ an expectation, $\sigma_Y$ a
+*probability* measure is what makes $\mathbb{E}$ an expectation, $\sigma_Y$ a
 genuine standard deviation, and $\rho_{w,Y}$ a correlation; the extensive **total** OHC is the fixed
 rescaling $\mathrm{OHC}_{\mathrm{tot}} = |A|\,\mu$ by the known region area $|A|$, so every bias and
 bound carries over by multiplying through by the constant $|A|$ (e.g. $B_{\mathrm{total}} = |A|\,B$,
@@ -90,8 +96,8 @@ coverage -- as a proxy for $Y$ (hence for $\mu$): an explicit, scoped assumption
 Floats do not sample the domain evenly. Condition throughout on the realized sampling configuration,
 and summarize *where and when* the floats go by a **sampling weight** $w(s,t) \ge 0$: $w > 1$ where the
 design concentrates and $w < 1$ where it is sparse, normalized so its space-time average is one,
-$\mathbb{E}_{\alpha\otimes\tau}[w] = 1$ (throughout, $\mathbb{E}_{\alpha\otimes\tau}$ denotes the
-space-time average over $A\times\mathcal{T}$ of @sec-setup). This $w$ is the deterministic weight *of
+$\mathbb{E}[w] = 1$ (all such moments are with respect to $\nu$, per @sec-setup). This $w$ is the
+deterministic weight *of
 the conditioned design* (formally a Radon--Nikodym derivative -- see the callout); it is distinct both
 from the random, atomic empirical point pattern itself and from any estimate $\hat w$ built from that
 pattern, and we keep the three separate. An evenly spread, representative design has $w \equiv 1$;
@@ -102,10 +108,10 @@ below gives the measure-theoretic definition of $w$ as a point-process intensity
 it requires.)
 
 Naively averaging the float observations does not recover the domain mean
-$\mu = \mathbb{E}_{\alpha\otimes\tau}[Y]$ but the **design-mean** -- the field averaged with the
+$\mu = \mathbb{E}[Y]$ but the **design-mean** -- the field averaged with the
 floats' own weighting --
 \begin{gather*}
-\mu_w \;=\; \mathbb{E}_{\alpha\otimes\tau}[w\,Y] .
+\mu_w \;=\; \mathbb{E}[w\,Y] .
 \end{gather*}
 Inserting $\mu_w$ between the estimate and the estimand gives an exact two-term decomposition on the
 continuous domain of @sec-setup -- no partition of $A\times\mathcal{T}$ is introduced, so the *identity*
@@ -117,13 +123,13 @@ B \;=\; \hat\mu - \mu
 \;+\; \underbrace{\big(\hat\mu - \mu_w\big)}_{\displaystyle B^{\mathrm{pred}}} .
 \end{gather*}
 The split is an algebraic identity, exact for every realization and for any $w$ with
-$\mathbb{E}_{\alpha\otimes\tau}[w] = 1$.
+$\mathbb{E}[w] = 1$.
 
 - **$B^{\mathrm{samp}}$ -- the preferential-sampling bias** (we use this term rather than the broader
   survey-sampling label "design bias", with which it coincides here) depends only on *where and when*
   the floats sample (through $w$) and the field, not on how we reconstruct it: the gap between the
   sampling-weighted mean and the domain mean. It is the pure "floats went to the warm/cold water"
-  effect; @sec-samp shows $B^{\mathrm{samp}} = \operatorname{Cov}_{\alpha\otimes\tau}(w, Y)$.
+  effect; @sec-samp shows $B^{\mathrm{samp}} = \operatorname{Cov}(w, Y)$.
 - **$B^{\mathrm{pred}}$ -- the prediction bias** is the estimator's departure from the design-mean
   $\mu_w$: the error incurred in turning sparse point observations into an areal field estimate. Its
   mechanism is a **change of support** -- reconciling the point-support observations with the
@@ -143,7 +149,7 @@ weight and the field), bounded distribution-free (@sec-samp); $B^{\mathrm{pred}}
 *approximation-theory* quantity (a linear-functional reconstruction error over a smoothness class),
 bounded through the interpolator's RKHS structure (@sec-grid). For the interpolate-everywhere GP
 estimator the RKHS machinery bounds the *total* error $\hat\mu - \mu$ directly against the continuous
-estimand -- the target functional is $L(Y) = \int_{A\times\mathcal{T}} Y\,d(\alpha\otimes\tau)$ -- under
+estimand -- the target functional is $L(Y) = \int_{A\times\mathcal{T}} Y\,d\nu$ -- under
 the smoothness assumptions catalogued in @sec-grid; the design split is what additionally isolates and
 caps the preferential-sampling contribution on its own.
 
@@ -152,28 +158,28 @@ caps the preferential-sampling contribution on its own.
 
 The floats realize a spatio-temporal point process $N$ on
 $(A\times\mathcal{T},\, \mathcal{B}(A)\otimes\mathcal{B}(\mathcal{T}))$ with intensity measure
-$\Lambda(E) = \mathbb{E}[N(E)]$ (the expected number of profiles falling in $E$). Assume
-$\Lambda \ll \alpha\otimes\tau$ (the sampling has no singular part relative to space-time volume); the
+$\Lambda(E) = \mathbb{E}_N[N(E)]$ (the expected number of profiles falling in $E$). Assume
+$\Lambda \ll \nu$ (the sampling has no singular part relative to space-time volume); the
 sampling weight is then the Radon--Nikodym derivative
 \begin{gather*}
-w \;=\; \frac{d\pi}{d(\alpha\otimes\tau)} \in L^2(\alpha\otimes\tau),
+w \;=\; \frac{d\pi}{d\nu} \in L^2(\nu),
 \qquad \pi \;=\; \frac{\Lambda}{\Lambda(A\times\mathcal{T})},
-\qquad \int w \,d(\alpha\otimes\tau) \;=\; \mathbb{E}_{\alpha\otimes\tau}[w] \;=\; 1 ,
+\qquad \int w \,d\nu \;=\; \mathbb{E}[w] \;=\; 1 ,
 \end{gather*}
-of the normalized sampling measure $\pi$ with respect to $\alpha\otimes\tau$, and non-preferential
-sampling is $\pi = \alpha\otimes\tau$. The log-linear model of @diggle2010 is
-$d\Lambda/d(\alpha\otimes\tau) \propto \exp\{\beta\,Y\}$, and the design-mean is the field integrated
+of the normalized sampling measure $\pi$ with respect to $\nu$, and non-preferential
+sampling is $\pi = \nu$. The log-linear model of @diggle2010 is
+$d\Lambda/d\nu \propto \exp\{\beta\,Y\}$, and the design-mean is the field integrated
 against the sampling measure,
-$\mu_w = \int Y\,d\pi = \int w\,Y\,d(\alpha\otimes\tau) = \mathbb{E}_{\alpha\otimes\tau}[w\,Y]$.
+$\mu_w = \int Y\,d\pi = \int w\,Y\,d\nu = \mathbb{E}[w\,Y]$.
 
-We assume $w \in L^2(\alpha\otimes\tau)$ -- this is what makes $\sigma_w$ finite and Cauchy--Schwarz
+We assume $w \in L^2(\nu)$ -- this is what makes $\sigma_w$ finite and Cauchy--Schwarz
 applicable, but it is a genuine restriction: highly concentrated designs (in the limit, the purely
 atomic empirical pattern of a finite sample, which is *not* absolutely continuous w.r.t.
-$\alpha\otimes\tau$) admit no such density, and the bounds below then apply to a regularized/estimated
+$\nu$) admit no such density, and the bounds below then apply to a regularized/estimated
 intensity $\hat w \in L^2$ rather than to the raw point pattern.
 
 Two probabilistic caveats. Campbell's theorem gives
-$\mathbb{E}\big[\sum_i Y(s_i,t_i)\big] = \int Y\,d\Lambda$ -- an identity in expectation, nothing more.
+$\mathbb{E}_N\big[\sum_i Y(s_i,t_i)\big] = \int Y\,d\Lambda$ -- an identity in expectation, nothing more.
 It does **not** by itself imply that the empirical measure $\tfrac{1}{n}\sum_i \delta_{(s_i,t_i)}$
 converges to $\pi$, nor that $\bar Y \to \mu_w$; that convergence is a law of large numbers for the
 point process, requiring the ergodicity / increasing-domain conditions noted in the main text. We
@@ -187,16 +193,16 @@ proxy-evaluated realization, not as a consistent estimator handed over for free 
 ## A design-based covariance identity
 
 Conditioning on the realized design (so $w$ is the deterministic weight of @sec-decomp), subtracting
-$\mu = \mathbb{E}_{\alpha\otimes\tau}[Y]$ from the design-mean $\mu_w = \mathbb{E}_{\alpha\otimes\tau}[wY]$
-and using $\mathbb{E}_{\alpha\otimes\tau}[w] = 1$ gives the identity at the heart of the
+$\mu = \mathbb{E}[Y]$ from the design-mean $\mu_w = \mathbb{E}[wY]$
+and using $\mathbb{E}[w] = 1$ gives the identity at the heart of the
 preferential-sampling literature (the design-based view of @horvitz1952; the continuous formulation of
 @diggle2010):
 \begin{gather*}
-\boxed{\;B^{\mathrm{samp}} \;=\; \mathbb{E}_{\alpha\otimes\tau}[w\,Y] - \mathbb{E}_{\alpha\otimes\tau}[Y]
-\;=\; \mathbb{E}_{\alpha\otimes\tau}[(w-1)\,Y] \;=\; \operatorname{Cov}_{\alpha\otimes\tau}(w,\, Y)\; }
+\boxed{\;B^{\mathrm{samp}} \;=\; \mathbb{E}[w\,Y] - \mathbb{E}[Y]
+\;=\; \mathbb{E}[(w-1)\,Y] \;=\; \operatorname{Cov}(w,\, Y)\; }
 \end{gather*}
-where $\operatorname{Cov}_{\alpha\otimes\tau}(w,Y) = \int_{A\times\mathcal{T}} (w-1)(Y-\mu)\,
-d(\alpha\otimes\tau)$ is the covariance under $\alpha\otimes\tau$. **Given the design, the
+where $\operatorname{Cov}(w,Y) = \int_{A\times\mathcal{T}} (w-1)(Y-\mu)\,
+d\nu$ is the covariance under $\nu$. **Given the design, the
 preferential-sampling bias is exactly the covariance between the sampling intensity and the field** --
 an exact identity, not an approximation. If floats sample independently of OHC, $w \perp Y$ and the
 bias vanishes; bias arises precisely to the extent that the sampling intensity co-varies with the
@@ -205,29 +211,29 @@ heat-content field (equivalently, $\beta \ne 0$ in the log-linear intensity of @
 ::: {.callout-note collapse="true"}
 ## Derivation: the covariance identity
 
-Expand the covariance under $\alpha\otimes\tau$ about its means, using
-$\mathbb{E}_{\alpha\otimes\tau}[w] = 1$ and $\mathbb{E}_{\alpha\otimes\tau}[Y] = \mu$:
+Expand the covariance under $\nu$ about its means, using
+$\mathbb{E}[w] = 1$ and $\mathbb{E}[Y] = \mu$:
 \begin{align*}
-\operatorname{Cov}_{\alpha\otimes\tau}(w, Y)
-&= \int_{A\times\mathcal{T}} (w - 1)(Y - \mu)\,d(\alpha\otimes\tau) \\
-&= \int_{A\times\mathcal{T}} (w-1)\,Y\,d(\alpha\otimes\tau) \;-\;
-   \mu\underbrace{\int_{A\times\mathcal{T}} (w-1)\,d(\alpha\otimes\tau)}_{=\,\mathbb{E}_{\alpha\otimes\tau}[w]-1\,=\,0} .
+\operatorname{Cov}(w, Y)
+&= \int_{A\times\mathcal{T}} (w - 1)(Y - \mu)\,d\nu \\
+&= \int_{A\times\mathcal{T}} (w-1)\,Y\,d\nu \;-\;
+   \mu\underbrace{\int_{A\times\mathcal{T}} (w-1)\,d\nu}_{=\,\mathbb{E}[w]-1\,=\,0} .
 \end{align*}
 The second term vanishes because the intensity is normalized, leaving
-$\operatorname{Cov}_{\alpha\otimes\tau}(w,Y) = \mathbb{E}_{\alpha\otimes\tau}[wY] - \mu =
+$\operatorname{Cov}(w,Y) = \mathbb{E}[wY] - \mu =
 B^{\mathrm{samp}}$. Given the design, no distributional assumption on $Y$ or on the sampling is used,
 and no grid: the identity is exact for every realization.
 :::
 
 ## Cauchy--Schwarz Upper Bound
 
-Applying the Cauchy--Schwarz inequality in $L^2(\alpha\otimes\tau)$ to the covariance gives a bound
+Applying the Cauchy--Schwarz inequality in $L^2(\nu)$ to the covariance gives a bound
 that holds for *any* field and *any* design:
 \begin{gather*}
-\big| B^{\mathrm{samp}} \big| \;=\; \big|\operatorname{Cov}_{\alpha\otimes\tau}(w,\, Y)\big|
+\big| B^{\mathrm{samp}} \big| \;=\; \big|\operatorname{Cov}(w,\, Y)\big|
 \;=\; \big|\rho_{w,Y}\big|\; \sigma_w\, \sigma_Y \;\le\; \sigma_w\, \sigma_Y ,
 \end{gather*}
-with the standard deviations under $\alpha\otimes\tau$. The correlation $\rho_{w,Y}$ is the only
+with the standard deviations under $\nu$. The correlation $\rho_{w,Y}$ is the only
 unknown, and bounding it by $1$ gives the worst case.
 
 The **inequality** is field-free -- it needs no knowledge of $Y$. Its **ingredients are not**: per
@@ -243,8 +249,8 @@ read off the observations for free.
 ### Illustrative Example
 
 To read off a scale for the cap, consider **one particular** idealized intensity: floats cover a
-space-time sub-region $D_f \subseteq A\times\mathcal{T}$ of measure $f = (\alpha\otimes\tau)(D_f)$
-uniformly and sample nowhere else, so $\pi(E) = (\alpha\otimes\tau)(E \cap D_f)/f$, whose density is
+space-time sub-region $D_f \subseteq A\times\mathcal{T}$ of measure $f = \nu(D_f)$
+uniformly and sample nowhere else, so $\pi(E) = \nu(E \cap D_f)/f$, whose density is
 $w = 1/f$ on $D_f$ and $w = 0$ off it. Then $\sigma_w^2 = (1-f)/f$ and
 \begin{gather*}
 \big| B^{\mathrm{samp}} \big| \;\le\; \sigma_Y \sqrt{\tfrac{1-f}{f}} .
@@ -257,11 +263,11 @@ sampling in general; the operative cap remains $\sigma_w\,\sigma_Y$ for whatever
 
 This closed form is an *illustration*, not the operative bound. The empirical measure
 $\tfrac{1}{n}\sum_i \delta_{(s_i,t_i)}$ of a finite point pattern is purely atomic, hence *not*
-absolutely continuous with respect to $\alpha\otimes\tau$ and admitting no density
-$w \in L^2(\alpha\otimes\tau)$; the covered fraction $f = (\alpha\otimes\tau)(\bigcup_i
+absolutely continuous with respect to $\nu$ and admitting no density
+$w \in L^2(\nu)$; the covered fraction $f = \nu(\bigcup_i
 \text{footprint}(s_i,t_i))$ is defined only after each float is assigned a representativeness footprint
 (e.g. a disc of one correlation length in space and time) that smooths the atoms into a design
-$\pi \ll \alpha\otimes\tau$. Unlike the general cap $\sigma_w\sigma_Y$, a functional of the intensity
+$\pi \ll \nu$. Unlike the general cap $\sigma_w\sigma_Y$, a functional of the intensity
 alone, the closed form inherits a dependence on that footprint scale, and shrinking the scale drives
 $f \to 0$ and the cap $\to \infty$. We therefore report $\sigma_w\sigma_Y$ as the operative cap and
 $\sigma_Y\sqrt{(1-f)/f}$ only for interpretation.
@@ -270,10 +276,10 @@ $\sigma_Y\sqrt{(1-f)/f}$ only for interpretation.
 ::: {.callout-note collapse="true"}
 ## Derivation: the closed form for $\sigma_w$
 
-Take the hard-footprint density $w = 1/f$ on $D_f$ (with $(\alpha\otimes\tau)(D_f) = f$) and $w = 0$ on
+Take the hard-footprint density $w = 1/f$ on $D_f$ (with $\nu(D_f) = f$) and $w = 0$ on
 the complement (measure $1-f$). Then
 \begin{align*}
-\sigma_w^2 &= \int_{A\times\mathcal{T}} (w - 1)^2\,d(\alpha\otimes\tau) \\
+\sigma_w^2 &= \int_{A\times\mathcal{T}} (w - 1)^2\,d\nu \\
 &= f\Big(\tfrac{1}{f}-1\Big)^2 + (1-f)(0-1)^2 \\
 &= \frac{(1-f)^2}{f} + (1-f) = (1-f)\Big(\frac{1-f}{f} + 1\Big) = \frac{1-f}{f}.
 \end{align*}
@@ -317,22 +323,22 @@ same representer machinery and often tighter.
 The observation that unlocks it is that, **conditional on the design** (so $w$ is fixed), the sampling
 bias is a *bounded linear functional of the field*,
 \begin{gather*}
-B^{\mathrm{samp}} \;=\; \int_{A\times\mathcal{T}} (w-1)\,Y\,d(\alpha\otimes\tau) \;=:\; L_{\mathrm{samp}}(Y),
+B^{\mathrm{samp}} \;=\; \int_{A\times\mathcal{T}} (w-1)\,Y\,d\nu \;=:\; L_{\mathrm{samp}}(Y),
 \end{gather*}
 linear in $Y$ because $w$ does not depend on it. On an RKHS every bounded linear functional is an inner
 product against a single element of the space -- its **Riesz representer** (the fact that makes RKHS
 methods work; see @wahba1990 or, for a statistics-oriented introduction, @berlinet2004). Here that
 representer is
 \begin{gather*}
-\psi \;=\; \int_{A\times\mathcal{T}} (w-1)\,k(\cdot,x)\,d(\alpha\otimes\tau)(x)
+\psi \;=\; \int_{A\times\mathcal{T}} (w-1)\,k(\cdot,x)\,d\nu(x)
 \;=\; \xi_\pi - \xi_L,
 \qquad
 \xi_\pi(\cdot) \;=\; \int_{A\times\mathcal{T}} k(\cdot,x)\,d\pi(x),
 \end{gather*}
 the representer of the design-mean functional $\mu_w = \int Y\,d\pi$ minus that of the estimand
-$\mu = \int Y\,d(\alpha\otimes\tau)$ -- the RKHS shadow of the identity $B^{\mathrm{samp}} = \mu_w - \mu$
-from @sec-samp. (Recall $d\pi = w\,d(\alpha\otimes\tau)$, so $\xi_\pi - \xi_L = \int(w-1)k(\cdot,x)\,
-d(\alpha\otimes\tau)$.)
+$\mu = \int Y\,d\nu$ -- the RKHS shadow of the identity $B^{\mathrm{samp}} = \mu_w - \mu$
+from @sec-samp. (Recall $d\pi = w\,d\nu$, so $\xi_\pi - \xi_L = \int(w-1)k(\cdot,x)\,
+d\nu$.)
 
 Maximizing the functional over the smoothness ball $\{Y : \|Y\|_{\mathcal{H}} \le R\}$ is then a single
 application of Cauchy--Schwarz **in $\mathcal{H}_k$** -- the optimal-recovery / minimax-linear-functional
@@ -343,7 +349,7 @@ duality [@micchelli1977; @donoho1994]:
 \;=\; R\,\|\psi\|_{\mathcal{H}},
 \qquad
 \|\psi\|_{\mathcal{H}}^2
-= \iint (w-1)(w'-1)\,k(x,x')\,d(\alpha\otimes\tau)(x)\,d(\alpha\otimes\tau)(x')
+= \iint (w-1)(w'-1)\,k(x,x')\,d\nu(x)\,d\nu(x')
 \;}
 \end{gather*}
 (shorthand $w=w(x)$, $w'=w(x')$), attained at the worst-case field
@@ -357,11 +363,11 @@ design-contrast representer $\psi$.
 Insert the reproducing property $Y(x) = \langle Y, k(\cdot,x)\rangle_{\mathcal{H}}$ into
 $L_{\mathrm{samp}}$ and exchange the (Bochner) integral with the inner product -- valid since
 $x \mapsto (w(x)-1)\,k(\cdot,x)$ is Bochner-integrable ($k$ bounded so $\|k(\cdot,x)\|_{\mathcal{H}} =
-\sqrt{k(x,x)}$ is bounded, and $w-1 \in L^1(\alpha\otimes\tau)$):
+\sqrt{k(x,x)}$ is bounded, and $w-1 \in L^1(\nu)$):
 \begin{align*}
 L_{\mathrm{samp}}(Y)
-&= \int_{A\times\mathcal{T}} (w-1)\,\langle Y, k(\cdot,x)\rangle\,d(\alpha\otimes\tau)(x) \\
-&= \Big\langle Y,\ \int_{A\times\mathcal{T}} (w-1)\,k(\cdot,x)\,d(\alpha\otimes\tau)(x) \Big\rangle
+&= \int_{A\times\mathcal{T}} (w-1)\,\langle Y, k(\cdot,x)\rangle\,d\nu(x) \\
+&= \Big\langle Y,\ \int_{A\times\mathcal{T}} (w-1)\,k(\cdot,x)\,d\nu(x) \Big\rangle
 = \langle Y, \psi\rangle .
 \end{align*}
 Cauchy--Schwarz in $\mathcal{H}_k$ gives $|\langle Y,\psi\rangle| \le \|Y\|_{\mathcal{H}}\|\psi\|_{\mathcal{H}}
@@ -369,23 +375,23 @@ Cauchy--Schwarz in $\mathcal{H}_k$ gives $|\langle Y,\psi\rangle| \le \|Y\|_{\ma
 $\|\psi\|^2 = \langle \xi_\pi - \xi_L,\ \xi_\pi - \xi_L\rangle$ and evaluating each inner product by the
 reproducing property (as in @sec-grid) gives the double-integral closed form; in the notation of the
 recipe in @sec-grid-recipe it is $\|\psi\|^2 = v_\pi - 2\,v_{\pi L} + v$, with
-$v_\pi = \iint k\,d\pi\,d\pi$, $v_{\pi L} = \iint k\,d\pi\,d(\alpha\otimes\tau)$, and
-$v = \iint k\,d(\alpha\otimes\tau)^2$. No field values enter: like the total-bias bound, $\|\psi\|$ is a
+$v_\pi = \iint k\,d\pi\,d\pi$, $v_{\pi L} = \iint k\,d\pi\,d\nu$, and
+$v = \iint k\,d\nu^2$. No field values enter: like the total-bias bound, $\|\psi\|$ is a
 functional of the kernel and the design alone.
 :::
 
 ### What the two caps "see" {#sec-samp-intuition}
 
 Both caps are Cauchy--Schwarz applied to the *same* covariance
-$\int (w-1)(Y-\mu)\,d(\alpha\otimes\tau)$, but in **different inner-product spaces** -- and that changes
+$\int (w-1)(Y-\mu)\,d\nu$, but in **different inner-product spaces** -- and that changes
 which fields the worst case ranges over.
 
-- **In $L^2(\alpha\otimes\tau)$** (the cap $\sigma_w\sigma_Y$): the worst-case field is
+- **In $L^2(\nu)$** (the cap $\sigma_w\sigma_Y$): the worst-case field is
   $Y-\mu \propto w-1$ -- a field that copies the sampling weight's every wiggle. There is no smoothness
   penalty, so this adversary may be arbitrarily rough. Distribution-free, but pessimistic.
 - **In $\mathcal{H}_k$** (the cap $R\|\psi\|$): the worst-case field is $Y^\star \propto \psi$ -- the
   same alignment with $w-1$, but first **passed through the kernel**. Writing the covariance integral
-  operator $(\mathcal{K}g)(x) = \int k(x,x')\,g(x')\,d(\alpha\otimes\tau)(x')$,
+  operator $(\mathcal{K}g)(x) = \int k(x,x')\,g(x')\,d\nu(x')$,
   \begin{gather*}
   \|\psi\|_{\mathcal{H}}^2 = \big\langle\, w-1,\ \mathcal{K}(w-1)\,\big\rangle_{L^2}
   \qquad\text{versus}\qquad
@@ -401,11 +407,11 @@ which fields the worst case ranges over.
 
 A unifying way to read the whole construction: estimating $\mu$ is **numerical integration**
 (quadrature) of the field, and $B^{\mathrm{samp}}$ is the error of integrating with the floats' own
-*sampling measure* $\pi$ in place of the target measure $\alpha\otimes\tau$. The worst-case error of a
+*sampling measure* $\pi$ in place of the target measure $\nu$. The worst-case error of a
 quadrature rule over an RKHS ball is precisely a representer norm of this kind -- the cornerstone of
 worst-case/average-case integration and of Bayesian quadrature [@ohagan1991], and of optimal recovery
 of linear functionals more broadly [@micchelli1977]. In that language $\|\psi\|_{\mathcal{H}}$ is the
-worst-case quadrature error of the *mis-weighted* rule $\pi$ relative to $\alpha\otimes\tau$, and
+worst-case quadrature error of the *mis-weighted* rule $\pi$ relative to $\nu$, and
 $R\|\psi\|_{\mathcal{H}}$ scales it by the field's assumed roughness.
 
 ### Assumptions, observability, and which cap to report {#sec-samp-which}
@@ -459,7 +465,7 @@ B^{\mathrm{samp}}_{(b)} \;=\; \tfrac{1}{n}\sum_i Y\big(s_i^{(b)},\, t_i^{(b)}\bi
 \qquad b = 1,\dots,B .
 \end{gather*}
 Its expectation is the design bias of the non-preferential intensity,
-$\operatorname{Cov}_{\alpha\otimes\tau}(w_0, Y)$ with $w_0 = d\pi_0/d(\alpha\otimes\tau)$; the spread
+$\operatorname{Cov}(w_0, Y)$ with $w_0 = d\pi_0/d\nu$; the spread
 across $b$ is the sampling variability of that geometry. Because the draws come from $\pi_0$, they
 inherit the pattern's clustering, coverage, land mask,
 and temporal spread while carrying no built-in alignment with $Y$; and since the resampling lives
@@ -526,7 +532,7 @@ predictor of the space-time mean is
 \hat\mu \;=\; \sum_{i=1}^{n} \omega_i\, Y(x_i),
 \end{gather*}
 a fixed linear combination of the $n$ observations at $x_1,\dots,x_n$ with kriging weights $\omega_i$;
-the target is $L(Y) = \mu = \int_{A\times\mathcal{T}} Y\, d(\alpha\otimes\tau)$. Their difference is the
+the target is $L(Y) = \mu = \int_{A\times\mathcal{T}} Y\, d\nu$. Their difference is the
 residual functional
 \begin{gather*}
 \Delta(Y) \;=\; L(Y) - \sum_i \omega_i\, Y(x_i).
@@ -541,12 +547,12 @@ closed form (the minimax linear-estimation duality of @donoho1994; the represent
 \qquad
 \eta \;=\; \xi_L - \sum_i \omega_i\, k(\cdot, x_i),
 \qquad
-\xi_L(\cdot) = \int_{A\times\mathcal{T}} k(\cdot, x)\, d(\alpha\otimes\tau)(x) ,
+\xi_L(\cdot) = \int_{A\times\mathcal{T}} k(\cdot, x)\, d\nu(x) ,
 \;}
 \end{gather*}
 where $\xi_L \in \mathcal{H}$ is the Riesz representer of the space-time-mean functional
 ($\langle \xi_L, f\rangle_{\mathcal{H}} = L(f)$ for all $f$); the defining integral is a Bochner
-integral in $\mathcal{H}$, well defined since $k$ is bounded and $\alpha\otimes\tau$ finite.
+integral in $\mathcal{H}$, well defined since $k$ is bounded and $\nu$ finite.
 
 ::: {.callout-note collapse="true"}
 ## Derivation: the residual functional is $\langle Y, \eta\rangle$, and its worst case is $R\|\eta\|$
@@ -555,15 +561,15 @@ The one fact that makes everything linear-in-$Y$ collapse is the **reproducing p
 $f \in \mathcal{H}_k$ and location $x$, $f(x) = \langle f, k(\cdot, x)\rangle_{\mathcal{H}}$. Hence each
 point evaluation is an inner product, and so is the space-time-mean functional, by exchanging the
 (Bochner) integral with the inner product -- valid since $x \mapsto k(\cdot,x)$ is
-Bochner-$(\alpha\otimes\tau)$-integrable ($k$ bounded, $\alpha\otimes\tau$ finite):
+Bochner-$\nu$-integrable ($k$ bounded, $\nu$ finite):
 \begin{align*}
-L(Y) &= \int_{A\times\mathcal{T}} Y(x)\, d(\alpha\otimes\tau)(x)
-= \int_{A\times\mathcal{T}} \langle Y, k(\cdot,x)\rangle\, d(\alpha\otimes\tau)(x) \\
-&= \Big\langle Y,\ \int_{A\times\mathcal{T}} k(\cdot,x)\, d(\alpha\otimes\tau)(x) \Big\rangle
+L(Y) &= \int_{A\times\mathcal{T}} Y(x)\, d\nu(x)
+= \int_{A\times\mathcal{T}} \langle Y, k(\cdot,x)\rangle\, d\nu(x) \\
+&= \Big\langle Y,\ \int_{A\times\mathcal{T}} k(\cdot,x)\, d\nu(x) \Big\rangle
 = \langle Y, \xi_L\rangle .
 \end{align*}
 This identifies the Riesz representer $\xi_L(\cdot) = \int_{A\times\mathcal{T}} k(\cdot,x)\,
-d(\alpha\otimes\tau)(x)$. Writing the point evaluations the same way, the residual functional becomes a
+d\nu(x)$. Writing the point evaluations the same way, the residual functional becomes a
 single inner product:
 \begin{align*}
 \Delta(Y) &= \langle Y, \xi_L\rangle - \sum_i \omega_i \langle Y, k(\cdot,x_i)\rangle \\
@@ -582,8 +588,8 @@ The norm of the residual representer is computable in closed form from the kerne
 \begin{gather*}
 \big\| \eta \big\|_{\mathcal{H}}^2
 =
-\underbrace{\iint k(x,x')\,d(\alpha\otimes\tau)(x)\,d(\alpha\otimes\tau)(x')}_{\langle \xi_L,\xi_L\rangle}
-\;-\; 2\sum_i \omega_i \int k(x, x_i)\, d(\alpha\otimes\tau)(x)
+\underbrace{\iint k(x,x')\,d\nu(x)\,d\nu(x')}_{\langle \xi_L,\xi_L\rangle}
+\;-\; 2\sum_i \omega_i \int k(x, x_i)\, d\nu(x)
 \;+\; \sum_{i,j} \omega_i\, \omega_j\, k(x_i, x_j).
 \end{gather*}
 
@@ -602,12 +608,12 @@ Each inner product is evaluated by the reproducing property, $\langle g, k(\cdot
 
 - $\langle k(\cdot, x_i), k(\cdot, x_j)\rangle = k(x_i, x_j)$ -- the Gram matrix of the observations;
 - $\langle \xi_L, k(\cdot, x_i)\rangle = \xi_L(x_i) = \int_{A\times\mathcal{T}} k(x, x_i)\,
-  d(\alpha\otimes\tau)(x)$ -- the mean-to-obs cross terms;
-- $\langle \xi_L, \xi_L\rangle = \int_{A\times\mathcal{T}} \xi_L(x)\, d(\alpha\otimes\tau)(x)
-  = \iint k(x,x')\,d(\alpha\otimes\tau)(x)\,d(\alpha\otimes\tau)(x')$.
+  d\nu(x)$ -- the mean-to-obs cross terms;
+- $\langle \xi_L, \xi_L\rangle = \int_{A\times\mathcal{T}} \xi_L(x)\, d\nu(x)
+  = \iint k(x,x')\,d\nu(x)\,d\nu(x')$.
 
 Substituting gives the boxed formula. Nothing but the kernel $k$, the space-time measure
-$\alpha\otimes\tau$, and the kriging weights $\omega$ enters -- no knowledge of $Y$ is required to
+$\nu$, and the kriging weights $\omega$ enters -- no knowledge of $Y$ is required to
 evaluate the bound (though $k$ must be the correctly specified kernel, per the assumptions above).
 :::
 
@@ -647,7 +653,7 @@ once $k$ is replaced.
 ## Derivation: why $\mathrm{SE}_{\mathrm{post}} = \|\eta^\star\|_{\mathcal{H}}$
 
 Write the observation Gram matrix $K_{ij} = k(x_i, x_j)$ and the mean-to-obs vector
-$c_i = \xi_L(x_i) = \int_{A\times\mathcal{T}} k(x,x_i)\,d(\alpha\otimes\tau)(x)$. The (noiseless)
+$c_i = \xi_L(x_i) = \int_{A\times\mathcal{T}} k(x,x_i)\,d\nu(x)$. The (noiseless)
 simple-kriging weights minimize $\|\eta\|^2$ over $\omega$; setting the gradient of the closed-form
 norm to zero,
 \begin{gather*}
@@ -664,7 +670,7 @@ This is identically the Gaussian-process posterior variance of the linear functi
 observations,
 \begin{gather*}
 \operatorname{Var}\!\big(L(Y) \mid Y(x_1),\dots,Y(x_n)\big)
-= \underbrace{\textstyle\iint k\,d(\alpha\otimes\tau)\,d(\alpha\otimes\tau)}_{\langle\xi_L,\xi_L\rangle} - c^\top K^{-1} c ,
+= \underbrace{\textstyle\iint k\,d\nu\,d\nu}_{\langle\xi_L,\xi_L\rangle} - c^\top K^{-1} c ,
 \end{gather*}
 so $\mathrm{SE}_{\mathrm{post}} = \|\eta^\star\|_{\mathcal{H}}$. (A nugget/observation-error variance
 $\tau^2$ simply replaces $K$ by $K + \tau^2 I$ throughout, adding the usual measurement-noise term to
@@ -680,7 +686,7 @@ times a single **smoothness radius** $R$. Everything else is deterministic kerne
 
 - $\xi_L$, the **Riesz representer of the mean functional**: the (unique) element of $\mathcal{H}_k$
   whose inner product with any field returns that field's space-time average. It is computed once from
-  the kernel, $\xi_L(\cdot) = \int_{A\times\mathcal{T}} k(\cdot,x)\,d(\alpha\otimes\tau)(x)$.
+  the kernel, $\xi_L(\cdot) = \int_{A\times\mathcal{T}} k(\cdot,x)\,d\nu(x)$.
 - $\eta = \xi_L - \sum_i \omega_i\,k(\cdot,x_i)$, the **residual representer**: what the estimator, a
   weighted sum of point evaluations, fails to capture of $\xi_L$. Its norm $\|\eta\|_{\mathcal{H}}$ is
   the worst-case leverage the unknown part of the field has on the bias, and at the kriging-optimal
@@ -691,7 +697,7 @@ times a single **smoothness radius** $R$. Everything else is deterministic kerne
 
 The high-level recipe (deliberately omitting numerical specifics like quadrature rules) has
 **inputs** the profile space-time locations $x_1,\dots,x_n = (s_i,t_i)$ and the domain
-$A\times\mathcal{T}$ with its measure $\alpha\otimes\tau$ -- *no* field values $Y$ are needed for the
+$A\times\mathcal{T}$ with its measure $\nu$ -- *no* field values $Y$ are needed for the
 bound itself -- and proceeds in five steps:
 
 1. **Fit the covariance kernel $k$.** Fit the (non-stationary) GP covariance to the profiles:
@@ -702,9 +708,9 @@ bound itself -- and proceeds in five steps:
 2. **Assemble three kernel quantities** (deterministic given $k$; no $Y$):
 
    - the **Gram matrix** $K_{ij} = k(x_i, x_j)$, of size $n\times n$;
-   - the **mean-to-obs vector** $c_i = \int_{A\times\mathcal{T}} k(x, x_i)\,d(\alpha\otimes\tau)(x)$, of
+   - the **mean-to-obs vector** $c_i = \int_{A\times\mathcal{T}} k(x, x_i)\,d\nu(x)$, of
      length $n$ (by quadrature);
-   - the **mean-to-mean scalar** $v = \iint k(x, x')\,d(\alpha\otimes\tau)(x)\,d(\alpha\otimes\tau)(x')$
+   - the **mean-to-mean scalar** $v = \iint k(x, x')\,d\nu(x)\,d\nu(x')$
      (by quadrature).
 
 3. **Posterior SE of the space-time mean** (this equals $\|\eta^\star\|_{\mathcal{H}}$). Solve the
@@ -746,7 +752,7 @@ representer/minimax structure of a bounded linear functional on the field.
   the kriging weights $\omega_i$. It holds under the smoothness assumptions of @sec-grid (kernel
   correctly specified above all), and $R$ is estimated, so the computed cap is itself an estimate.
 - *Design-based, on the preferential-sampling component* -- **two variants**, capping the same
-  $B^{\mathrm{samp}} = \operatorname{Cov}_{\alpha\otimes\tau}(w,Y)$ over different classes of field:
+  $B^{\mathrm{samp}} = \operatorname{Cov}(w,Y)$ over different classes of field:
   \begin{gather*}
   |B^{\mathrm{samp}}| \;\le\; \sigma_w\,\sigma_Y \quad(\text{distribution-free; }L^2),
   \qquad
@@ -800,14 +806,14 @@ mathematics of @sec-decomp--@sec-grid is grid-free; the implementation is not. T
 and *only* here:
 
 - **Grid quadrature.** GLORYS supplies values on its $1/12^\circ$ grid over the resolved times, so the
-  domain mean is a space-time quadrature $\mu \approx \mu_N = \sum_c (\alpha\otimes\tau)(c)\, Y_c$ over
-  space-time cells $c$ ($\sum_c (\alpha\otimes\tau)(c) = 1$) -- a numerical evaluation of the estimand's
-  defining integral $\mu = \int_{A\times\mathcal{T}} Y\,d(\alpha\otimes\tau)$ of @sec-setup, in the
+  domain mean is a space-time quadrature $\mu \approx \mu_N = \sum_c \nu(c)\, Y_c$ over
+  space-time cells $c$ ($\sum_c \nu(c) = 1$) -- a numerical evaluation of the estimand's
+  defining integral $\mu = \int_{A\times\mathcal{T}} Y\,d\nu$ of @sec-setup, in the
   spirit of the area-measure quadrature of @baugh2022. (The per-month `ohc.truth_domain_mean` is the
   exploratory, spatial-only version; the rigorous estimand aggregates over $A\times\mathcal{T}$.) The
   resulting quadrature error $B^{\mathrm{quad}} = \mu_N - \mu$ is a deterministic bounded linear
   functional of $Y$, capped by the RKHS machinery of @sec-grid
-  ($|B^{\mathrm{quad}}| \le R\|q\|_{\mathcal H}$, $q = \sum_c (\alpha\otimes\tau)(c)\, k(\cdot,x_c) - \xi_L$)
+  ($|B^{\mathrm{quad}}| \le R\|q\|_{\mathcal H}$, $q = \sum_c \nu(c)\, k(\cdot,x_c) - \xi_L$)
   and negligible at $1/12^\circ$.
 - **Proxy fidelity.** The realized bias is computed against the reanalysis, not the ocean; validation
   certifies the *bounding machinery*, with reanalysis error a separate, acknowledged layer (cross-
