@@ -3,7 +3,7 @@ title: "Motivation, Estimand, and Bias Decomposition"
 bibliography: references.bib
 ---
 
-# Motivation and estimand {#sec-setup}
+# Motivation and Estimand {#sec-setup}
 
 Argo floats sample the ocean sparsely and non-randomly. In a region with a strong current and a
 sharp heat-content gradient -- our North Atlantic Current (NAC) box $A = [36^\circ,40^\circ]\,\mathrm{N}

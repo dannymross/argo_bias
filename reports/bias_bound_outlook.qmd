@@ -1,8 +1,8 @@
 ---
-title: "Outlook -- Physical Validation by Trajectory Ensemble"
+title: "Outlook"
 ---
 
-# Outlook: physical validation by trajectory ensemble {#sec-outlook}
+# Trajectory Simulation {#sec-outlook}
 
 The bounds above are analytic and design-based. As an independent, physically-grounded check we will
 (in a later phase) generate an ensemble of float samplings under the *real* GLORYS advection using

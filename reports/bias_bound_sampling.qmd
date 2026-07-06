@@ -20,7 +20,7 @@ def _show_fig(fig):
     plt.close(fig)
 ```
 
-# Preferential Sampling Bounds {#sec-samp}
+## Background {#sec-samp}
 
 Let $(\mathcal{X},\nu)$ denote the space--time domain equipped with a probability
 measure $\nu$, where

@@ -3,7 +3,7 @@ title: "Prediction Bias Bounds"
 bibliography: references.bib
 ---
 
-# Prediction Bias Bounds {#sec-grid}
+## Background {#sec-grid}
 
 For the interpolate-everywhere estimator the total bias $B = \hat\mu - \mu$ is itself a linear
 functional of the field, and can be bounded using the structure of the interpolator (this subsumes the

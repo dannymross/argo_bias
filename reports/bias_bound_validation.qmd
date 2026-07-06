@@ -1,9 +1,9 @@
 ---
-title: "Validation Against a Complete-Coverage Reanalysis"
+title: "Validation"
 bibliography: references.bib
 ---
 
-# Validation against a complete-coverage reanalysis {#sec-validation}
+# Reanalysis {#sec-validation}
 
 The bounds above are properties of the true field $Y$ and the realized float locations; the
 *inequalities* never assume $Y$ is known between profiles. To *check* them, however, we need the

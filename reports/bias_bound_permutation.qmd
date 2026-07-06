@@ -2,8 +2,6 @@
 title: "Permutation Test"
 ---
 
-# Permutation Test
-
 The permutation construction below produces a **reference (null) distribution** for the preferential-sampling bias under the hypothesis
 of no temperature preference, which we could use to interpret the realized bias and to gauge how conservative the deterministic caps are, never as a tighter bound.
 
