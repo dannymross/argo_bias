@@ -279,7 +279,24 @@ $\hat w$ from the float density, and $\sigma_Y$ requires a field estimate ($\hat
 @sec-grid) or the reanalysis proxy used in validation (@sec-validation). The *inequality* is field-free;
 the *computed* cap is an estimate.
 
-## Illustrative Example
+::: {.callout-note collapse="true"}
+## Diagnostic: can $\rho_{w,Y}$ itself be estimated, to beat the worst case $\rho_{w,Y}=1$?
+
+In principle: a plug-in Pearson estimate $\hat\rho_{w,Y} = \widehat{\operatorname{Cov}}(\hat w,\hat
+Y)/(\hat\sigma_w\hat\sigma_Y)$, formed by evaluating $\hat w$ and $\hat Y$ (or the GLORYS proxy) at a
+common set of quadrature points, would replace the worst case with an empirical value typically well
+below 1. But $\sigma_w$ and $\sigma_Y$ are *marginal* quantities -- each estimable from one side of the
+problem alone (float density; field) -- whereas $\rho_{w,Y}$ is exactly the *joint* dependence between
+sampling and field, i.e. the preferential-sampling signal itself. Plugging in $\hat\rho_{w,Y}$ does not
+tighten a distribution-free worst-case bound; it is algebraically the same computation as estimating
+$B_{\mathrm{samp}} = \operatorname{Cov}(w,Y)$ directly. The report already carries that quantity, but as
+the proxy-evaluated *realized* bias (@sec-validation), checked against the permutation null below, not
+reported as a deterministic cap. A $\hat\rho_{w,Y}$ diagnostic is worth computing alongside the
+permutation test -- how far $|\hat\rho_{w,Y}|$ falls below 1 in practice -- but it estimates the bias
+itself rather than certifying a bound on it.
+:::
+
+### Illustrative Example
 
 To read off a scale for the cap, consider **one particular** idealized intensity: floats cover a
 space-time sub-region $D_f \subseteq \mathcal{X}$ of measure $f = \nu(D_f)$
@@ -367,14 +384,10 @@ there exists a unique $\psi\in\mathcal H_k$ satisfying $L(Y) = \langle Y,\psi\ra
 given by
 ```{=latex}
 \begin{gather*}
-\boxed{\; \psi(\cdot) = \int_{\mathcal X} k(\cdot,x)\bigl(w(x)-1\bigr)\,d\nu(x) \;=\; \xi_\pi - \xi_L,
-\qquad \xi_\pi(\cdot) = \int_{\mathcal X} k(\cdot,x)\,d\pi(x). \;}
+\psi(\cdot) = \int_{\mathcal X} k(\cdot,x)\bigl(w(x)-1\bigr)\,d\nu(x) 
 \end{gather*}
 ```
-Here $\xi_\pi$ and $\xi_L$ are the representers of the design-mean functional $\mu_w = \int Y\,d\pi$ and
-of the estimand $\mu = \int Y\,d\nu$ respectively (recall $d\pi = w\,d\nu$): $\psi$ is the RKHS shadow of
-the identity $B_{\mathrm{samp}} = \mu_w - \mu$ above. Applying the Cauchy--Schwarz inequality in the
-RKHS,
+Applying the Cauchy--Schwarz inequality in the RKHS,
 ```{=latex}
 \begin{gather*}
 |B_{\mathrm{samp}}| = |\langle Y,\psi\rangle_{\mathcal H_k}| \le \|Y\|_{\mathcal H_k}\,\|\psi\|_{\mathcal H_k},
@@ -387,71 +400,10 @@ minimax-linear-functional duality [@micchelli1977; @donoho1994]:
 \boxed{\; \sup_{\|Y\|_{\mathcal H_k} \le R} |B_{\mathrm{samp}}| \;=\; R\,\|\psi\|_{\mathcal H_k}, \;}
 \end{gather*}
 ```
-attained at the worst-case field $Y^\star = R\psi/\|\psi\|_{\mathcal H_k}$. This is exactly parallel to
-the total-bias bound $R\|\eta\|_{\mathcal{H}}$ of @sec-grid, with the residual representer $\eta$
-replaced by the design-contrast representer $\psi$. Compared with the $L^2$ bound, the RKHS bound
-exploits the smoothness encoded by the kernel; since the admissible class of functions is substantially
+attained at the worst-case field $Y^\star = R\psi/\|\psi\|_{\mathcal H_k}$.Compared with the $L^2$ bound, the RKHS bound exploits the smoothness encoded by the kernel; since the admissible class of functions is substantially
 smaller than all of $L^2(\nu)$, this bound is typically much tighter.
 
-::: {.callout-note collapse="true"}
-## Derivation: the sampling-bias representer and its worst case
 
-Insert the reproducing property $Y(x) = \langle Y, k(\cdot,x)\rangle_{\mathcal{H}}$ into $L(Y)$ and
-exchange the (Bochner) integral with the inner product -- valid since $x \mapsto (w(x)-1)\,k(\cdot,x)$ is
-Bochner-integrable ($k$ bounded so $\|k(\cdot,x)\|_{\mathcal{H}} = \sqrt{k(x,x)}$ is bounded, and $w-1
-\in L^1(\nu)$):
-```{=latex}
-\begin{align*}
-L(Y)
-&= \int_{\mathcal{X}} (w-1)\,\langle Y, k(\cdot,x)\rangle\,d\nu(x) \\
-&= \Big\langle Y,\ \int_{\mathcal{X}} (w-1)\,k(\cdot,x)\,d\nu(x) \Big\rangle
-= \langle Y, \psi\rangle .
-\end{align*}
-```
-Cauchy--Schwarz in $\mathcal{H}_k$ gives $|\langle Y,\psi\rangle| \le \|Y\|_{\mathcal{H}}\|\psi\|_{\mathcal{H}}
-\le R\|\psi\|_{\mathcal{H}}$, with equality at $Y^\star = R\,\psi/\|\psi\|_{\mathcal{H}}$. Expanding
-$\|\psi\|^2 = \langle \xi_\pi - \xi_L,\ \xi_\pi - \xi_L\rangle$ and evaluating each inner product by the
-reproducing property (as in @sec-grid) gives the double-integral closed form below; in the notation of
-the recipe in @sec-grid-recipe it is $\|\psi\|^2 = v_\pi - 2\,v_{\pi L} + v$, with
-$v_\pi = \iint k\,d\pi\,d\pi$, $v_{\pi L} = \iint k\,d\pi\,d\nu$, and
-$v = \iint k\,d\nu^2$. No field values enter: like the total-bias bound, $\|\psi\|$ is a
-functional of the kernel and the design alone.
-:::
-
-### What the two caps "see" {#sec-samp-intuition}
-
-Both caps are Cauchy--Schwarz applied to the *same* covariance
-$\int (w-1)(Y-\mu)\,d\nu$, but in **different inner-product spaces** -- and that changes
-which fields the worst case ranges over.
-
-- **In $L^2(\nu)$** (the cap $\sigma_w\sigma_Y$): the worst-case field is
-  $Y-\mu \propto w-1$ -- a field that copies the sampling weight's every wiggle. There is no smoothness
-  penalty, so this adversary may be arbitrarily rough. Distribution-free, but pessimistic.
-- **In $\mathcal{H}_k$** (the cap $R\|\psi\|$): the worst-case field is $Y^\star \propto \psi$ -- the
-  same alignment with $w-1$, but first **passed through the kernel**. Writing the covariance integral
-  operator $(\mathcal{K}g)(x) = \int k(x,x')\,g(x')\,d\nu(x')$,
-```{=latex}
-  \begin{gather*}
-  \|\psi\|_{\mathcal{H}}^2 = \big\langle\, w-1,\ \mathcal{K}(w-1)\,\big\rangle_{L^2}
-  \qquad\text{versus}\qquad \sigma_w^2 = \big\langle\, w-1,\ w-1\,\big\rangle_{L^2},
-  \end{gather*}
-```
-  so the RKHS cap replaces the raw fluctuation $w-1$ by its **kernel-smoothed** version
-  $\mathcal{K}(w-1)$. Fine-scale structure in the sampling pattern -- clustering below the correlation
-  length -- is damped by $\mathcal{K}$, because a smooth field simply cannot correlate with it. When
-  the field really is smooth at the kernel's scale, the $L^2$ worst-case aligner $w-1$ is *inadmissible*
-  in the smoothness ball (its RKHS norm blows up), and $R\|\psi\|$ is correspondingly smaller. The two
-  agree only in the white-noise limit $\mathcal{K}\to\text{const}\cdot\mathrm{Id}$, where the kernel
-  imposes no smoothing.
-
-A unifying way to read the whole construction: estimating $\mu$ is **numerical integration**
-(quadrature) of the field, and $B_{\mathrm{samp}}$ is the error of integrating with the floats' own
-*sampling measure* $\pi$ in place of the target measure $\nu$. The worst-case error of a
-quadrature rule over an RKHS ball is precisely a representer norm of this kind -- the cornerstone of
-worst-case/average-case integration and of Bayesian quadrature [@ohagan1991], and of optimal recovery
-of linear functionals more broadly [@micchelli1977]. In that language $\|\psi\|_{\mathcal{H}}$ is the
-worst-case quadrature error of the *mis-weighted* rule $\pi$ relative to $\nu$, and
-$R\|\psi\|_{\mathcal{H}}$ scales it by the field's assumed roughness.
 
 ## Computing the RKHS Norm of the Representer
 
@@ -540,6 +492,38 @@ unknown smoothness of the field from uncertainty due to the sampling design.
 
 ## Summary
 
+Both bounds are Cauchy--Schwarz applied to the *same* covariance
+$\int (w-1)(Y-\mu)\,d\nu$, but in **different inner-product spaces** -- and that changes
+which fields the worst case ranges over.
+
+- **In $L^2(\nu)$** (the cap $\sigma_w\sigma_Y$): the worst-case field is
+  $Y-\mu \propto w-1$ -- a field that copies the sampling weight's every wiggle. There is no smoothness
+  penalty, so this adversary may be arbitrarily rough. Distribution-free, but pessimistic.
+- **In $\mathcal{H}_k$** (the cap $R\|\psi\|$): the worst-case field is $Y^\star \propto \psi$ -- the
+  same alignment with $w-1$, but first **passed through the kernel**. Writing the covariance integral
+  operator $(\mathcal{K}g)(x) = \int k(x,x')\,g(x')\,d\nu(x')$,
+```{=latex}
+  \begin{gather*}
+  \|\psi\|_{\mathcal{H}}^2 = \big\langle\, w-1,\ \mathcal{K}(w-1)\,\big\rangle_{L^2}
+  \qquad\text{versus}\qquad \sigma_w^2 = \big\langle\, w-1,\ w-1\,\big\rangle_{L^2},
+  \end{gather*}
+```
+  so the RKHS cap replaces the raw fluctuation $w-1$ by its **kernel-smoothed** version
+  $\mathcal{K}(w-1)$. Fine-scale structure in the sampling pattern -- clustering below the correlation
+  length -- is damped by $\mathcal{K}$, because a smooth field simply cannot correlate with it. When
+  the field really is smooth at the kernel's scale, the $L^2$ worst-case aligner $w-1$ is *inadmissible*
+  in the smoothness ball (its RKHS norm blows up), and $R\|\psi\|$ is correspondingly smaller. The two
+  agree only in the white-noise limit $\mathcal{K}\to\text{const}\cdot\mathrm{Id}$, where the kernel
+  imposes no smoothing.
+
+A unifying way to read the whole construction: estimating $\mu$ is **numerical integration**
+(quadrature) of the field, and $B_{\mathrm{samp}}$ is the error of integrating with the floats' own
+*sampling measure* $\pi$ in place of the target measure $\nu$. The worst-case error of a
+quadrature rule over an RKHS ball is precisely a representer norm of this kind -- the cornerstone of
+worst-case/average-case integration and of Bayesian quadrature [@ohagan1991], and of optimal recovery
+of linear functionals more broadly [@micchelli1977]. In that language $\|\psi\|_{\mathcal{H}}$ is the
+worst-case quadrature error of the *mis-weighted* rule $\pi$ relative to $\nu$, and
+$R\|\psi\|_{\mathcal{H}}$ scales it by the field's assumed roughness.
 The $L^2$ and RKHS bounds differ in the assumptions imposed on the unknown field, and hence in what they
 cost to compute:
 ```{=latex}
@@ -551,7 +535,7 @@ cost to compute:
 The first needs only finite second moments; the second additionally assumes $Y \in \mathcal{H}_k$ for a
 correctly specified kernel (non-stationary, per @sec-grid), buying a bound that is typically sharper
 because it restricts the worst case to smooth fields -- the $L^2$ worst-case aligner $w-1$ is
-inadmissible once the field is required to be smooth (@sec-samp-intuition). Neither needs the field off
+inadmissible once the field is required to be smooth (above). Neither needs the field off
 the float track directly; both route through the same bridges as the rest of the report -- an estimated
 intensity $\hat w$ (both $\sigma_w$ and $\psi$ need it), a fitted-GP $\hat\sigma_Y$ or $R$
 (@sec-grid-recipe), or the reanalysis proxy in validation (@sec-validation) -- so the *computed* caps
