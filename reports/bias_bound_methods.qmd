@@ -378,43 +378,55 @@ functional of the field*,
 L(Y) = \int_{\mathcal X} Y(x)\bigl(w(x)-1\bigr)\,d\nu(x),
 \end{gather*}
 ```
-linear in $Y$ because $w$ does not depend on it. By the Riesz Representation Theoremthere exists a unique $\psi\in\mathcal H_k$ satisfying $L(Y) = \langle Y,\psi\rangle_{\mathcal H_k}$,
-given by
+linear in $Y$ because $w$ does not depend on it. By the Riesz Representation Theorem, there exists a
+unique $\psi\in\mathcal H_k$ satisfying $L(Y) = \langle Y,\psi\rangle_{\mathcal H_k}$; applying the
+reproducing property $Y(x) = \langle Y,k(\cdot,x)\rangle_{\mathcal H_k}$ inside the integral identifies
+it as
 ```{=latex}
 \begin{gather*}
-\psi(\cdot) = \int_{\mathcal X} k(\cdot,x)\bigl(w(x)-1\bigr)\,d\nu(x) 
+\psi(\cdot) \;=\; \int_{\mathcal X} k(\cdot,x)\bigl(w(x)-1\bigr)\,d\nu(x).
 \end{gather*}
 ```
 
-where $k(\cdot,x)$ is the kernel function.
-
-Let $\pi$ be the **realized sampling measure**, $d\pi = w\,d\nu$ (so $\pi(\mathcal X) = \int_{\mathcal X}
-w\,d\nu = 1$: a genuine probability measure, the distribution the floats actually realize), and recall
-$\nu$ is the **uniform space-time target measure** already fixed in @sec-setup -- the measure that
-defines the estimand $\mu = \int Y\,d\nu$. For a probability measure $P$ on $\mathcal X$, its **kernel
-mean embedding** into $\mathcal H_k$ is the single RKHS element
+This integral has extra structure worth making explicit. For any probability measure $P$ on
+$\mathcal X$, its **kernel mean embedding** into $\mathcal H_k$ is the RKHS element
 ```{=latex}
 \begin{gather*}
 \mu_k(P)(\cdot) \;:=\; \int_{\mathcal X} k(\cdot,x)\,dP(x),
 \end{gather*}
 ```
-which reproduces $P$-expectations of every $f \in \mathcal H_k$ via $\langle f, \mu_k(P)\rangle_{\mathcal
-H_k} = \int_{\mathcal X} f\,dP$ [@smola2007; @muandet2017]. Write $\xi_\pi := \mu_k(\pi)$ for the
-embedding of the sampling measure and $\xi_L := \mu_k(\nu)$ for the embedding of the target measure (the
-same $\xi_L$ that reappears as the Riesz representer of the mean functional in @sec-grid). Then $\psi$
-is exactly their difference,
+which reproduces $P$-expectations of every $f \in \mathcal H_k$: $\langle f, \mu_k(P)\rangle_{\mathcal
+H_k} = \int_{\mathcal X} f\,dP$ [@smola2007; @muandet2017] -- a purely general fact, independent of
+anything in this report.
+
+Two such measures matter here: the **uniform space-time target measure** $\nu$ already fixed in
+@sec-setup (the measure defining the estimand $\mu = \int Y\,d\nu$), and the **realized sampling
+measure** $\pi$, $d\pi = w\,d\nu$ (so $\pi(\mathcal X) = \int_{\mathcal X} w\,d\nu = 1$: a genuine
+probability measure, the distribution the floats actually realize). Since $d\pi = w\,d\nu$,
+```{=latex}
+\begin{gather*}
+L(Y) \;=\; \int_{\mathcal X} Y\,(w-1)\,d\nu \;=\; \int_{\mathcal X} Y\,d\pi - \int_{\mathcal X} Y\,d\nu
+\;=\; \big\langle Y,\, \mu_k(\pi)\big\rangle_{\mathcal H_k} - \big\langle Y,\, \mu_k(\nu)\big\rangle_{\mathcal H_k}
+\;=\; \big\langle Y,\, \mu_k(\pi) - \mu_k(\nu)\big\rangle_{\mathcal H_k},
+\end{gather*}
+```
+using the embedding's reproducing property on each term. This identifies the representer directly --
+matching the integral formula above term by term, since $\int k(\cdot,x)(w(x)-1)\,d\nu(x) = \int
+k(\cdot,x)\,d\pi(x) - \int k(\cdot,x)\,d\nu(x)$.
+
+Write $\xi_\pi := \mu_k(\pi)$ and $\xi_L := \mu_k(\nu)$ (the latter the same Riesz representer of the
+mean functional that reappears in @sec-grid). Then $\psi$ is exactly their difference,
 ```{=latex}
 \begin{gather*}
 \boxed{\; \psi \;=\; \xi_\pi - \xi_L \;=\; \mu_k(\pi) - \mu_k(\nu). \;}
 \end{gather*}
 ```
-immediate from linearity of the integral in $dP$ and $d\pi = w\,d\nu$: $\int k(\cdot,x)(w(x)-1)\,d\nu(x)
-= \int k(\cdot,x)\,d\pi(x) - \int k(\cdot,x)\,d\nu(x)$. This gives $\psi$ a direct geometric reading: it
-is the **displacement, in the RKHS, between where the floats actually sampled and the uniform target
-measure** -- exactly zero when $\pi = \nu$ (non-preferential sampling), and its norm
-$\|\psi\|_{\mathcal H_k} = \|\mu_k(\pi) - \mu_k(\nu)\|_{\mathcal H_k}$ is precisely the **(kernel)
-maximum mean discrepancy** between $\pi$ and $\nu$ [@gretton2012] -- so the RKHS worst-case cap below is
-$R$ times an MMD between the realized sampling distribution and the target.
+This gives $\psi$ a direct geometric reading: it is the **displacement, in the RKHS, between where the
+floats actually sampled and the uniform target measure** -- exactly zero when $\pi = \nu$
+(non-preferential sampling), and its norm $\|\psi\|_{\mathcal H_k} = \|\mu_k(\pi) -
+\mu_k(\nu)\|_{\mathcal H_k}$ is precisely the **(kernel) maximum mean discrepancy** between $\pi$ and
+$\nu$ [@gretton2012] -- so the RKHS worst-case cap below is $R$ times an MMD between the realized
+sampling distribution and the target.
 
 Applying the Cauchy--Schwarz inequality in the RKHS,
 ```{=latex}
@@ -429,11 +441,9 @@ minimax-linear-functional duality [@micchelli1977; @donoho1994]:
 \boxed{\; \sup_{\|Y\|_{\mathcal H_k} \le R} |B_{\mathrm{samp}}| \;=\; R\,\|\psi\|_{\mathcal H_k}, \;}
 \end{gather*}
 ```
-attained at the worst-case field $Y^\star = R\psi/\|\psi\|_{\mathcal H_k}$.Compared with the $L^2$ bound, the RKHS bound exploits the smoothness encoded by the kernel; since the admissible class of functions is substantially
-smaller than all of $L^2(\nu)$, this bound is typically much tighter.
-
-$\|\psi\|$ measures how capable the sampling design of producing bias, if sampling is uniform then $w \approx 1$ and $\psi \approx 0$.
-
+attained at the worst-case field $Y^\star = R\psi/\|\psi\|_{\mathcal H_k}$. Compared with the $L^2$
+bound, the RKHS bound exploits the smoothness encoded by the kernel; since the admissible class of
+functions is substantially smaller than all of $L^2(\nu)$, this bound is typically much tighter.
 
 ## Computing the RKHS Norm of the Representer
 
