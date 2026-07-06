@@ -369,64 +369,53 @@ _show_fig(fig)
 ## RKHS Worst-Case Bound {#sec-samp-rkhs}
 
 The Cauchy--Schwarz cap $\sigma_w\sigma_Y$ is *distribution-free*: it assumes nothing about the field
-beyond a finite variance. Suppose instead the field is **smooth** -- that it lives in the RKHS
-$\mathcal{H}_k$ of a covariance kernel $k$, the very assumption already made for the total bias in
-@sec-grid. Conditional on the design (so $w$ is fixed), the sampling bias is a *bounded linear
-functional of the field*,
-```{=latex}
-\begin{gather*}
-L(Y) = \int_{\mathcal X} Y(x)\bigl(w(x)-1\bigr)\,d\nu(x),
-\end{gather*}
-```
-linear in $Y$ because $w$ does not depend on it. By the Riesz Representation Theorem, there exists a
-unique $\psi\in\mathcal H_k$ satisfying $L(Y) = \langle Y,\psi\rangle_{\mathcal H_k}$; applying the
-reproducing property $Y(x) = \langle Y,k(\cdot,x)\rangle_{\mathcal H_k}$ [@muandet2017] inside the
-integral identifies it as
-```{=latex}
-\begin{gather*}
-\psi(\cdot) \;=\; \int_{\mathcal X} k(\cdot,x)\bigl(w(x)-1\bigr)\,d\nu(x).
-\end{gather*}
-```
+beyond a finite variance. Suppose instead the field is **smooth**, such that it lives in the RKHS
+$\mathcal{H}_k$ of a covariance kernel $k$ -- the same assumption already made for the total bias in
+@sec-grid.
 
-This integral has extra structure worth making explicit. For any probability measure $P$ on
-$\mathcal X$, its **kernel mean embedding** into $\mathcal H_k$ is the RKHS element
+Beyond the **uniform space-time target measure** $\nu$ already fixed in @sec-setup, consider the
+**realized sampling measure** $\pi$, $d\pi = w\,d\nu$ (so $\pi(\mathcal X) = \int_{\mathcal X} w\,d\nu =
+1$: a genuine probability measure, the distribution the floats actually realize).
+
+Conditional on the design (so $w$, and hence $\pi$, is fixed), the sampling bias is a *bounded linear
+functional of the field* -- linear in $Y$ because $w$ does not depend on it,
 ```{=latex}
 \begin{gather*}
-\mu_k(P)(\cdot) \;:=\; \int_{\mathcal X} k(\cdot,x)\,dP(x),
+B_{\mathrm{samp}} \;=\; L(Y) \;=\; \int_{\mathcal X} Y(x)\bigl(w(x)-1\bigr)\,d\nu(x),
 \end{gather*}
 ```
-which reproduces $P$-expectations of every $f \in \mathcal H_k$: $\langle f, \mu_k(P)\rangle_{\mathcal
-H_k} = \int_{\mathcal X} f\,dP$ [@smola2007; @muandet2017] -- a purely general fact, independent of
-anything in this report.
-
-Two such measures matter here: the **uniform space-time target measure** $\nu$ already fixed in
-@sec-setup (the measure defining the estimand $\mu = \int Y\,d\nu$), and the **realized sampling
-measure** $\pi$, $d\pi = w\,d\nu$ (so $\pi(\mathcal X) = \int_{\mathcal X} w\,d\nu = 1$: a genuine
-probability measure, the distribution the floats actually realize). Since $d\pi = w\,d\nu$,
+which, since $d\pi = w\,d\nu$, splits as
+```{=latex}
+\begin{gather*}
+L(Y) \;=\; \int_{\mathcal X} Y(x)\,d\pi(x) - \int_{\mathcal X} Y(x)\,d\nu(x) .
+\end{gather*}
+```
+Applying the reproducing property $Y(x) = \langle Y,k(\cdot,x)\rangle_{\mathcal H_k}$ [@muandet2017]
+inside each integral and pulling $Y$ out of the (Bochner) integral,
 ```{=latex}
 \begin{align*}
-L(Y) \;=\; \int_{\mathcal X} Y\,(w-1)\,d\nu \;=\; \int_{\mathcal X} Y\,d\pi - \int_{\mathcal X} Y\,d\nu
-\;=\; \\ \big\langle Y,\, \mu_k(\pi)\big\rangle_{\mathcal H_k} - \big\langle Y,\, \mu_k(\nu)\big\rangle_{\mathcal H_k}
-\;=\; \big\langle Y,\, \mu_k(\pi) - \mu_k(\nu)\big\rangle_{\mathcal H_k},
+L(Y) &= \int \left\langle Y,\, k(\cdot,x) \right\rangle \,d\pi(x) - \int \left\langle Y,\, k(\cdot,x) \right\rangle \,d\nu(x) \\
+&= \left\langle Y,\ \int k(\cdot,x)\,d\pi(x)\right\rangle - \left\langle Y,\ \int k(\cdot,x)\,d\nu(x)\right\rangle \\
+&= \left\langle Y,\, \xi_{\pi} \right\rangle - \left\langle Y,\, \xi_{\nu} \right\rangle \;=\; \left\langle Y,\, \xi_{\pi} - \xi_{\nu} \right\rangle ,
 \end{align*}
 ```
-using the embedding's reproducing property on each term. This identifies the representer directly --
-matching the integral formula above term by term, since $\int k(\cdot,x)(w(x)-1)\,d\nu(x) = \int
-k(\cdot,x)\,d\pi(x) - \int k(\cdot,x)\,d\nu(x)$.
-
-Write $\xi_\pi := \mu_k(\pi)$ and $\xi_L := \mu_k(\nu)$ (the latter the same Riesz representer of the
-mean functional that reappears in @sec-grid). Then $\psi$ is exactly their difference,
+where $\xi_\pi := \int_{\mathcal X} k(\cdot,x)\,d\pi(x)$ and $\xi_\nu := \int_{\mathcal X}
+k(\cdot,x)\,d\nu(x)$ are the **kernel mean embeddings** of $\pi$ and $\nu$ into $\mathcal H_k$
+[@smola2007; @muandet2017] -- the same $\xi_\nu$ that reappears as the Riesz representer of the mean
+functional in @sec-grid. Writing $\psi := \xi_\pi - \xi_\nu$, this is exactly $L(Y) = \langle
+Y,\psi\rangle_{\mathcal H_k}$: by the Riesz Representation Theorem, $\psi$ is the unique element of
+$\mathcal H_k$ representing $L$, and we have derived it in closed form,
 ```{=latex}
 \begin{gather*}
-\boxed{\; \psi \;=\; \xi_\pi - \xi_L \;=\; \mu_k(\pi) - \mu_k(\nu). \;}
+\boxed{\; \psi \;=\; \xi_\pi - \xi_\nu \;=\; \int_{\mathcal X} k(\cdot,x)\bigl(w(x)-1\bigr)\,d\nu(x). \;}
 \end{gather*}
 ```
-This gives $\psi$ a direct geometric reading: it is the **displacement, in the RKHS, between where the
-floats actually sampled and the uniform target measure** -- exactly zero when $\pi = \nu$
-(non-preferential sampling), and its norm $\|\psi\|_{\mathcal H_k} = \|\mu_k(\pi) -
-\mu_k(\nu)\|_{\mathcal H_k}$ is precisely the **(kernel) maximum mean discrepancy** between $\pi$ and
-$\nu$ [@gretton2012] -- so the RKHS worst-case cap below is $R$ times an MMD between the realized
-sampling distribution and the target.
+
+This gives $\psi$ a direct geometric reading: it is the **discrepancy, in the RKHS, between where the
+floats actually sampled and the uniform target measure** -- exactly zero when $\pi=\nu$ (non-preferential
+sampling) -- and its norm $\|\psi\|_{\mathcal H_k} = \|\xi_\pi - \xi_\nu\|_{\mathcal H_k}$ is precisely
+the **(kernel) maximum mean discrepancy** between $\pi$ and $\nu$ [@gretton2012], so the RKHS worst-case
+cap below is $R$ times an MMD between the realized sampling distribution and the target.
 
 Applying the Cauchy--Schwarz inequality in the RKHS,
 ```{=latex}
@@ -454,9 +443,8 @@ The RKHS norm of the representer admits the closed-form expression
 \end{gather*}
 ```
 Importantly, this quantity depends only on the sampling design and the chosen
-covariance kernel, not on the unknown OHC field.
-
-We can use a non-stationary covariance kernel from our GP fit.
+covariance kernel, not on the unknown OHC field -- in practice, the same non-stationary kernel fit in
+@sec-grid.
 
 Since the sampling density $w$ is unknown, it must first be estimated from the
 observed float locations. Possible approaches include
@@ -640,12 +628,12 @@ closed form (the minimax linear-estimation duality of @donoho1994; the represent
 ```{=latex}
 \begin{gather*}
 \boxed{\; \sup_{\|Y\|_{\mathcal{H}} \le R} \big| \Delta(Y) \big| \;=\; R\, \big\| \eta \big\|_{\mathcal{H}}, \qquad
-\eta \;=\; \xi_L - \sum_i \omega_i\, k(\cdot, x_i), \qquad
-\xi_L(\cdot) = \int_{\mathcal{X}} k(\cdot, x)\, d\nu(x) , \;}
+\eta \;=\; \xi_\nu - \sum_i \omega_i\, k(\cdot, x_i), \qquad
+\xi_\nu(\cdot) = \int_{\mathcal{X}} k(\cdot, x)\, d\nu(x) , \;}
 \end{gather*}
 ```
-where $\xi_L \in \mathcal{H}$ is the Riesz representer of the space-time-mean functional
-($\langle \xi_L, f\rangle_{\mathcal{H}} = L(f)$ for all $f$); the defining integral is a Bochner
+where $\xi_\nu \in \mathcal{H}$ is the Riesz representer of the space-time-mean functional
+($\langle \xi_\nu, f\rangle_{\mathcal{H}} = L(f)$ for all $f$); the defining integral is a Bochner
 integral in $\mathcal{H}$, well defined since $k$ is bounded and $\nu$ finite.
 
 ::: {.callout-note collapse="true"}
@@ -662,16 +650,16 @@ Bochner-$\nu$-integrable ($k$ bounded, $\nu$ finite):
 L(Y) &= \int_{\mathcal{X}} Y(x)\, d\nu(x)
 = \int_{\mathcal{X}} \langle Y, k(\cdot,x)\rangle\, d\nu(x) \\
 &= \Big\langle Y,\ \int_{\mathcal{X}} k(\cdot,x)\, d\nu(x) \Big\rangle
-= \langle Y, \xi_L\rangle .
+= \langle Y, \xi_\nu\rangle .
 \end{align*}
 ```
-This identifies the Riesz representer $\xi_L(\cdot) = \int_{\mathcal{X}} k(\cdot,x)\,
+This identifies the Riesz representer $\xi_\nu(\cdot) = \int_{\mathcal{X}} k(\cdot,x)\,
 d\nu(x)$. Writing the point evaluations the same way, the residual functional becomes a
 single inner product:
 ```{=latex}
 \begin{align*}
-\Delta(Y) &= \langle Y, \xi_L\rangle - \sum_i \omega_i \langle Y, k(\cdot,x_i)\rangle \\
-&= \Big\langle Y,\ \xi_L - \sum_i \omega_i\, k(\cdot,x_i)\Big\rangle
+\Delta(Y) &= \langle Y, \xi_\nu\rangle - \sum_i \omega_i \langle Y, k(\cdot,x_i)\rangle \\
+&= \Big\langle Y,\ \xi_\nu - \sum_i \omega_i\, k(\cdot,x_i)\Big\rangle
 = \langle Y, \eta\rangle .
 \end{align*}
 ```
@@ -688,7 +676,7 @@ norm $R$ that the observations cannot pin down.
 The norm of the residual representer is computable in closed form from the kernel alone:
 ```{=latex}
 \begin{gather*}
-\big\| \eta \big\|_{\mathcal{H}}^2 = \underbrace{\iint k(x,x')\,d\nu(x)\,d\nu(x')}_{\langle \xi_L,\xi_L\rangle}
+\big\| \eta \big\|_{\mathcal{H}}^2 = \underbrace{\iint k(x,x')\,d\nu(x)\,d\nu(x')}_{\langle \xi_\nu,\xi_\nu\rangle}
 \;-\; 2\sum_i \omega_i \int k(x, x_i)\, d\nu(x) \;+\; \sum_{i,j} \omega_i\, \omega_j\, k(x_i, x_j).
 \end{gather*}
 ```
@@ -696,20 +684,20 @@ The norm of the residual representer is computable in closed form from the kerne
 ::: {.callout-note collapse="true"}
 ## Derivation: the closed-form representer norm
 
-Expand $\|\eta\|^2 = \langle \eta, \eta\rangle$ with $\eta = \xi_L - \sum_i \omega_i k(\cdot, x_i)$
+Expand $\|\eta\|^2 = \langle \eta, \eta\rangle$ with $\eta = \xi_\nu - \sum_i \omega_i k(\cdot, x_i)$
 bilinearly:
 ```{=latex}
 \begin{gather*}
-\|\eta\|_{\mathcal{H}}^2 = \langle \xi_L, \xi_L\rangle - 2\sum_i \omega_i\, \langle \xi_L, k(\cdot, x_i)\rangle
+\|\eta\|_{\mathcal{H}}^2 = \langle \xi_\nu, \xi_\nu\rangle - 2\sum_i \omega_i\, \langle \xi_\nu, k(\cdot, x_i)\rangle
 + \sum_{i,j}\omega_i\,\omega_j\, \langle k(\cdot, x_i), k(\cdot, x_j)\rangle .
 \end{gather*}
 ```
 Each inner product is evaluated by the reproducing property, $\langle g, k(\cdot, x)\rangle = g(x)$:
 
 - $\langle k(\cdot, x_i), k(\cdot, x_j)\rangle = k(x_i, x_j)$ -- the Gram matrix of the observations;
-- $\langle \xi_L, k(\cdot, x_i)\rangle = \xi_L(x_i) = \int_{\mathcal{X}} k(x, x_i)\,
+- $\langle \xi_\nu, k(\cdot, x_i)\rangle = \xi_\nu(x_i) = \int_{\mathcal{X}} k(x, x_i)\,
   d\nu(x)$ -- the mean-to-obs cross terms;
-- $\langle \xi_L, \xi_L\rangle = \int_{\mathcal{X}} \xi_L(x)\, d\nu(x)
+- $\langle \xi_\nu, \xi_\nu\rangle = \int_{\mathcal{X}} \xi_\nu(x)\, d\nu(x)
   = \iint k(x,x')\,d\nu(x)\,d\nu(x')$.
 
 Substituting gives the boxed formula. Nothing but the kernel $k$, the space-time measure
@@ -754,27 +742,27 @@ once $k$ is replaced.
 ## Derivation: why $\mathrm{SE}_{\mathrm{post}} = \|\eta^\star\|_{\mathcal{H}}$
 
 Write the observation Gram matrix $K_{ij} = k(x_i, x_j)$ and the mean-to-obs vector
-$c_i = \xi_L(x_i) = \int_{\mathcal{X}} k(x,x_i)\,d\nu(x)$. The (noiseless)
+$c_i = \xi_\nu(x_i) = \int_{\mathcal{X}} k(x,x_i)\,d\nu(x)$. The (noiseless)
 simple-kriging weights minimize $\|\eta\|^2$ over $\omega$; setting the gradient of the closed-form
 norm to zero,
 ```{=latex}
 \begin{gather*}
-\nabla_\omega\Big(\langle\xi_L,\xi_L\rangle - 2\,\omega^\top c + \omega^\top K \omega\Big) = 0 \;\Longrightarrow\; \omega^\star = K^{-1} c .
+\nabla_\omega\Big(\langle\xi_\nu,\xi_\nu\rangle - 2\,\omega^\top c + \omega^\top K \omega\Big) = 0 \;\Longrightarrow\; \omega^\star = K^{-1} c .
 \end{gather*}
 ```
 Substituting back,
 ```{=latex}
 \begin{align*}
 \|\eta^\star\|_{\mathcal{H}}^2
-&= \langle\xi_L,\xi_L\rangle - 2\,\omega^{\star\top} c + \omega^{\star\top} K \omega^\star \\
-&= \langle\xi_L,\xi_L\rangle - c^\top K^{-1} c .
+&= \langle\xi_\nu,\xi_\nu\rangle - 2\,\omega^{\star\top} c + \omega^{\star\top} K \omega^\star \\
+&= \langle\xi_\nu,\xi_\nu\rangle - c^\top K^{-1} c .
 \end{align*}
 ```
 This is identically the Gaussian-process posterior variance of the linear functional $L(Y)$ given the
 observations,
 ```{=latex}
 \begin{gather*}
-\operatorname{Var}\!\big(L(Y) \mid Y(x_1),\dots,Y(x_n)\big) = \underbrace{\textstyle\iint k\,d\nu\,d\nu}_{\langle\xi_L,\xi_L\rangle} - c^\top K^{-1} c ,
+\operatorname{Var}\!\big(L(Y) \mid Y(x_1),\dots,Y(x_n)\big) = \underbrace{\textstyle\iint k\,d\nu\,d\nu}_{\langle\xi_\nu,\xi_\nu\rangle} - c^\top K^{-1} c ,
 \end{gather*}
 ```
 so $\mathrm{SE}_{\mathrm{post}} = \|\eta^\star\|_{\mathcal{H}}$. (A nugget/observation-error variance
@@ -789,11 +777,11 @@ Stripped to essentials, the minimax bound is $|B| \le R\,\mathrm{SE}_{\mathrm{po
 times a single **smoothness radius** $R$. Everything else is deterministic kernel bookkeeping and needs
 *no* knowledge of the field $Y$. Three objects carry the meaning:
 
-- $\xi_L$, the **Riesz representer of the mean functional**: the (unique) element of $\mathcal{H}_k$
+- $\xi_\nu$, the **Riesz representer of the mean functional**: the (unique) element of $\mathcal{H}_k$
   whose inner product with any field returns that field's space-time average. It is computed once from
-  the kernel, $\xi_L(\cdot) = \int_{\mathcal{X}} k(\cdot,x)\,d\nu(x)$.
-- $\eta = \xi_L - \sum_i \omega_i\,k(\cdot,x_i)$, the **residual representer**: what the estimator, a
-  weighted sum of point evaluations, fails to capture of $\xi_L$. Its norm $\|\eta\|_{\mathcal{H}}$ is
+  the kernel, $\xi_\nu(\cdot) = \int_{\mathcal{X}} k(\cdot,x)\,d\nu(x)$.
+- $\eta = \xi_\nu - \sum_i \omega_i\,k(\cdot,x_i)$, the **residual representer**: what the estimator, a
+  weighted sum of point evaluations, fails to capture of $\xi_\nu$. Its norm $\|\eta\|_{\mathcal{H}}$ is
   the worst-case leverage the unknown part of the field has on the bias, and at the kriging-optimal
   weights it equals $\mathrm{SE}_{\mathrm{post}}$.
 - $R = \|Y\|_{\mathcal{H}_k}$, the **smoothness radius**: how "large" (rough/variable) the true field is
@@ -868,7 +856,7 @@ representer/minimax structure of a bounded linear functional on the field.
   |B_{\mathrm{samp}}| \;\le\; R\,\|\psi\|_{\mathcal{H}} \quad(\text{smoothness-aware; RKHS}),
   \end{gather*}
 ```
-  where $\psi = \xi_\pi - \xi_L$ is the sampling-bias representer (@sec-samp-rkhs). The first assumes
+  where $\psi = \xi_\pi - \xi_\nu$ is the sampling-bias representer (@sec-samp-rkhs). The first assumes
   no smoothness (needs only $\sigma_w,\sigma_Y$); the second adds the RKHS model of @sec-grid but
   restricts the adversary to smooth fields, so it is typically tighter. When smoothness is granted the
   operative design cap is $\min\{\sigma_w\sigma_Y,\ R\|\psi\|_{\mathcal{H}}\}$, and the gap between the
@@ -925,7 +913,7 @@ and *only* here:
   exploratory, spatial-only version; the rigorous estimand aggregates over $\mathcal{X}$.) The
   resulting quadrature error $B_{\mathrm{quad}} = \mu_N - \mu$ is a deterministic bounded linear
   functional of $Y$, capped by the RKHS machinery of @sec-grid
-  ($|B_{\mathrm{quad}}| \le R\|q\|_{\mathcal H}$, $q = \sum_c \nu(c)\, k(\cdot,x_c) - \xi_L$)
+  ($|B_{\mathrm{quad}}| \le R\|q\|_{\mathcal H}$, $q = \sum_c \nu(c)\, k(\cdot,x_c) - \xi_\nu$)
   and negligible at $1/12^\circ$.
 - **Proxy fidelity.** The realized bias is computed against the reanalysis, not the ocean; validation
   certifies the *bounding machinery*, with reanalysis error a separate, acknowledged layer (cross-
