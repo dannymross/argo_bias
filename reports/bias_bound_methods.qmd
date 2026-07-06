@@ -380,8 +380,8 @@ L(Y) = \int_{\mathcal X} Y(x)\bigl(w(x)-1\bigr)\,d\nu(x),
 ```
 linear in $Y$ because $w$ does not depend on it. By the Riesz Representation Theorem, there exists a
 unique $\psi\in\mathcal H_k$ satisfying $L(Y) = \langle Y,\psi\rangle_{\mathcal H_k}$; applying the
-reproducing property $Y(x) = \langle Y,k(\cdot,x)\rangle_{\mathcal H_k}$ inside the integral identifies
-it as
+reproducing property $Y(x) = \langle Y,k(\cdot,x)\rangle_{\mathcal H_k}$ [@muandet2017] inside the
+integral identifies it as
 ```{=latex}
 \begin{gather*}
 \psi(\cdot) \;=\; \int_{\mathcal X} k(\cdot,x)\bigl(w(x)-1\bigr)\,d\nu(x).
@@ -404,11 +404,11 @@ Two such measures matter here: the **uniform space-time target measure** $\nu$ a
 measure** $\pi$, $d\pi = w\,d\nu$ (so $\pi(\mathcal X) = \int_{\mathcal X} w\,d\nu = 1$: a genuine
 probability measure, the distribution the floats actually realize). Since $d\pi = w\,d\nu$,
 ```{=latex}
-\begin{gather*}
+\begin{align*}
 L(Y) \;=\; \int_{\mathcal X} Y\,(w-1)\,d\nu \;=\; \int_{\mathcal X} Y\,d\pi - \int_{\mathcal X} Y\,d\nu
-\;=\; \big\langle Y,\, \mu_k(\pi)\big\rangle_{\mathcal H_k} - \big\langle Y,\, \mu_k(\nu)\big\rangle_{\mathcal H_k}
+\;=\; \\ \big\langle Y,\, \mu_k(\pi)\big\rangle_{\mathcal H_k} - \big\langle Y,\, \mu_k(\nu)\big\rangle_{\mathcal H_k}
 \;=\; \big\langle Y,\, \mu_k(\pi) - \mu_k(\nu)\big\rangle_{\mathcal H_k},
-\end{gather*}
+\end{align*}
 ```
 using the embedding's reproducing property on each term. This identifies the representer directly --
 matching the integral formula above term by term, since $\int k(\cdot,x)(w(x)-1)\,d\nu(x) = \int
@@ -596,7 +596,8 @@ prediction term $B_{\mathrm{pred}}$, since the sampling geometry is carried by t
 OHC is markedly non-stationary in this western-boundary-current region -- its variance and correlation
 ranges vary sharply across the NAC front [cf. @baugh2022] -- so we fit a **non-stationary**
 Gaussian-process covariance $k(x,x')$ on the sphere-plus-time domain and take its reproducing-kernel
-Hilbert space (RKHS) $\mathcal{H}_k$ as the smoothness class for the field [@stein1999]. Nothing in the
+Hilbert space (RKHS) $\mathcal{H}_k$ as the smoothness class for the field [@stein1999; @muandet2017].
+Nothing in the
 derivation below assumes stationarity: the reproducing property, the Riesz representer, the closed-form
 $\|\eta\|_{\mathcal{H}}$, and the posterior-SE identity all hold verbatim for a general symmetric
 positive-definite $k$.
@@ -651,7 +652,8 @@ integral in $\mathcal{H}$, well defined since $k$ is bounded and $\nu$ finite.
 ## Derivation: the residual functional is $\langle Y, \eta\rangle$, and its worst case is $R\|\eta\|$
 
 The one fact that makes everything linear-in-$Y$ collapse is the **reproducing property**: for every
-$f \in \mathcal{H}_k$ and location $x$, $f(x) = \langle f, k(\cdot, x)\rangle_{\mathcal{H}}$. Hence each
+$f \in \mathcal{H}_k$ and location $x$, $f(x) = \langle f, k(\cdot, x)\rangle_{\mathcal{H}}$
+[@muandet2017]. Hence each
 point evaluation is an inner product, and so is the space-time-mean functional, by exchanging the
 (Bochner) integral with the inner product -- valid since $x \mapsto k(\cdot,x)$ is
 Bochner-$\nu$-integrable ($k$ bounded, $\nu$ finite):
