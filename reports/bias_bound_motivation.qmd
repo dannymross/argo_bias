@@ -36,37 +36,45 @@ and the **estimand** is the space-time-mean OHC:
 # Bias decomposition {#sec-decomp}
 The floats realize a spatio-temporal point process $N$ on
 $(\mathcal{X},\, \mathcal{B}(A)\otimes\mathcal{B}(\mathcal{T}))$ with intensity measure
-$\Lambda(E) = \mathbb{E}_N[N(E)]$ (the expected number of profiles falling in $E$). 
+$\Lambda(E) = \mathbb{E}_N[N(E)]$, the expected number of profiles falling in the measureable set $E$. 
 
-Define the **realized sampling measure** $\pi$, $d\pi = w\,d\nu$. Such that, $\pi(\mathcal X) = \int_{\mathcal X} w\,d\nu = 1$.
+Assume $\Lambda \ll \nu$, where $\nu$ denotes the reference space-time volume measure. 
 
-Assume $\Lambda \ll \nu$ (the sampling has no singular part relative to space-time volume); the
-sampling weight is then the Radon--Nikodym derivative
-```{=latex}
-\begin{gather*}
-w \;=\; \frac{d\pi}{d\nu} \in L^2(\nu), \qquad \pi \;=\; \frac{\Lambda}{\Lambda(\mathcal{X})},
-\qquad \int w \,d\nu \;=\; \mathbb{E}[w] \;=\; 1 ,
-\end{gather*}
-```
-of the sampling measure $\pi$ with respect to $\nu$.
+Normalizing the intensity yields the **sampling probability measure**
+$$
+\pi \;=\; \frac{\Lambda}{\Lambda(\mathcal{X})},
+$$
 
-Non-preferential sampling is then $\pi = \nu$. 
+whose density with respect to $\nu$ is the **sampling weight**
+$$
+w \;=\; \frac{d\pi}{d\nu},
+$$
 
-The log-linear model of @diggle2010 is
-$d\Lambda/d\nu \propto \exp\{\beta\,Y\}$, and the **design-mean** is the field integrated
+so that 
+$$
+\pi(E) = \int_{E} w\,d\nu,
+$$
+
+for every measurable set $E$. 
+
+Formally, $w$ is the Radon--Nikodym derivative of $\pi$ with respect to $\nu$.
+
+The **design-mean** is the field integrated
 against the sampling measure,
 ```{=latex}
-\mu_w = \int Y\,d\pi = \int w\,Y\,d\nu = \mathbb{E}[w\,Y].
+\begin{align*}
+\mu_w &= \int_{\mathcal X} Y\,d\pi = \mathbb{E}_{\pi}[Y] \\
+&= \int_{\mathcal X} w\,Y\,d\nu = \mathbb{E}_{\nu}[w\,Y].
+\end{align*}
 ```
 
-Heuristically, $w$ is the **sampling weight** function $w(x) \ge 0$: $w > 1$ where the
-design concentrates and $w < 1$ where it is sparse, normalized so its space-time average is one,
-$\mathbb{E}[w] = 1$. 
+::: {.callout-tip title="Intuition"}
+The density $w(x)$ measures how much more (or less) likely a profile is to be sampled at $x$ than under uniform sampling over the space-time domain.
 
-A non-preferential, uniform design has $w \equiv 1$;
-sampling is **preferential** when $w$ is correlated with the field $Y$. For example, if $w > 1$ where Y is high, the bias is positive. 
+Under non-preferential sampling, $w \equiv 1$, such that $\pi = \nu$
+:::
 
-We can then decompose the bias:
+We can then decompose the bias for any estimator $\hat \mu$ based on the observed $Y(x)$:
 ```{=latex}
 \begin{gather*}
 B \;=\; \hat\mu - \mu \;=\; \underbrace{\big(\mu_w - \mu\big)}_{\displaystyle B_{\mathrm{samp}}}
@@ -77,7 +85,3 @@ B \;=\; \hat\mu - \mu \;=\; \underbrace{\big(\mu_w - \mu\big)}_{\displaystyle B_
 - $B_{\mathrm{samp}}$ **preferential-sampling bias**. [Preferential Sampling Bounds](bias_bound_sampling.qmd#sec-samp) shows $B_{\mathrm{samp}} = \operatorname{Cov}(w, Y)$.
 - $B_{\mathrm{pred}}$ **prediction bias**. Bias from interpolation/kriging.
 
-# References {.unnumbered}
-
-::: {#refs}
-:::
