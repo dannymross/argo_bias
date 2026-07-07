@@ -25,7 +25,7 @@ def _show_fig(fig):
 We have shown that
 ```{=latex}
 \begin{gather*}
-\boxed{\;B_{\mathrm{samp}} \;=\; \mathbb{E}[w\,Y] - \mathbb{E}[Y] \;=\; \mathbb{E}[(w-1)\,Y] \;=\; \operatorname{Cov}(w,\, Y)\;}
+\boxed{\;B_{\mathrm{samp}} = \mu_w - \mu = \mathbb{E}_{\nu}[w\,Y] - \mathbb{E}_{\nu}[Y] \;=\; \mathbb{E}_{\nu}[(w-1)\,Y] \;=\; \operatorname{Cov}_{\nu}(w,\, Y).\;}
 \end{gather*}
 ```
 
@@ -49,44 +49,73 @@ Applying the Cauchy--Schwarz inequality in $L^2(\nu)$ to the covariance gives a 
 \end{gather*}
 ```
 This bound requires only finite second moments and imposes no smoothness assumptions on the underlying
-field; $\rho_{w,Y} = 1$ is the worst case.
+field.
 
-Neither $\sigma_Y$ nor $\sigma_w$ is directly observable: $\sigma_w$ requires an estimated intensity
-$\hat w$ from the float density, and $\sigma_Y$ requires a field estimate ($\hat\sigma_Y$ from the GP,
-[Prediction Bias Bounds](bias_bound_prediction.qmd#sec-grid)) or the reanalysis proxy used in validation ([Validation](bias_bound_validation.qmd#sec-validation)). 
+Neither $\sigma_Y$ nor $\sigma_w$ is directly observable therefore we need an estimation strategy.
+
+### Estimating $\sigma_Y$ and $\sigma_w$
+
+The deterministic bound depends on the variability of both the field and the sampling design. In practice, these quantities must be estimated.
+
+The field variability, $\sigma_Y^2 = \int_{\mathcal X} (Y-\mu)^2\,d\nu$, may be estimated from:
+
+- **A complete reanalysis product:** Treat the gridded reanalysis, such as GLORYS12, as a proxy for the true field and compute its area-weighted spatial variance.
+- **A Gaussian process (GP) model:** Use the posterior mean to estimate the spatial variance, optionally incorporating posterior predictive uncertainty.
+- **Observed float measurements:** Compute the sample variance of the observed OHC values. This estimates variability under the sampling distribution rather than the target distribution and may therefore be biased under preferential sampling.
+
+The sampling variability, $\sigma_w^2 = \int_{\mathcal X}(w-1)^2\,d\nu$, depends only on the sampling intensity and can be estimated using the same approaches later employed to compute the RKHS norm of the representer.
+Since the sampling density $w$ is unknown, it must first be estimated from the observed float locations.
+
+Possible approaches include
+
+- kernel density estimation (KDE),
+- Gaussian process intensity models,
+- log-Gaussian Cox processes, or
+- other smooth spatial or spatio-temporal point process models.
+
+Given an estimated intensity $\hat w$, the integral may be approximated numerically using quadrature or Monte Carlo integration. 
 
 ### Illustrative Example
 
-Consider an idealized intensity: floats cover a
-space-time sub-region $D_f \subseteq \mathcal{X}$ of measure $f = \nu(D_f)$
-uniformly and sample nowhere else, so $\pi(E) = \nu(E \cap D_f)/f$, whose density is
-$w = 1/f$ on $D_f$ and $w = 0$ off it. Then $\sigma_w^2 = (1-f)/f$ and
+Consider an idealized sampling design in which floats sample uniformly over a space-time subregion
+$D_f \subseteq \mathcal X$ and never sample outside it.
+Let $f=\nu(D_f)$ denote the fraction of the domain covered by the sampling design.
+The corresponding sampling probability measure is $\pi(E)=\frac{\nu(E\cap D_f)}{f}$, whose density with respect to $\nu$ is
+
+```{=latex}
+w(x)=
+\begin{cases}
+1/f, & x\in D_f,\\
+0, & x\notin D_f.
+\end{cases}
+```
+
+In this case, $\sigma_w^2=\frac{1-f}{f}$, so the general Cauchy--Schwarz bound reduces to
+
 ```{=latex}
 \begin{gather*}
-\big| B_{\mathrm{samp}} \big| \;\le\; \sigma_Y \sqrt{\tfrac{1-f}{f}} .
+\big|B_{\mathrm{samp}}\big|
+\le
+\sigma_Y\sqrt{\frac{1-f}{f}}.
 \end{gather*}
 ```
-The factor $\sqrt{(1-f)/f}$ is a property of *this* hard-footprint intensity, not of preferential
-sampling in general; the operative cap remains $\sigma_w\,\sigma_Y$ for whatever intensity holds.
 
+::: {.callout-note collapse="true" title="Derivation"}
+Since $w=1/f$ on $D_f$ (whose measure is $f$) and $w=0$ on its complement (whose measure is $1-f$),
 
-::: {.callout-note collapse="true"}
-## Derivation: the closed form for $\sigma_w$
-
-Take the hard-footprint density $w = 1/f$ on $D_f$ (with $\nu(D_f) = f$) and $w = 0$ on
-the complement (measure $1-f$). Then
 ```{=latex}
 \begin{align*}
-\sigma_w^2 &= \int_{\mathcal{X}} (w - 1)^2\,d\nu \\
-&= f\Big(\tfrac{1}{f}-1\Big)^2 + (1-f)(0-1)^2 \\
-&= \frac{(1-f)^2}{f} + (1-f) = (1-f)\Big(\frac{1-f}{f} + 1\Big) = \frac{1-f}{f}.
+\sigma_w^2 &= \int_{\mathcal X}(w-1)^2\,d\nu \\
+&= f\left(\frac1f-1\right)^2 + (1-f)(0-1)^2 \\
+&= \frac{(1-f)^2}{f} + (1-f) = (1-f)\left(\frac{1-f}{f}+1\right) = \frac{1-f}{f}.
 \end{align*}
 ```
-Hence $|B_{\mathrm{samp}}| \le \sigma_Y\sqrt{(1-f)/f}$.
+
+Hence, $|B_{\mathrm{samp}}| \le \sigma_Y\sqrt{\frac{1-f}{f}}.$
 :::
 
-The amplification factor $\sqrt{(1-f)/f}$ diverges as coverage $\to 0$ and goes to 1 as coverage
-$\to 1$:
+The amplification factor $\sqrt{\frac{1-f}{f}}$ depends only on the fraction of the domain sampled. 
+It grows without bound as $f\to0$, reflecting the increasing potential for sampling bias under sparse coverage, and goes to $0$ as $f\to1$, corresponding to complete coverage of the domain.
 
 ```{python}
 #| label: fig-amp
@@ -107,28 +136,23 @@ _show_fig(fig)
 
 The Cauchy--Schwarz cap $\sigma_w\sigma_Y$ is *distribution-free*: it assumes nothing about the field
 beyond a finite variance. Suppose instead the field is **smooth**, such that it lives in the RKHS
-$\mathcal{H}_k$ of a covariance kernel $k$ -- the same assumption already made for the total bias in
-[Prediction Bias Bounds](bias_bound_prediction.qmd#sec-grid).
+$\mathcal{H}_k$ of a covariance kernel $k$.
 
-Beyond the **uniform space-time target measure** $\nu$ already fixed in [Motivation and estimand](bias_bound_motivation.qmd#sec-setup), consider the
-**realized sampling measure** $\pi$, $d\pi = w\,d\nu$ (so $\pi(\mathcal X) = \int_{\mathcal X} w\,d\nu =
-1$: a genuine probability measure, the distribution the floats actually realize).
 
-Conditional on the design (so $w$, and hence $\pi$, is fixed), the sampling bias is a *bounded linear
-functional of the field* -- linear in $Y$ because $w$ does not depend on it,
+Conditional on the sampling design (so that $w$, and hence $\pi$, are fixed), the sampling bias 
+is a **bounded linear functional of the field** 
 ```{=latex}
 \begin{gather*}
 B_{\mathrm{samp}} \;=\; L(Y) \;=\; \int_{\mathcal X} Y(x)\bigl(w(x)-1\bigr)\,d\nu(x),
 \end{gather*}
 ```
-which, since $d\pi = w\,d\nu$, splits as
+, since $d\pi = w\,d\nu$, splits as
 ```{=latex}
 \begin{gather*}
 L(Y) \;=\; \int_{\mathcal X} Y(x)\,d\pi(x) - \int_{\mathcal X} Y(x)\,d\nu(x) .
 \end{gather*}
 ```
-Applying the reproducing property $Y(x) = \langle Y,k(\cdot,x)\rangle_{\mathcal H_k}$ [@muandet2017]
-inside each integral and pulling $Y$ out of the (Bochner) integral,
+Applying the reproducing property $Y(x) = \langle Y,k(\cdot,x)\rangle_{\mathcal H_k}$ [@muandet2017],
 ```{=latex}
 \begin{align*}
 L(Y) &= \int \left\langle Y,\, k(\cdot,x) \right\rangle \,d\pi(x) - \int \left\langle Y,\, k(\cdot,x) \right\rangle \,d\nu(x) \\
@@ -138,21 +162,17 @@ L(Y) &= \int \left\langle Y,\, k(\cdot,x) \right\rangle \,d\pi(x) - \int \left\l
 ```
 where $\xi_\pi := \int_{\mathcal X} k(\cdot,x)\,d\pi(x)$ and $\xi_\nu := \int_{\mathcal X}
 k(\cdot,x)\,d\nu(x)$ are the **kernel mean embeddings** of $\pi$ and $\nu$ into $\mathcal H_k$
-[@smola2007; @muandet2017] -- the same $\xi_\nu$ that reappears as the Riesz representer of the mean
-functional in [Prediction Bias Bounds](bias_bound_prediction.qmd#sec-grid). Writing $\psi := \xi_\pi - \xi_\nu$, this is exactly $L(Y) = \langle
-Y,\psi\rangle_{\mathcal H_k}$: by the Riesz Representation Theorem, $\psi$ is the unique element of
-$\mathcal H_k$ representing $L$, and we have derived it in closed form,
-```{=latex}
-\begin{gather*}
-\boxed{\; \psi \;=\; \xi_\pi - \xi_\nu \;=\; \int_{\mathcal X} k(\cdot,x)\bigl(w(x)-1\bigr)\,d\nu(x). \;}
-\end{gather*}
-```
+[@smola2007; @muandet2017].
 
-This gives $\psi$ a direct geometric reading: it is the **discrepancy, in the RKHS, between where the
-floats actually sampled and the uniform target measure** -- exactly zero when $\pi=\nu$ (non-preferential
-sampling) -- and its norm $\|\psi\|_{\mathcal H_k} = \|\xi_\pi - \xi_\nu\|_{\mathcal H_k}$ is precisely
-the **(kernel) maximum mean discrepancy** between $\pi$ and $\nu$ [@gretton2012], so the RKHS worst-case
-cap below is $R$ times an MMD between the realized sampling distribution and the target.
+Let $\psi := \xi_\pi - \xi_\nu$, this is exactly $L(Y) = \langle
+Y,\psi\rangle_{\mathcal H_k}$. By the Riesz Representation Theorem, $\psi$ is the unique element of
+$\mathcal H_k$ representing $L$.
+
+This $\psi$ is the **discrepancy, in the RKHS, between where the
+floats actually sampled and the uniform target measure**.
+Namely, $\psi$ is zero when $\pi=\nu$ (non-preferential
+sampling) and its norm $\|\psi\|_{\mathcal H_k} = \|\xi_\pi - \xi_\nu\|_{\mathcal H_k}$ is
+the **(kernel) maximum mean discrepancy** between $\pi$ and $\nu$ [@gretton2012].
 
 Applying the Cauchy--Schwarz inequality in the RKHS,
 ```{=latex}
@@ -160,15 +180,15 @@ Applying the Cauchy--Schwarz inequality in the RKHS,
 |B_{\mathrm{samp}}| = |\langle Y,\psi\rangle_{\mathcal H_k}| \le \|Y\|_{\mathcal H_k}\,\|\psi\|_{\mathcal H_k},
 \end{gather*}
 ```
-so if $\|Y\|_{\mathcal H_k}\le R$, maximizing over the smoothness ball gives -- the optimal-recovery /
-minimax-linear-functional duality [@micchelli1977; @donoho1994]:
+so if $\|Y\|_{\mathcal H_k}\le R$, maximizing over the smoothness ball gives:
 ```{=latex}
 \begin{gather*}
 \boxed{\; \sup_{\|Y\|_{\mathcal H_k} \le R} |B_{\mathrm{samp}}| \;=\; R\,\|\psi\|_{\mathcal H_k}, \;}
 \end{gather*}
 ```
-attained at the worst-case field $Y^\star = R\psi/\|\psi\|_{\mathcal H_k}$. Compared with the $L^2$
-bound, the RKHS bound exploits the smoothness encoded by the kernel; since the admissible class of
+attained at the worst-case field $Y^\star = R\psi/\|\psi\|_{\mathcal H_k}$. 
+
+Compared with the $L^2$ bound, the RKHS bound exploits the smoothness encoded by the kernel; since the admissible class of
 functions is substantially smaller than all of $L^2(\nu)$, this bound is typically much tighter.
 
 ## Computing the RKHS Norm of the Representer
@@ -179,25 +199,17 @@ The RKHS norm of the representer admits the closed-form expression
 \boxed{\; \|\psi\|_{\mathcal H_k}^2 = \iint_{\mathcal X\times\mathcal X} k(x,y)\bigl(w(x)-1\bigr)\bigl(w(y)-1\bigr)\,d\nu(x)\,d\nu(y). \;}
 \end{gather*}
 ```
-Importantly, this quantity depends only on the sampling design and the chosen
-covariance kernel, not on the unknown OHC field -- in practice, the same non-stationary kernel fit in
-[Prediction Bias Bounds](bias_bound_prediction.qmd#sec-grid).
+This quantity depends only on the sampling design and the chosen covariance kernel.
+In practice, we can use a non-stationary GP covariance function as the kernel.
 
 Since the sampling density $w$ is unknown, it must first be estimated from the
-observed float locations. Possible approaches include
-
-- kernel density estimation (KDE),
-- Gaussian process intensity models,
-- log-Gaussian Cox processes, or
-- other smooth spatial or spatio-temporal point process models.
-
-Once an estimate $\hat w$ has been obtained, the double integral can be
+observed float locations. Once an estimate $\hat w$ has been obtained, the double integral can be
 evaluated numerically using quadrature or Monte Carlo integration. If
 $x_1,\ldots,x_m$ are grid points sampled approximately uniformly with respect
 to $\nu$, then
 ```{=latex}
 \begin{gather*}
-\boxed{\; \|\hat\psi\|_{\mathcal H_k}^2 \approx \frac1{m^2}\sum_{i=1}^{m}\sum_{j=1}^{m} k(x_i,x_j)(\hat w_i-1)(\hat w_j-1). \;}
+\|\hat\psi\|_{\mathcal H_k}^2 \approx \frac1{m^2}\sum_{i=1}^{m}\sum_{j=1}^{m} k(x_i,x_j)(\hat w_i-1)(\hat w_j-1).
 \end{gather*}
 ```
 
@@ -212,7 +224,7 @@ R=\|Y\|_{\mathcal H_k},
 measures the complexity of the unknown true field relative to the chosen
 kernel.
 
-Possible approaches include
+Possible estimation strategies include
 
 **1. Plug-in estimate from the fitted Gaussian process.**
 Let $\hat Y$ denote the posterior mean from a fitted Gaussian process model.
@@ -228,7 +240,7 @@ for the unknown RKHS norm of the true field. For noiseless kernel interpolation,
 and
 ```{=latex}
 \begin{gather*}
-\boxed{\; \|\hat Y\|_{\mathcal H_k}^2 = y^\top K^{-1}y. \;}
+\|\hat Y\|_{\mathcal H_k}^2 = y^\top K^{-1}y.
 \end{gather*}
 ```
 
@@ -267,11 +279,5 @@ which fields the worst case ranges over.
 
 - **In $L^2(\nu)$** (the bound $\sigma_w\sigma_Y$): the worst-case field is
   $Y-\mu \propto w-1$. Distribution-free, but pessimistic.
-- **In $\mathcal{H}_k$** (the bound $R\|\psi\|$): the worst-case field is $Y^\star \propto \psi$.
+- **In $\mathcal{H}_k$** (the bound $R\|\psi\|$): the worst-case field is $Y^\star \propto \psi$. Requires additional assumptions, but gives tighter bound.
 
-
-
-# References {.unnumbered}
-
-::: {#refs}
-:::

@@ -1,44 +1,72 @@
 ---
-title: "Permutation Test"
+title: "Monte Carlo Null Distribution"
 ---
 
-The permutation construction below produces a **reference (null) distribution** for the preferential-sampling bias under the hypothesis
-of no temperature preference, which we could use to interpret the realized bias and to gauge how conservative the deterministic caps are, never as a tighter bound.
+The construction below generates a **Monte Carlo reference (null) distribution** for preferential-sampling bias under the hypothesis that sampling is independent of OHC after accounting for the physical sampling constraints. The resulting null distribution can be used to assess whether the observed bias is larger than expected under non-preferential sampling and to gauge how conservative the deterministic worst-case bounds are.
 
-Consider the null hypothesis "the floats show no preference for warm/cold water,"
-i.e. the sampling intensity does not co-vary with $Y$.
+Consider the null hypothesis that **floats exhibit no preference for warm or cold OHC regions**, so that the sampling design is independent of the OHC field after conditioning on the background sampling process.
 
-**Constrained-null resampling.** Let $\lambda_0$ be an estimated **non-preferential** intensity on
-$\mathcal{X}$; in practice
-a smooth intensity fit to the realized pattern with the field regressed out, or a mechanistic
-deployment-and-advection intensity, normalized to the probability measure
-$\pi_0 \propto \lambda_0$. For $b = 1,\dots,B$ we draw a null configuration
-$\{x_i^{(b)}\}_{i=1}^{n}$ (each $x_i^{(b)} = (s_i^{(b)}, t_i^{(b)})$) as an i.i.d. sample from $\pi_0$ and recompute the realized
-preferential-sampling statistic against the field held fixed:
+**Constrained-null resampling.** Let $\lambda_0$ denote an estimated **non-preferential** sampling intensity on $\mathcal X$. In practice, $\lambda_0$ might be obtained from a smooth intensity model fitted to the observed float locations with the OHC field excluded, or from a mechanistic deployment-and-advection model. Normalizing gives the probability measure $\pi_0 \propto \lambda_0$.
+
+Because the true field $Y$ and its domain mean $\mu = \int_{\mathcal X} Y\,d\nu$ are unknown, the procedure is carried out using an estimated field $\hat Y$ (e.g., a reanalysis product).
+For $b=1,\ldots,B$, draw an i.i.d. sample $\{x_i^{(b)}\}_{i=1}^n$ from $\pi_0$, where each $x_i^{(b)}=(s_i^{(b)},t_i^{(b)})$, and compute
+
 ```{=latex}
 \begin{gather*}
-B_{\mathrm{samp}}^{(b)} \;=\; \tfrac{1}{n}\sum_i Y\big(x_i^{(b)}\big) - \mu , \qquad b = 1,\dots,B .
+\hat B_{\mathrm{samp}}^{(b)}
+=
+\frac1n\sum_{i=1}^n
+\hat Y\!\left(x_i^{(b)}\right)
+-
+\hat\mu,
+\qquad
+\hat\mu
+=
+\int_{\mathcal X}\hat Y\,d\nu,
+\qquad
+b=1,\ldots,B.
 \end{gather*}
 ```
 
-**Observability.** Both $B_{\mathrm{samp}}^{(b)}$ and the realized statistic $\bar Y - \mu$ depend on
-$\mu$ and on $Y$ away from the profiles, so -- exactly as in [Bias decomposition](bias_bound_motivation.qmd#sec-decomp) -- the permutation test is
-**computed against the proxy field** (or a GP estimate $\hat Y$), not from float observations alone. It
-is a validation-stage diagnostic, not a field-free guarantee.
+The observed statistic is computed analogously,
+
+```{=latex}
+\begin{gather*}
+\hat B_{\mathrm{samp}}^{\mathrm{obs}}
+=
+\frac1n\sum_{i=1}^n
+\hat Y(x_i)
+-
+\hat\mu.
+\end{gather*}
+```
+
+Thus, the null distribution quantifies the sampling bias that would arise if floats followed the estimated non-preferential sampling intensity while the estimated OHC field remained fixed.
 
 **What it delivers.**
 
-1. **Evidence for preferential sampling** -- a Monte-Carlo $p$-value locating the realized bias in the
-   null,
+1. **Evidence for preferential sampling.** A Monte Carlo $p$-value compares the observed statistic with the null distribution,
+
 ```{=latex}
 \begin{gather*}
-p \;=\; \frac{1 + \#\{\, b : |B_{\mathrm{samp}}^{(b)}| \ge |\bar Y - \mu| \,\}}{B + 1}.
+p
+=
+\frac{
+1+
+\#\left\{
+b:
+\left|
+\hat B_{\mathrm{samp}}^{(b)}
+\right|
+\ge
+\left|
+\hat B_{\mathrm{samp}}^{\mathrm{obs}}
+\right|
+\right\}
+}{B+1}.
 \end{gather*}
- ```
-   A realized bias in the tail is evidence that floats sample $Y$ preferentially, over and above the
-   physical constraints encoded in $\lambda_0$.
-2. **A conservativeness diagnostic** -- the spread of $\{B_{\mathrm{samp}}^{(b)}\}$ is the bias the
-   sampling *geometry alone* would produce with no temperature preference; the gap between an upper
-   null quantile $q_{0.975}\big(\{\,|B_{\mathrm{samp}}^{(b)}|\,\}\big)$ and the Cauchy--Schwarz cap
-   $\sigma_w\sigma_Y$ measures how much slack the worst-case bound carries. That quantile is a property
-   of the null, **not** an upper bound on the realized $B_{\mathrm{samp}}$.
+```
+
+A small $p$-value indicates that the observed alignment between the sampling design and the estimated OHC field is unlikely under the non-preferential sampling model encoded by $\lambda_0$.
+
+2. **A conservativeness diagnostic.** The spread of $\{\hat B_{\mathrm{samp}}^{(b)}\}$ represents the sampling bias expected under the null design. Comparing an upper null quantile, such as $q_{0.975}\!\left(\{|\hat B_{\mathrm{samp}}^{(b)}|\}\right)$, with the deterministic Cauchy--Schwarz bound $\sigma_w\sigma_Y$ indicates how conservative the worst-case bound is for the estimated field and sampling design. The null quantile characterizes typical bias under the assumed null model; it is **not** itself an upper bound on the realized preferential-sampling bias.

@@ -23,7 +23,7 @@ And let $\tau$ be a normalized probability measure on $\mathcal{T}$.
 Define $\nu := \alpha\otimes\tau$ as the
 resulting **space-time probability measure** on the probability space $(\mathcal{X},\; \mathcal{B}(A)\otimes\mathcal{B}(\mathcal{T})$.
 
-Our target **estimand** is the space-time-mean OHC:
+Our target **estimand** is the space-time mean OHC:
 ```{=latex}
 \begin{gather*}
 \mu \;=\; \int_{\mathcal{X}} Y \,d\nu \;=\; \mathbb{E}[Y] .
@@ -40,20 +40,24 @@ Assume $\Lambda \ll \nu$, where $\nu$ denotes the reference space-time volume me
 Normalizing the intensity yields the **sampling probability measure** $\pi \;=\; \frac{\Lambda}{\Lambda(\mathcal{X})}$, whose density with respect to $\nu$ is the **sampling weight** $w \;=\; \frac{d\pi}{d\nu}$, so that $\pi(E) = \int_{E} w\,d\nu$, for every measurable set $E$. 
 Formally, $w$ is the Radon--Nikodym derivative of $\pi$ with respect to $\nu$.
 
-The **design-mean** is the field integrated
-against the sampling measure,
-```{=latex}
-\begin{align*}
-\mu_w &= \int_{\mathcal X} Y\,d\pi = \mathbb{E}_{\pi}[Y] \\
-&= \int_{\mathcal X} w\,Y\,d\nu = \mathbb{E}_{\nu}[w\,Y].
-\end{align*}
-```
-
 ::: {.callout-tip title="Intuition"}
-The density $w(x)$ measures how much more (or less) likely a profile is to be sampled at $x$ than under uniform sampling over the space-time domain.
+- $\nu$ is the **target population distribution** (uniform over space-time)
+- $\pi$ is the **sampling distribution**. If you draw a profile at random from the sampling process, $\pi(E)$ is the probabilit that the profile lies in the space-time region $E$.
+- $w$ is the **relative sampling propensity**.
+  - $w(x) = 1$ *floats are sampled as if uniformly near $x$*
+  - $w(x) = 2$ *floats are sampled twice as often compared to uniform sampling near $x$*
+  - $w(x) = 0$ *floats are never sampled near $x$*
 
 Under non-preferential sampling, $w \equiv 1$, such that $\pi = \nu$
 :::
+
+The **design-mean** is the field integrated
+against the sampling measure,
+```{=latex}
+\begin{gather*}
+\mu_w \qquad = \int_{\mathcal X} Y\,d\pi = \mathbb{E}_{\pi}[Y] \qquad = \int_{\mathcal X} w\,Y\,d\nu = \mathbb{E}_{\nu}[w\,Y].
+\end{gather*}
+```
 
 We can then decompose the bias for any estimator $\hat \mu$ based on the observed $Y(x)$:
 ```{=latex}
@@ -63,7 +67,7 @@ B \;=\; \hat\mu - \mu \;=\; \underbrace{\big(\mu_w - \mu\big)}_{\displaystyle B_
 \end{gather*}
 ```
 
-- $B_{\mathrm{samp}}$ **preferential-sampling bias**.
+- $B_{\mathrm{samp}}$ **preferential-sampling bias**. Bias from floats preferential sampling of the OHC field.
 - $B_{\mathrm{pred}}$ **prediction bias**. Bias from interpolation/kriging.
 
 
