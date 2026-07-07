@@ -10,12 +10,7 @@ sharp heat-content gradient -- our North Atlantic Current (NAC) box $A = [36^\ci
 \times [-68^\circ,-62^\circ]\,\mathrm{E}$ -- floats are advected along the flow and may
 preferentially occupy waters whose ocean heat content (OHC) differs systematically from the regional
 average. Any estimate of regional-mean OHC built by interpolating float observations therefore
-inherits a **sampling-induced bias**. This report states, explicitly, the mathematics behind the
-objects we use to characterize that bias. These are conceptually distinct and are kept separate
-throughout: (i) *deterministic worst-case upper bounds* -- a design-based Cauchy--Schwarz cap
-([Preferential Sampling Bounds](bias_bound_sampling.qmd#sec-samp)) and a model-based RKHS minimax cap ([Prediction Bias Bounds](bias_bound_prediction.qmd#sec-grid)); (ii) an *illustrative approximation* that
-interprets the design cap; and (iii) a *permutation-based null distribution* -- a reference
-distribution, **not** a bound. Each is checked against a complete-coverage reanalysis ([Validation](bias_bound_validation.qmd#sec-validation)).
+inherits a **sampling-induced bias**. This report explores methods to characterize that bias.
 
 Write $Y(x)$ for the true OHC field over region $A$ and study period $\mathcal{T}$ (per depth
 horizon $0$--$700$ m or $0$--$2000$ m) -- a *continuous* field on the sphere-plus-time domain
@@ -31,124 +26,21 @@ $E \in \mathcal{B}(A)$, and let $\tau$ be a **normalized (probability) measure o
 (uniform over the study period unless stated otherwise). Write $\nu := \alpha\otimes\tau$ for the
 resulting **space-time probability measure** on $\mathcal{X}$; then
 $(\mathcal{X},\; \mathcal{B}(A)\otimes\mathcal{B}(\mathcal{T}),\; \nu)$ is a probability space,
-and the **estimand** is the true space-time-mean OHC, the Lebesgue integral of $Y$ against $\nu$:
+and the **estimand** is the space-time-mean OHC:
 ```{=latex}
 \begin{gather*}
 \mu \;=\; \int_{\mathcal{X}} Y \,d\nu \;=\; \mathbb{E}[Y] .
 \end{gather*}
 ```
-**Notational convention.** Throughout, unsubscripted expectations $\mathbb{E}$, variances
-$\operatorname{Var}$, covariances $\operatorname{Cov}$, standard deviations ($\sigma_Y$, $\sigma_w$),
-correlations ($\rho_{w,Y}$), and $L^2$ inner products are all taken with respect to $\nu$; we drop the
-subscript. Expectations over the sampling *point process* carry an explicit subscript $\mathbb{E}_N$ to
-keep the two kinds of averaging distinct.
-(In lat/lon/time coordinates $d\nu(s,t) = a(s)\,\theta(t)\,ds\,dt$, with
-$a \propto \cos(\mathrm{lat})$ the Radon--Nikodym derivative of $\alpha$ w.r.t. coordinate Lebesgue
-measure ($\int_A a\,ds = 1$) and $\theta$ that of $\tau$ ($\int_{\mathcal{T}} \theta\,dt = 1$); this is
-only the computational form.) A purely spatial, synoptic estimand is the special case $\tau =
-\delta_{t_0}$, giving $\mu_{t_0} = \int_A Y(\cdot,t_0)\,d\alpha$; every identity and bound below
-specializes to it verbatim. We take the intensive (mean) OHC as primary because integrating against a
-*probability* measure is what makes $\mathbb{E}$ an expectation, $\sigma_Y$ a
-genuine standard deviation, and $\rho_{w,Y}$ a correlation; the extensive **total** OHC is the fixed
-rescaling $\mathrm{OHC}_{\mathrm{tot}} = |A|\,\mu$ by the known region area $|A|$, so every bias and
-bound carries over by multiplying through by the constant $|A|$ (e.g. $B_{\mathrm{total}} = |A|\,B$,
-and each cap scales identically).
-
-Argo floats observe $Y$ **at their actual space-time locations** $x_1,\dots,x_n \in \mathcal{X}$
-(writing $x_i = (s_i,t_i)$ for the $i$-th profile) -- point measurements of the true field at
-arbitrary positions on the sphere and in time, *not* values on any grid (each profile yields OHC at the float's lat/lon and date; we treat
-these as noise-free samples of $Y$, deferring error from drift during the profile cycle). The
-locations form a spatio-temporal point pattern whose intensity may be **preferential** -- correlated
-with $Y$ through the advecting current. Since $Y$ is unobserved away from the profiles, $\mu$ must be
-estimated; write $\hat\mu$ for an estimator built from $\{Y(x_i)\}$ -- the Gaussian-process
-space-time average of [`nac_gp.qmd`](nac_gp.qmd), or a simple average of the observations -- and
-$B = \hat\mu - \mu$ for its bias, the quantity we bound.
-
-**What is observable, and what is not.** The only observables are the realized profile locations
-$\{x_i\}$ and the OHC at those locations $\{Y(x_i)\}$. The estimand $\mu$, the field $Y$ away
-from the profiles, and the field summaries $\sigma_Y$, $\sigma_w$, $\rho_{w,Y}$ that enter the caps
-below are **not** directly observable. This distinction is load-bearing and we keep it explicit
-throughout. The *theoretical identities and inequalities* -- the covariance identity of [Preferential Sampling Bounds](bias_bound_sampling.qmd#sec-samp),
-Cauchy--Schwarz, the RKHS minimax bound of [Prediction Bias Bounds](bias_bound_prediction.qmd#sec-grid) -- hold for the true field and require no
-knowledge of $Y$ off-track; but **evaluating** any of them, computing the permutation statistic, or
-**verifying** a bound requires a bridge to the unobserved field: either a field *estimator* (the GP,
-yielding $\hat Y$, $\hat\sigma_Y$, $\hat w$) or a complete-coverage *proxy*. For the verification step
-alone we take the **GLORYS12 reanalysis** -- a data-assimilating model with complete spatiotemporal
-coverage -- as a proxy for $Y$ (hence for $\mu$): an explicit, scoped assumption, examined in
-[Validation](bias_bound_validation.qmd#sec-validation) and invoked there and nowhere in the derivations.
-
 
 # Bias decomposition {#sec-decomp}
-
-Floats do not sample the domain evenly. Condition throughout on the realized sampling configuration,
-define the **sampling weight** function $w(x) \ge 0$: $w > 1$ where the
-design concentrates and $w < 1$ where it is sparse, normalized so its space-time average is one,
-$\mathbb{E}[w] = 1$ (all such moments are with respect to $\nu$, per @sec-setup). This $w$ is the
-deterministic weight *of
-the conditioned design* (formally a Radon--Nikodym derivative -- see the callout); it is distinct both
-from the random, atomic empirical point pattern itself and from any estimate $\hat w$ built from that
-pattern, and we keep the three separate. An evenly spread, representative design has $w \equiv 1$;
-sampling is **preferential** when $w$ is correlated with the field $Y$. For example, if the unnormalized $w > 1$ where Y is high the bias is positive. The canonical model makes the weight log-linear in the field, $w(x) \propto
-\exp\{\beta\,Y(x)\}$, with $\beta \ne 0$ the degree of preferentiality [@diggle2010]. (The callout
-below gives the measure-theoretic definition of $w$ as a point-process intensity, and the assumptions
-it requires.)
-
-Naively averaging the float observations does not recover the domain mean
-$\mu = \mathbb{E}[Y]$ but the **design-mean** -- the field averaged with the
-floats' own weighting --
-```{=latex}
-\begin{gather*}
-\mu_w \;=\; \mathbb{E}[w\,Y] .
-\end{gather*}
-```
-Inserting $\mu_w$ between the estimate and the estimand gives an exact two-term decomposition on the
-continuous domain of @sec-setup -- no partition of $\mathcal{X}$ is introduced, so the *identity*
-is grid-free (though every practical *evaluation* of its pieces uses quadrature or Monte-Carlo
-integration; see [Validation](bias_bound_validation.qmd#sec-validation)):
-```{=latex}
-\begin{gather*}
-B \;=\; \hat\mu - \mu \;=\; \underbrace{\big(\mu_w - \mu\big)}_{\displaystyle B_{\mathrm{samp}}}
-\;+\; \underbrace{\big(\hat\mu - \mu_w\big)}_{\displaystyle B_{\mathrm{pred}}} .
-\end{gather*}
-```
-The split is an algebraic identity, exact for every realization and for any $w$ with
-$\mathbb{E}[w] = 1$.
-
-- **$B_{\mathrm{samp}}$ -- the preferential-sampling bias** (we use this term rather than the broader
-  survey-sampling label "design bias", with which it coincides here) depends only on *where and when*
-  the floats sample (through $w$) and the field, not on how we reconstruct it: the gap between the
-  sampling-weighted mean and the domain mean. It is the pure "floats went to the warm/cold water"
-  effect; [Preferential Sampling Bounds](bias_bound_sampling.qmd#sec-samp) shows $B_{\mathrm{samp}} = \operatorname{Cov}(w, Y)$.
-- **$B_{\mathrm{pred}}$ -- the prediction bias** is the estimator's departure from the design-mean
-  $\mu_w$: the error incurred in turning sparse point observations into an areal field estimate. Its
-  mechanism is a **change of support** -- reconciling the point-support observations with the
-  block/areal quantity we actually want (the standard geostatistical name; @gelfand2001), the same
-  effect called *representativeness error* in data assimilation [@janjic2018].
-
-What *is* observable is the sample mean of OHC at the profiles, $\bar Y = \tfrac{1}{n}\sum_i
-Y(x_i)$. The **realized preferential-sampling bias** is $\bar Y - \mu$; because it subtracts the
-unknown $\mu$, it is a *target to be verified*, not a quantity computable from the data alone -- it can
-only be evaluated against the proxy field ([Validation](bias_bound_validation.qmd#sec-validation)), and we therefore do not call it an
-estimator. Two points guard against over-claiming here. First, $\bar Y$ does **not** converge to
-$\mu$: under a preferential design $\bar Y \to \mu_w$ (the design-mean), so $\bar Y - \mu \to \mu_w -
-\mu = B_{\mathrm{samp}}$ -- and even this limit requires point-process regularity (e.g. ergodicity /
-increasing-domain asymptotics) that we state rather than assume silently. Second, the two components
-admit different handles: $B_{\mathrm{samp}}$ is a *design* quantity (a covariance between the sampling
-weight and the field), bounded distribution-free ([Preferential Sampling Bounds](bias_bound_sampling.qmd#sec-samp)); $B_{\mathrm{pred}}$ is an
-*approximation-theory* quantity (a linear-functional reconstruction error over a smoothness class),
-bounded through the interpolator's RKHS structure ([Prediction Bias Bounds](bias_bound_prediction.qmd#sec-grid)). For the interpolate-everywhere GP
-estimator the RKHS machinery bounds the *total* error $\hat\mu - \mu$ directly against the continuous
-estimand -- the target functional is $L(Y) = \int_{\mathcal{X}} Y\,d\nu$ -- under
-the smoothness assumptions catalogued in [Prediction Bias Bounds](bias_bound_prediction.qmd#sec-grid); the design split is what additionally isolates and
-caps the preferential-sampling contribution on its own.
-
-::: {.callout-note collapse="true"}
-## Measure-theoretic formulation of the sampling design
-
 The floats realize a spatio-temporal point process $N$ on
 $(\mathcal{X},\, \mathcal{B}(A)\otimes\mathcal{B}(\mathcal{T}))$ with intensity measure
-$\Lambda(E) = \mathbb{E}_N[N(E)]$ (the expected number of profiles falling in $E$). Assume
-$\Lambda \ll \nu$ (the sampling has no singular part relative to space-time volume); the
+$\Lambda(E) = \mathbb{E}_N[N(E)]$ (the expected number of profiles falling in $E$). 
+
+Define the **realized sampling measure** $\pi$, $d\pi = w\,d\nu$. Such that, $\pi(\mathcal X) = \int_{\mathcal X} w\,d\nu = 1$.
+
+Assume $\Lambda \ll \nu$ (the sampling has no singular part relative to space-time volume); the
 sampling weight is then the Radon--Nikodym derivative
 ```{=latex}
 \begin{gather*}
@@ -156,28 +48,34 @@ w \;=\; \frac{d\pi}{d\nu} \in L^2(\nu), \qquad \pi \;=\; \frac{\Lambda}{\Lambda(
 \qquad \int w \,d\nu \;=\; \mathbb{E}[w] \;=\; 1 ,
 \end{gather*}
 ```
-of the normalized sampling measure $\pi$ with respect to $\nu$, and non-preferential
-sampling is $\pi = \nu$. The log-linear model of @diggle2010 is
-$d\Lambda/d\nu \propto \exp\{\beta\,Y\}$, and the design-mean is the field integrated
+of the sampling measure $\pi$ with respect to $\nu$.
+
+Non-preferential sampling is then $\pi = \nu$. 
+
+The log-linear model of @diggle2010 is
+$d\Lambda/d\nu \propto \exp\{\beta\,Y\}$, and the **design-mean** is the field integrated
 against the sampling measure,
-$\mu_w = \int Y\,d\pi = \int w\,Y\,d\nu = \mathbb{E}[w\,Y]$.
+```{=latex}
+\mu_w = \int Y\,d\pi = \int w\,Y\,d\nu = \mathbb{E}[w\,Y].
+```
 
-We assume $w \in L^2(\nu)$ -- this is what makes $\sigma_w$ finite and Cauchy--Schwarz
-applicable, but it is a genuine restriction: highly concentrated designs (in the limit, the purely
-atomic empirical pattern of a finite sample, which is *not* absolutely continuous w.r.t.
-$\nu$) admit no such density, and the bounds below then apply to a regularized/estimated
-intensity $\hat w \in L^2$ rather than to the raw point pattern.
+Heuristically, $w$ is the **sampling weight** function $w(x) \ge 0$: $w > 1$ where the
+design concentrates and $w < 1$ where it is sparse, normalized so its space-time average is one,
+$\mathbb{E}[w] = 1$. 
 
-Two probabilistic caveats. Campbell's theorem gives
-$\mathbb{E}_N\big[\sum_i Y(x_i)\big] = \int Y\,d\Lambda$ -- an identity in expectation, nothing more.
-It does **not** by itself imply that the empirical measure $\tfrac{1}{n}\sum_i \delta_{x_i}$
-converges to $\pi$, nor that $\bar Y \to \mu_w$; that convergence is a law of large numbers for the
-point process, requiring the ergodicity / increasing-domain conditions noted in the main text. We
-therefore treat $B_{\mathrm{samp}} = \mu_w - \mu$ as defined by the *conditioned design* -- the regime
-in which the covariance identity of [Preferential Sampling Bounds](bias_bound_sampling.qmd#sec-samp) is exact -- and read $\bar Y - \mu$ as its
-proxy-evaluated realization, not as a consistent estimator handed over for free by Campbell's theorem.
-:::
+A non-preferential, uniform design has $w \equiv 1$;
+sampling is **preferential** when $w$ is correlated with the field $Y$. For example, if $w > 1$ where Y is high, the bias is positive. 
 
+We can then decompose the bias:
+```{=latex}
+\begin{gather*}
+B \;=\; \hat\mu - \mu \;=\; \underbrace{\big(\mu_w - \mu\big)}_{\displaystyle B_{\mathrm{samp}}}
+\;+\; \underbrace{\big(\hat\mu - \mu_w\big)}_{\displaystyle B_{\mathrm{pred}}} .
+\end{gather*}
+```
+
+- $B_{\mathrm{samp}}$ **preferential-sampling bias**. [Preferential Sampling Bounds](bias_bound_sampling.qmd#sec-samp) shows $B_{\mathrm{samp}} = \operatorname{Cov}(w, Y)$.
+- $B_{\mathrm{pred}}$ **prediction bias**. Bias from interpolation/kriging.
 
 # References {.unnumbered}
 

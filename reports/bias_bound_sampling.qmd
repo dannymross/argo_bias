@@ -69,9 +69,7 @@ the continuous formulation of @diggle2010):
 \end{gather*}
 ```
 with $\operatorname{Cov}(w,Y) = \int_{\mathcal{X}} (w-1)(Y-\mu)\,d\nu$, since $\int_{\mathcal{X}}
-(w-1)\,d\nu = \mathbb{E}[w] - 1 = 0$. Conditioning on the realized sampling configuration (so $w$ is the
-deterministic weight of [Bias decomposition](bias_bound_motivation.qmd#sec-decomp), not the random atomic empirical measure), this holds as an **exact
-identity for every realization** -- no distributional assumption on $Y$ or on the sampling, and no grid.
+(w-1)\,d\nu = \mathbb{E}[w] - 1 = 0$. 
 If floats sample independently of OHC, $w \perp Y$ and the bias vanishes; bias arises precisely to the
 extent that the sampling intensity co-varies with the field (equivalently, $\beta \ne 0$ in the
 log-linear intensity of [Bias decomposition](bias_bound_motivation.qmd#sec-decomp)).
@@ -85,12 +83,9 @@ Y,\;w-1\in L^2(\nu),
 \end{gather*}
 ```
 and write $\sigma_Y = \|Y-\mu\|_2$ for the space-time standard deviation of the field and $\sigma_w =
-\|w-1\|_2$ for the coefficient of variation of the sampling intensity -- a resolution-free measure of
-how inhomogeneous the sampling is, finite precisely because $w \in L^2(\nu)$ (itself a genuine
-restriction: it excludes highly concentrated designs, and in the limit the purely atomic empirical
-pattern of a finite sample, which is not absolutely continuous w.r.t. $\nu$; see [Bias decomposition](bias_bound_motivation.qmd#sec-decomp)). Applying
-the Cauchy--Schwarz inequality in $L^2(\nu)$ to the covariance gives a bound that holds for *any* field
-and *any* design:
+\|w-1\|_2$ for the coefficient of variation of the sampling intensity, i.e., how inhomogeneous the sampling is.
+
+Applying the Cauchy--Schwarz inequality in $L^2(\nu)$ to the covariance gives a bound:
 ```{=latex}
 \begin{gather*}
 \boxed{\; |B_{\mathrm{samp}}| \;=\; |\operatorname{Cov}(w,Y)| \;=\; |\rho_{w,Y}|\,\sigma_w\,\sigma_Y \;\le\; \sigma_w\,\sigma_Y . \;}
@@ -101,29 +96,11 @@ field; $\rho_{w,Y} = 1$ is the worst case.
 
 Neither $\sigma_Y$ nor $\sigma_w$ is directly observable: $\sigma_w$ requires an estimated intensity
 $\hat w$ from the float density, and $\sigma_Y$ requires a field estimate ($\hat\sigma_Y$ from the GP,
-[Prediction Bias Bounds](bias_bound_prediction.qmd#sec-grid)) or the reanalysis proxy used in validation ([Validation](bias_bound_validation.qmd#sec-validation)). The *inequality* is field-free;
-the *computed* cap is an estimate.
-
-::: {.callout-note collapse="true"}
-## Diagnostic: can $\rho_{w,Y}$ itself be estimated, to beat the worst case $\rho_{w,Y}=1$?
-
-In principle: a plug-in Pearson estimate $\hat\rho_{w,Y} = \widehat{\operatorname{Cov}}(\hat w,\hat
-Y)/(\hat\sigma_w\hat\sigma_Y)$, formed by evaluating $\hat w$ and $\hat Y$ (or the GLORYS proxy) at a
-common set of quadrature points, would replace the worst case with an empirical value typically well
-below 1. But $\sigma_w$ and $\sigma_Y$ are *marginal* quantities -- each estimable from one side of the
-problem alone (float density; field) -- whereas $\rho_{w,Y}$ is exactly the *joint* dependence between
-sampling and field, i.e. the preferential-sampling signal itself. Plugging in $\hat\rho_{w,Y}$ does not
-tighten a distribution-free worst-case bound; it is algebraically the same computation as estimating
-$B_{\mathrm{samp}} = \operatorname{Cov}(w,Y)$ directly. The report already carries that quantity, but as
-the proxy-evaluated *realized* bias ([Validation](bias_bound_validation.qmd#sec-validation)), checked against the permutation null below, not
-reported as a deterministic cap. A $\hat\rho_{w,Y}$ diagnostic is worth computing alongside the
-permutation test -- how far $|\hat\rho_{w,Y}|$ falls below 1 in practice -- but it estimates the bias
-itself rather than certifying a bound on it.
-:::
+[Prediction Bias Bounds](bias_bound_prediction.qmd#sec-grid)) or the reanalysis proxy used in validation ([Validation](bias_bound_validation.qmd#sec-validation)). 
 
 ### Illustrative Example
 
-To read off a scale for the cap, consider **one particular** idealized intensity: floats cover a
+Consider an idealized intensity: floats cover a
 space-time sub-region $D_f \subseteq \mathcal{X}$ of measure $f = \nu(D_f)$
 uniformly and sample nowhere else, so $\pi(E) = \nu(E \cap D_f)/f$, whose density is
 $w = 1/f$ on $D_f$ and $w = 0$ off it. Then $\sigma_w^2 = (1-f)/f$ and
@@ -135,20 +112,6 @@ $w = 1/f$ on $D_f$ and $w = 0$ off it. Then $\sigma_w^2 = (1-f)/f$ and
 The factor $\sqrt{(1-f)/f}$ is a property of *this* hard-footprint intensity, not of preferential
 sampling in general; the operative cap remains $\sigma_w\,\sigma_Y$ for whatever intensity holds.
 
-::: {.callout-important collapse="true"}
-## Heuristic: what the covered fraction $f$ requires
-
-This closed form is an *illustration*, not the operative bound. The empirical measure
-$\tfrac{1}{n}\sum_i \delta_{x_i}$ of a finite point pattern is purely atomic, hence *not*
-absolutely continuous with respect to $\nu$ and admitting no density
-$w \in L^2(\nu)$; the covered fraction $f = \nu(\bigcup_i
-\text{footprint}x_i)$ is defined only after each float is assigned a representativeness footprint
-(e.g. a disc of one correlation length in space and time) that smooths the atoms into a design
-$\pi \ll \nu$. Unlike the general cap $\sigma_w\sigma_Y$, a functional of the intensity
-alone, the closed form inherits a dependence on that footprint scale, and shrinking the scale drives
-$f \to 0$ and the cap $\to \infty$. We therefore report $\sigma_w\sigma_Y$ as the operative cap and
-$\sigma_Y\sqrt{(1-f)/f}$ only for interpretation.
-:::
 
 ::: {.callout-note collapse="true"}
 ## Derivation: the closed form for $\sigma_w$
@@ -162,11 +125,10 @@ the complement (measure $1-f$). Then
 &= \frac{(1-f)^2}{f} + (1-f) = (1-f)\Big(\frac{1-f}{f} + 1\Big) = \frac{1-f}{f}.
 \end{align*}
 ```
-Hence $|B_{\mathrm{samp}}| \le \sigma_Y\sqrt{(1-f)/f}$; any other intensity only changes $\sigma_w$,
-with the general cap $\sigma_w\sigma_Y$ still holding exactly.
+Hence $|B_{\mathrm{samp}}| \le \sigma_Y\sqrt{(1-f)/f}$.
 :::
 
-The amplification factor $\sqrt{(1-f)/f}$ diverges as coverage $\to 0$ and vanishes as coverage
+The amplification factor $\sqrt{(1-f)/f}$ diverges as coverage $\to 0$ and goes to 1 as coverage
 $\to 1$:
 
 ```{python}
