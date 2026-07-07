@@ -161,8 +161,7 @@ L(Y) &= \int \left\langle Y,\, k(\cdot,x) \right\rangle \,d\pi(x) - \int \left\l
 \end{align*}
 ```
 where $\xi_\pi := \int_{\mathcal X} k(\cdot,x)\,d\pi(x)$ and $\xi_\nu := \int_{\mathcal X}
-k(\cdot,x)\,d\nu(x)$ are the **kernel mean embeddings** of $\pi$ and $\nu$ into $\mathcal H_k$
-[@smola2007; @muandet2017].
+k(\cdot,x)\,d\nu(x)$ are the **kernel mean embeddings** of $\pi$ and $\nu$ into $\mathcal H_k$.
 
 Let $\psi := \xi_\pi - \xi_\nu$, this is exactly $L(Y) = \langle
 Y,\psi\rangle_{\mathcal H_k}$. By the Riesz Representation Theorem, $\psi$ is the unique element of
@@ -172,7 +171,7 @@ This $\psi$ is the **discrepancy, in the RKHS, between where the
 floats actually sampled and the uniform target measure**.
 Namely, $\psi$ is zero when $\pi=\nu$ (non-preferential
 sampling) and its norm $\|\psi\|_{\mathcal H_k} = \|\xi_\pi - \xi_\nu\|_{\mathcal H_k}$ is
-the **(kernel) maximum mean discrepancy** between $\pi$ and $\nu$ [@gretton2012].
+the **(kernel) maximum mean discrepancy** between $\pi$ and $\nu$.
 
 Applying the Cauchy--Schwarz inequality in the RKHS,
 ```{=latex}
