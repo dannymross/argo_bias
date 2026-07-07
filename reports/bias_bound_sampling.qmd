@@ -22,57 +22,14 @@ def _show_fig(fig):
 
 ## Background {#sec-samp}
 
-Let $(\mathcal{X},\nu)$ denote the space--time domain equipped with a probability
-measure $\nu$, where
-```{=latex}
-\begin{gather*}
-\mathcal{X}=A\times\mathcal{T}, \qquad \nu=\alpha\otimes\tau,
-\end{gather*}
-```
-  with $\alpha$ the spatial probability measure and $\tau$ the temporal
-  probability measure. Let the true ocean heat content field be
-```{=latex}
-\begin{gather*}
-Y:\mathcal{X}\rightarrow\mathbb{R},
-\end{gather*}
-```
-and define the population mean
-```{=latex}
-\begin{gather*}
-\mu = \int_{\mathcal X}Y(x)\,d\nu(x).
-\end{gather*}
-```
-Suppose observations arise from a preferential sampling density $w(x)$ satisfying
-```{=latex}
-\begin{gather*}
-\int_{\mathcal X}w(x)\,d\nu(x)=1.
-\end{gather*}
-```
-The expected sampled mean is
-```{=latex}
-\begin{gather*}
-\int_{\mathcal X}Y(x)w(x)\,d\nu(x),
-\end{gather*}
-```
-so that the preferential sampling bias is
-```{=latex}
-\begin{gather*}
-\boxed{\; B_{\mathrm{samp}} = \int_{\mathcal X} Y(x)\bigl(w(x)-1\bigr)\,d\nu(x). \;}
-\end{gather*}
-```
-Because $\int_{\mathcal X} w\,d\nu = 1$, this is exactly a covariance under $\nu$ -- the identity at the
-heart of the preferential-sampling literature (the design-based view of survey sampling [@horvitz1952];
-the continuous formulation of @diggle2010):
+We have shown that
 ```{=latex}
 \begin{gather*}
 \boxed{\;B_{\mathrm{samp}} \;=\; \mathbb{E}[w\,Y] - \mathbb{E}[Y] \;=\; \mathbb{E}[(w-1)\,Y] \;=\; \operatorname{Cov}(w,\, Y)\;}
 \end{gather*}
 ```
-with $\operatorname{Cov}(w,Y) = \int_{\mathcal{X}} (w-1)(Y-\mu)\,d\nu$, since $\int_{\mathcal{X}}
-(w-1)\,d\nu = \mathbb{E}[w] - 1 = 0$. 
-If floats sample independently of OHC, $w \perp Y$ and the bias vanishes; bias arises precisely to the
-extent that the sampling intensity co-varies with the field (equivalently, $\beta \ne 0$ in the
-log-linear intensity of [Bias decomposition](bias_bound_motivation.qmd#sec-decomp)).
+
+Therefore, we can use the Cauchy--Schwarz inequality to bound the preferential-sampling bias.
 
 ## $L^2$ Worst-Case Bound
 
@@ -133,8 +90,7 @@ $\to 1$:
 
 ```{python}
 #| label: fig-amp
-#| fig-cap: "Illustrative amplification factor sqrt((1-f)/f) vs the covered space-time fraction f, under one particular (hard-footprint) intensity. In that special case the cap on |B^samp| equals this factor times sigma_Y, the standard deviation of the true OHC field over space-time; the operative bound is the general sigma_w * sigma_Y for whatever intensity holds, and f depends on an assumed representativeness footprint (see note). Sparse coverage (small f) inflates the worst-case bias sharply."
-#| code-summary: "Illustrative: the amplification factor"
+#| fig-cap: "Illustrative amplification factor sqrt((1-f)/f) vs the covered space-time fraction f, under an illustrative intensity."
 #| output: asis
 f = np.linspace(0.01, 1.0, 400)
 amp = np.sqrt((1 - f) / f)
@@ -144,12 +100,6 @@ ax.set_xlabel("covered space-time fraction  f")
 ax.set_ylabel(r"amplification  $\sqrt{(1-f)/f}$")
 ax.set_ylim(0, 6)
 ax.grid(alpha=0.3)
-for fv in (0.05, 0.1, 0.25, 0.5):
-    ax.annotate(f"f={fv:g}: x{np.sqrt((1-fv)/fv):.1f}",
-                xy=(fv, np.sqrt((1-fv)/fv)),
-                xytext=(fv + 0.03, np.sqrt((1-fv)/fv) + 0.3),
-                fontsize=8, color="#444")
-    ax.plot(fv, np.sqrt((1-fv)/fv), "o", color="#d62728", ms=4)
 _show_fig(fig)
 ```
 
