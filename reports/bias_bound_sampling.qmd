@@ -143,13 +143,7 @@ Conditional on the sampling design (so that $w$, and hence $\pi$, are fixed), th
 is a **bounded linear functional of the field** 
 ```{=latex}
 \begin{gather*}
-B_{\mathrm{samp}} \;=\; L(Y) \;=\; \int_{\mathcal X} Y(x)\bigl(w(x)-1\bigr)\,d\nu(x),
-\end{gather*}
-```
-, since $d\pi = w\,d\nu$, splits as
-```{=latex}
-\begin{gather*}
-L(Y) \;=\; \int_{\mathcal X} Y(x)\,d\pi(x) - \int_{\mathcal X} Y(x)\,d\nu(x) .
+B_{\mathrm{samp}} \;=\; L(Y) ;=\; \int_{\mathcal X} Y(x)\,d\pi(x) - \int_{\mathcal X} Y(x)\,d\nu(x) .
 \end{gather*}
 ```
 Applying the reproducing property $Y(x) = \langle Y,k(\cdot,x)\rangle_{\mathcal H_k}$ [@muandet2017],
