@@ -1,0 +1,432 @@
+\section{Background and Methodology}
+\label{sec:methodology}
+
+Argo floats park and drift at 1000m depth between profiling cycles.
+Their locations are determined by currents at that depth, not by experimental design.
+If 1000m currents are correlated with upper-ocean temperature or salinity, then Argo-based estimates of quantities like space-time averaged ocean heat content (OHC) could be biased.
+This is widely suspected to be negligible, but the magnitude of this bias has not yet been bounded statistically.
+
+This section sets up the estimand, the sampling mechanism, and the resulting sampling-induced bias.
+Three logically distinct sources of randomness appear, each on its own probability space: a \emph{field} space carrying the ocean heat content (OHC) field, which---following model-based geostatistics and the hierarchical Bayesian OHC model of \citet{baugh2022} on which this work builds---we treat as a \emph{stochastic process}; a \emph{sampling} space carrying the Argo float point process; and a \emph{population} space on which a random space--time coordinate is drawn and against which the target average is defined.
+Our analysis of the sampling bias is carried out \emph{conditional} on a realization of the field and on the sampling design; conditional on these, the field and the sampling weight are fixed functions and the only operative randomness is the target coordinate.
+This conditioning is what allows a distribution-free bound to coexist with, and indeed validate, a stochastic-field model rather than contradict it.
+
+\subsection{The space--time domain and the target measure}
+\label{sec:domain}
+
+Fix a spatial region of interest $A \subset S^{2}$, taken to be a
+Borel subset of the sphere with finite, positive surface area, and a
+study period $\T \subset \R$, a bounded interval.
+
+\begin{definition}[Space--time domain]
+\label{def:domain}
+The \emph{space--time domain} is the product set
+$\X := A \times \T$, equipped with the product $\sigma$-algebra
+$\F := \B(A)\otimes\B(\T)$, where $\B(A)$ and $\B(\T)$ are the Borel
+$\sigma$-algebras on $A$ and $\T$. A generic element of $\X$ is written
+$x = (s,t)$, with spatial location $s \in A$ and time $t \in \T$.
+\end{definition}
+
+To speak of a space--time \emph{average} we specify the weighting by
+which space and time are aggregated; this is the role of the reference
+measure $\nu$, which encodes the target notion of ``uniform over the
+domain.''
+
+\begin{definition}[Reference space--time measure]
+\label{def:nu}
+Let $|\cdot|$ denote surface (area) measure on $(A,\B(A))$, and define
+the \emph{normalized area measure} $\alpha(E) := |E|/|A|$,
+$E \in \B(A)$, a probability measure on $(A,\B(A))$. Let $\tau$ be a
+fixed probability measure on $(\T,\B(\T))$; unless stated otherwise
+$\tau$ is normalized Lebesgue measure, so time is weighted uniformly.
+The \emph{reference space--time measure} is the product probability
+measure
+\[
+  \nu := \alpha \otimes \tau \qquad\text{on}\qquad (\X,\F).
+\]
+\end{definition}
+
+Because $\alpha$ and $\tau$ are probability measures, so is $\nu$;
+hence $(\X,\F,\nu)$ is a probability space, the \emph{population} (or
+\emph{target}) space. It carries no information about how the ocean is
+sampled or about the value of the field; it encodes only the averaging
+weights that define the quantity we wish to estimate.
+
+\subsection{The target-population random point}
+\label{sec:random-point}
+
+The estimand is a deterministic integral against $\nu$. To make the
+covariance and inner-product machinery of Section~\ref{sec:bias-decomp}
+available, we re-express that integral as an expectation by introducing
+a random space--time coordinate whose distribution is exactly $\nu$. This
+coordinate lives on the population space and is unrelated to both the
+field space of Section~\ref{sec:field} and the sampling space of
+Section~\ref{sec:sampling}.
+
+\begin{definition}[Target-population random point]
+\label{def:X}
+Let $X = (S,T)$ be the \emph{coordinate map} on $(\X,\F,\nu)$, i.e. the
+identity $X : \X \to \X$, $X(s,t) = (s,t)$. Its distribution is the reference
+measure by construction, $X_{\#}\nu = \nu$; equivalently
+$\Prob(X \in E) = \nu(E)$ for every $E \in \F$. We write $X \sim \nu$.
+\end{definition}
+
+Because $\nu = \alpha\otimes\tau$ is a product, $S \sim \alpha$
+(uniform by surface area on $A$) and $T \sim \tau$ are independent.
+Concretely, $X$ is a point obtained by sampling a location uniformly by
+area and, independently, a time from the study period. The single
+identity used repeatedly is the change-of-variables formula
+\begin{equation}
+  \E_\nu\big[g(X)\big] = \int_\X g \dd\nu
+  \qquad\text{for every $\F$-measurable } g \in L^1(\nu).
+  \label{eq:cov}
+\end{equation}
+$X \sim \nu$ is a representation device, not a physical model: it lets
+the target average be read as $\E_\nu[\,\cdot\,]$. It is not a float
+location and is unrelated to the sampling process.
+
+\subsection{The OHC field as a random field}
+\label{sec:field}
+
+Model-based geostatistics represents the unknown spatial phenomenon as
+a stochastic process rather than a fixed surface. We adopt that view so
+that the present analysis is consistent with the hierarchical Bayesian
+OHC model of \citet{baugh2022} on which it builds: the OHC field is
+random, carried on its own probability space.
+
+\begin{definition}[OHC random field]
+\label{def:Y}
+Let $(\Omega_Y,\mathcal{A}_Y,\Prob_Y)$ be a probability space, the
+\emph{field space}. The \emph{OHC field} is a random element
+\[
+  Y : \Omega_Y \to L^2(\nu), \qquad \omega_Y \mapsto Y(\omega_Y,\cdot),
+\]
+jointly measurable in $(\omega_Y,x)$, with $Y(\omega_Y,\cdot)\in L^2(\nu)$
+for $\Prob_Y$-almost every $\omega_Y$ (and, for the OHC application,
+with continuous sample paths, so that point evaluations $Y(x_i)$ at
+float locations are well defined). Its distribution $\Prob_Y\circ Y^{-1}$ is the
+\emph{field distribution}; in the OHC application this distribution is modeled
+as a (nonstationary) Gaussian process, and the posterior of \citet{baugh2022} given the Argo profiles approximates its conditional
+distribution given the data.
+\end{definition}
+
+The bias we study is a property of the \emph{realized} ocean, so we
+condition on a realization of the field throughout.
+
+\begin{definition}[Conditioning on the realized field]
+\label{def:realization}
+Fix $\omega_Y\in\Omega_Y$ and write $y := Y(\omega_Y,\cdot)\in L^2(\nu)$
+for the corresponding realization. Because the study concerns a single
+physical ocean over the period $\T$, we identify $y$ with the true
+realized OHC field and treat an independent reanalysis (GLORYS12) as a
+proxy for $y$. All quantities in
+Sections~\ref{sec:conditioning}--\ref{sec:bias-decomp} are defined
+conditional on the event $\{Y = y\}$; conditional on it, $y$ is a fixed
+element of $L^2(\nu)$.
+\end{definition}
+
+Composing $y$ with the coordinate map yields the real-valued random
+variable $y(X)$ on the population space, whose expectation is the
+quantity of interest.
+
+\begin{definition}[Estimand: realized regional-mean OHC]
+\label{def:mu}
+The \emph{realized target mean OHC} is
+\[
+  \mu(y) := \int_\X y \dd\nu = \E_\nu\big[y(X)\big].
+\]
+Viewed as a functional of the random field, $\mu(Y)$ is itself a random
+variable on the field space, whose distribution the OHC model
+characterizes and for which \citet{baugh2022} report credible
+intervals; conditional on $\{Y=y\}$ it is a fixed scalar. Write
+\[
+  \sigma_Y(y) := \|\,y - \mu(y)\,\|_{L^2(\nu)}
+\]
+for the space--time standard deviation of the realized field, finite
+since $y\in L^2(\nu)$.
+\end{definition}
+
+\begin{remark}[Estimating $\sigma_Y$ without circularity]
+\label{rem:glorys}
+Estimating $\sigma_Y(y)$ requires the realized field $y$ over all of
+$\X$, including unsampled space--time. Using the Argo-fit OHC posterior
+for this purpose would estimate the sampling bias of a model from the
+same preferentially sampled data whose ignorability is in question. We
+therefore take an independent reanalysis (GLORYS12), which assimilates
+information beyond Argo, as the primary proxy for $y$, and report any
+posterior-based estimate only as a secondary sensitivity check.
+\end{remark}
+
+\subsection{The sampling process and the sampling measure}
+\label{sec:sampling}
+
+The observations are produced by Argo floats, realizing a
+spatio-temporal point process on a probability space separate from both
+the population space and the field space.
+
+\begin{definition}[Observation point process]
+\label{def:N}
+Let $(\Omega,\mathcal{A},\Prob)$ be a probability space, the
+\emph{sampling space}. The float profiles are a point process $N$ on
+$(\X,\F)$ over this space: a measurable map $N:\Omega\to\mathsf{M}(\X)$,
+$\omega\mapsto N(\omega,\cdot)$, where $\mathsf{M}(\X)$ is the space of
+counting measures on $(\X,\F)$. For $E\in\F$, $N(\omega,E)$ is the
+number of profiles in $E$ for realization $\omega$.
+\end{definition}
+
+\begin{definition}[Intensity measure]
+\label{def:Lambda}
+The \emph{intensity measure} of $N$ is the expected counting measure
+\[
+  \Lambda(E) := \E_N\big[N(E)\big] = \int_\Omega N(\omega,E)\dd\Prob(\omega),
+  \qquad E \in \F .
+\]
+\end{definition}
+
+$\Lambda$ is a non-random measure on the population space: the
+expectation over $\Omega$ has integrated out the realization.
+
+\begin{assumption}[Finite, dominated intensity]
+\label{ass:intensity}
+The total intensity is finite and positive, $0<\Lambda(\X)<\infty$,
+and $\Lambda \ll \nu$.
+\end{assumption}
+
+\begin{definition}[Sampling probability measure]
+\label{def:pi}
+The \emph{sampling probability measure} is $\pi := \Lambda/\Lambda(\X)$
+on $(\X,\F)$; $\pi(E)$ is the probability that a profile drawn at random
+from the sampling process lies in $E$. When a sampled location is
+treated as random we write $X' \sim \pi$.
+\end{definition}
+
+\subsection{The sampling weight}
+\label{sec:weight}
+
+The comparison between how the ocean is sampled ($\pi$) and how the
+target average weights it ($\nu$) is a single density.
+
+\begin{definition}[Sampling weight]
+\label{def:w}
+Under Assumption~\ref{ass:intensity}, $\pi \ll \nu$, and the
+\emph{sampling weight} is the Radon--Nikodym derivative
+$w := \dd\pi/\dd\nu$: the $\nu$-almost-everywhere unique, non-negative,
+$\F$-measurable function with $\pi(E)=\int_E w\dd\nu$ for all $E\in\F$.
+As an element of $L^1(\nu)$ it is mean-one,
+\begin{equation}
+  \E_\nu[w] = \int_\X w \dd\nu = \pi(\X) = 1,
+  \label{eq:mean-one}
+\end{equation}
+so $w-1$ is centered. For the second-moment bound we further assume
+$w\in L^2(\nu)$, and write $\sigma_w := \|w-1\|_{L^2(\nu)}$.
+\end{definition}
+
+Two structural points fix the status of $w$. First, $w$ is a function
+on the population space, built from $\Lambda=\E_N[N]$, in which the
+float randomness $\omega\in\Omega$ has already been averaged out; hence
+$w$ does not depend on $\omega$ and is deterministic at the level of the
+sampling design. Second, $w$ is an importance ratio: for every
+$g\in L^1(\pi)$,
+\begin{equation}
+  \E_\pi\big[g(X')\big] = \int_\X g\,w\dd\nu = \E_\nu\big[w(X)\,g(X)\big],
+  \label{eq:importance}
+\end{equation}
+so $w(X)$ reweights a target draw $X\sim\nu$ into a sampled draw
+$X'\sim\pi$. Non-preferential sampling is $w\equiv 1$ ($\pi=\nu$), for
+which $\sigma_w=0$. Because $\E_\nu[w]=1$, the scalar $\sigma_w$ is the
+standard deviation, equivalently the coefficient of variation, of the
+mean-one variable $w(X)$: a summary of how inhomogeneous the sampling
+is.
+
+\begin{remark}[Estimated weights]
+\label{rem:hat-w}
+In practice $\pi$, hence $w$, are unknown and estimated from the
+realized float locations (kernel density estimation, a log-Gaussian Cox
+process, or a Gaussian-process intensity model). The estimate $\hat w$
+is a random element of $L^2(\nu)$, measurable with respect to
+$\sigma(N)$ on the sampling space. Conditional on $\sigma(N)$---i.e.
+given the observed locations---$\hat w$ is fixed, and every bound below
+is a deterministic functional of $\hat w$. Sampling variability of
+$\hat w$ about $w$ is a separate estimation error, propagated
+separately.
+\end{remark}
+
+\subsection{Sources of randomness and the conditioning stance}
+\label{sec:conditioning}
+
+Three probability spaces have now been introduced, each carrying a
+distinct kind of randomness:
+\begin{itemize}
+  \item the \emph{field space} $(\Omega_Y,\mathcal{A}_Y,\Prob_Y)$,
+        carrying the random OHC field $Y$ (Definition~\ref{def:Y});
+  \item the \emph{sampling space} $(\Omega,\mathcal{A},\Prob)$,
+        carrying the float point process $N$, hence any estimate
+        $\hat w$ (Definitions~\ref{def:N} and~\ref{rem:hat-w});
+  \item the \emph{population space} $(\X,\F,\nu)$, carrying the target
+        coordinate $X$ (Definition~\ref{def:X}).
+\end{itemize}
+
+The bias analysis is conditional. We condition on a realization
+$\{Y=y\}$ of the field and on the sampling design (equivalently, on the
+intensity $\Lambda$, hence on the population weight $w$). Conditional on
+these, $y$ and $w$ are fixed elements of $L^2(\nu)$, and the only
+operative randomness in every identity and bound of
+Section~\ref{sec:bias-decomp} is the target coordinate $X\sim\nu$; all
+covariance and inner-product operations there are taken over $X$ alone.
+
+\begin{remark}[No joint model of field and locations is required]
+\label{rem:no-joint}
+Conditioning on $\{Y=y\}$ sidesteps any need to specify the joint distribution
+of the field and the float locations---the object a generative
+preferential-sampling model (e.g. that of \citet{diggle2010}) would
+posit through an intensity that depends on the field. Our bound holds
+for the realized ocean and the realized design without assuming a
+mechanism linking them, which is the source of its distribution-free
+character.
+\end{remark}
+
+\begin{remark}[Coherence with the conditional OHC model]
+\label{rem:coherence}
+Treating $Y$ as stochastic and then conditioning on a realization is
+the standard device of model-based geostatistics, and it is precisely
+the stance of the hierarchical OHC model, which conditions on the float
+locations. The validity of that model rests on sampling being
+ignorable for the field. The present analysis quantifies the bias that
+non-ignorability could induce; when the bound and the estimated bias
+are small, it \emph{validates} the conditional model rather than
+contradicting it.
+\end{remark}
+
+\subsection{The design mean and the bias decomposition}
+\label{sec:bias-decomp}
+
+Throughout this subsection all quantities are conditional on the
+realized field $\{Y=y\}$ and on the design, as set out in
+Section~\ref{sec:conditioning}.
+
+\begin{definition}[Design mean]
+\label{def:mu-w}
+The \emph{design mean} is the realized field averaged under the
+sampling measure,
+\[
+  \mu_w(y) := \int_\X y \dd\pi = \E_\pi\big[y(X')\big]
+  = \int_\X w\,y \dd\nu = \E_\nu\big[w(X)\,y(X)\big],
+\]
+using the importance identity~\eqref{eq:importance}.
+\end{definition}
+
+Let $\hat\mu$ denote any estimator of $\mu(y)$ built from the observed
+profiles (for example a kriging/Gaussian-process interpolant). Its bias
+decomposes into a sampling term and a reconstruction term.
+
+\begin{definition}[Bias decomposition]
+\label{def:bias}
+The bias of $\hat\mu$ decomposes as
+\[
+  B(y) := \hat\mu - \mu(y)
+  = \underbrace{\big(\mu_w(y) - \mu(y)\big)}_{\textstyle B_{\mathrm{samp}}(y)}
+  + \underbrace{\big(\hat\mu - \mu_w(y)\big)}_{\textstyle B_{\mathrm{pred}}(y)},
+\]
+where $B_{\mathrm{samp}}(y)$ is the \emph{preferential-sampling bias}
+and $B_{\mathrm{pred}}(y)$ is the \emph{prediction bias}. The split is a
+modeling convention: $B_{\mathrm{samp}}$ is defined estimator-free, so
+any correction an interpolator makes for uneven coverage is charged to
+$B_{\mathrm{pred}}$. Because $\pi$ is built from the intensity
+$\Lambda=\E_N[N]$, $B_{\mathrm{samp}}$ is the systematic
+(intensity-level) sampling bias; realization-to-realization fluctuation
+of $N$ contributes to $B_{\mathrm{pred}}$, not to $B_{\mathrm{samp}}$.
+\end{definition}
+
+The sampling term admits a covariance representation on the population
+space, the starting point for the bound.
+
+\begin{proposition}[Sampling-bias covariance identity]
+\label{prop:cov-identity}
+Conditional on $\{Y=y\}$ and the design, and under
+Assumption~\ref{ass:intensity} with $y,w\in L^2(\nu)$,
+\[
+  B_{\mathrm{samp}}(y) = \mu_w(y) - \mu(y)
+  = \E_\nu\big[(w-1)\,y\big]
+  = \Cov_\nu\big(w(X),\,y(X)\big).
+\]
+\end{proposition}
+
+\begin{proof}
+By Definitions~\ref{def:mu} and~\ref{def:mu-w},
+$\mu_w(y)-\mu(y)=\E_\nu[wy]-\E_\nu[y]=\E_\nu[(w-1)y]$. Expanding the
+covariance about $\mu(y)$ and using~\eqref{eq:mean-one},
+\[
+  \Cov_\nu(w,y)
+  = \E_\nu\big[(w-1)(y-\mu(y))\big]
+  = \E_\nu\big[(w-1)y\big] - \mu(y)\,\E_\nu[w-1]
+  = \E_\nu\big[(w-1)y\big],
+\]
+since $\E_\nu[w-1]=0$. Both moments are finite by Cauchy--Schwarz, as
+$y,w-1\in L^2(\nu)$.
+\end{proof}
+
+\begin{remark}[Two distinct covariances---do not conflate]
+\label{rem:two-cov}
+The covariance in Proposition~\ref{prop:cov-identity} is taken over the
+target coordinate $X\sim\nu$ with the field realization $y$ held
+\emph{fixed}; it is a scalar---the space--time covariance between the
+weight and the field across the domain---and it \emph{is} the
+conditional sampling bias. It must not be conflated with the field's
+covariance function
+$k(x,x') = \Cov_{\Prob_Y}\!\big(Y(x),Y(x')\big)$, taken over field
+randomness on $\Omega_Y$: the (nonstationary) covariance kernel of the
+OHC model. The two objects live on different probability spaces and
+play different roles. Because we condition on $y$, the kernel $k$ does
+\emph{not} enter the $L^2$ bound; it would reappear only if one
+measured field smoothness in the RKHS of $k$, or averaged the bias over
+the field distribution (Remark~\ref{rem:expected}).
+\end{remark}
+
+\begin{remark}[No sampling bias under uncorrelated design]
+\label{rem:zero-bias}
+If, for the realized field, the weight and the field are uncorrelated
+under $\nu$---in particular whenever $w\equiv1$---then
+$\Cov_\nu(w,y)=0$ and $B_{\mathrm{samp}}(y)=0$. Preferential-sampling
+bias arises precisely from co-variation between where the floats
+concentrate ($w$) and the value of the field ($y$).
+\end{remark}
+
+The covariance representation yields the paper's central bound by a
+single application of Cauchy--Schwarz in $L^2(\nu)$.
+
+\begin{proposition}[Distribution-free $L^2$ bound]
+\label{prop:l2-bound}
+Under the conditions of Proposition~\ref{prop:cov-identity},
+\[
+  \big|B_{\mathrm{samp}}(y)\big|
+  = \big|\Cov_\nu(w,y)\big|
+  = |\rho_{w,y}|\,\sigma_w\,\sigma_Y(y)
+  \;\le\; \sigma_w\,\sigma_Y(y),
+\]
+where $\rho_{w,y}\in[-1,1]$ is the $\nu$-correlation between $w(X)$ and
+$y(X)$. The bound requires only finite second moments and imposes no
+smoothness assumption on the field.
+\end{proposition}
+
+The worst case $|\rho_{w,y}|=1$ is attained only when $y-\mu(y)\propto
+w-1$. The realized correlation $\rho_{w,y}$---estimable, with
+$\sigma_w$ and $\sigma_Y(y)$, by quadrature against $\nu$ using the
+GLORYS12 proxy for $y$ and an estimate $\hat w$ of the weight---is the
+scalar that separates the pessimistic envelope $\sigma_w\sigma_Y(y)$
+from the actual sampling bias, and is the empirical target of the paper.
+
+\begin{remark}[Expected bias over the field distribution; kernel methods]
+\label{rem:expected}
+Averaging over the field distribution gives the expected sampling bias
+$\E_{\Prob_Y}\!\big[B_{\mathrm{samp}}(Y)\big]
+= \E_{\Prob_Y}\!\big[\Cov_\nu(w,Y)\big]$, which, unlike the conditional
+identity, depends on the joint distribution of field and design and is the
+natural object of a generative analysis. Likewise, replacing the
+distribution-free class $L^2(\nu)$ by a smoothness ball in the RKHS of
+$k$ yields a tighter, kernel-dependent bound. We pursue neither here:
+the paper's aim is a distribution-free bound on the realized bias, and
+an estimate of its magnitude, for which the conditional $L^2$
+formulation of Proposition~\ref{prop:l2-bound} suffices. Both
+extensions are deferred to future work, where the choice of kernel
+would be tied to the OHC covariance model.
+\end{remark}

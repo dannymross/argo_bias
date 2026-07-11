@@ -1,0 +1,26 @@
+% Convenience notation macros, shared across all chapters in sections/.
+% Keep this the single source of truth for paper-wide notation -- add a
+% macro here (not ad hoc in a chapter file) as soon as a symbol is used
+% in more than one section.
+
+\newcommand{\X}{\mathcal{X}}
+\newcommand{\T}{\mathcal{T}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\B}{\mathcal{B}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Cov}{\operatorname{Cov}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\dd}{\,\mathrm{d}}
+
+\newcommand{\PP}{\mathcal{P}}
+\newcommand{\PK}{\mathsf{P}}
+\newcommand{\PKp}{\mathsf{P}^{\perp}}
+
+% Estimators of sigma_{w*}^2 (Section~\ref{sec:sigmawK}). Hat is kept on
+% just \sigma -- writing \widehat{\sigma_{w^\star}^2} instead is too wide.
+\newcommand{\sigwhat}{\hat\sigma_{w^{\star}}}                    % point estimate (sqrt of the variance estimator)
+\newcommand{\sigwhatsq}{\hat\sigma_{w^{\star}}^2}                % diagonal-removed unbiased estimator, eq:sigmawK-hat
+\newcommand{\sigwhatsqplug}{\hat\sigma_{w^{\star}}^{2\,\mathrm{plug}}}  % plug-in (upward-biased) estimator
+\newcommand{\sigwhatsqbf}{\hat\sigma_{w^{\star}}^{2\,\mathrm{bf}}}      % between-float unbiased estimator, eq:sigmawK-bf

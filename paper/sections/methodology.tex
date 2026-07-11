@@ -1,0 +1,791 @@
+\section{Background and Methodology}
+\label{sec:methodology}
+
+\subsection{Notation and Estimand}
+\label{sec:def}
+
+\begin{definition}[Space--time domain]
+\label{def:domain}
+Fix a spatial region of interest $A \subset S^{2}$, taken to be a Borel subset of the sphere with finite, positive surface area, and a study period $\T \subset \R$, a bounded interval.
+The \emph{space--time domain} is the product set
+$\X := A \times \T$, equipped with the product $\sigma$-algebra
+$\F := \B(A)\otimes\B(\T)$, where $\B(A)$ and $\B(\T)$ are the Borel
+$\sigma$-algebras on $A$ and $\T$. A generic element of $\X$ is written
+$x = (s,t)$, with spatial location $s \in A$ and time $t \in \T$.
+\end{definition}
+
+\begin{definition}[Reference space--time measure]
+\label{def:nu}
+Let $\nu$ be the \emph{reference} or \emph{target} probability measure on $(\X,\F)$ such that $\nu(E) := |E|\, /\, |\X|$ for all  $E \in \F$.
+\end{definition}
+
+$\nu(E)$ is the probability that a profile drawn uniformly from the space-time domain lies in $E$.
+
+\begin{definition}[Sampling probability measure]
+\label{def:pi}
+Let $\pi$ be the \emph{sampling} probability measure on $(\X,\F)$.
+\end{definition}
+
+$\pi(E)$ is the probability that a profile drawn at random from the \emph{sampling} or realized advection process lies in $E$. 
+
+\begin{definition}[Target-population random point]
+\label{def:X}
+Let $X = (S,T)$ be the \emph{coordinate map} on $(\X,\F,\nu)$, i.e., the identity function $X : \X \to \X$, $X(x) = x$.
+Its distribution is the reference measure by construction, $X \sim \nu$.
+Thus, $\Prob(X \in E) = \nu(E)$ for every $E \in \F$. 
+\end{definition}
+
+\begin{definition}[Sampled-population random profile]
+\label{def:X'}
+Let $X' = (S,T)$ be a random variable on $(\X,\F,\pi)$, with distribution the sampling measure, $X' \sim \pi$.
+Thus, $\Prob(X' \in E) = \pi(E)$ for every $E \in \F$. 
+\end{definition}
+
+\begin{definition}[Sampling weight]
+\label{def:w}
+Assume $\pi \ll \nu$. The \emph{sampling weight} is the Radon--Nikodym
+derivative $w := \dd\pi/\dd\nu$: the $\nu$-almost-everywhere unique,
+non-negative, $\F$-measurable function on $\X$ with
+$\pi(E)=\int_E w\dd\nu$ for all $E\in\F$. We assume further that
+$w \in L^2(\nu)$.
+\end{definition}
+
+Composing with the target draw $X\sim\nu$ (Definition~\ref{def:X}) gives
+the non-negative random variable $w(X)$; note that $w:\X\to[0,\infty)$ is
+a deterministic function on the domain, while $w(X)$ is its composition
+with the random location, so that expectations such as $\E_\nu[w]$ below
+are shorthand for moments of $w(X)$ under $X\sim\nu$. For $\nu$-almost
+every $x\in\X$, Lebesgue differentiation gives
+\[
+  w(x) \;=\; \lim_{E \downarrow x} \frac{\pi(E)}{\nu(E)}
+        \;=\; \lim_{E \downarrow x}
+              \frac{\text{sampling mass of } E}{\text{reference mass of } E},
+\]
+so $w$ is the local ratio of sampling density to reference density. Where
+$w \equiv 1$ the region is sampled exactly in proportion to its
+space--time extent, i.e. as if uniformly; $w > 1$ marks over-sampling
+(preferential), $w < 1$ under-sampling; and if $w = 0$ $\nu$-a.e. on a set
+$E$ with $\nu(E)>0$, then $\pi(E)=0$ and $E$ is never sampled.
+
+Because $\pi$ is a probability measure, $w(X)$ is mean-one,
+\[
+  \E_{\nu}\big[w(X)\big] \;=\; \int_{\X} w \dd\nu \;=\; \pi(\X) \;=\; 1,
+\]
+so $w-1$ is centered, and its dispersion under the reference measure,
+\begin{equation}
+  \sigma_w^2 \;:=\; \Var_{\nu}\big(w(X)\big)
+  \;=\; \int_{\X} (w-1)^2 \dd\nu
+  \;=\; \|w-1\|_{L^2(\nu)}^2
+  \;=\; \int_{\X} w^2 \dd\nu - 1
+  \;=\; \chi^2(\pi \,\|\, \nu),
+  \label{eq:sigma-w}
+\end{equation}
+summarizes how inhomogeneous the sampling is: $\sigma_w = 0$ exactly when
+$w = 1$ $\nu$-a.e., i.e. $\pi = \nu$ (non-preferential sampling), and
+$\sigma_w$ grows as $\pi$ departs from $\nu$. Since $\E_\nu[w]=1$, the
+scalar $\sigma_w$ is equivalently the coefficient of variation of $w(X)$,
+a scale-free measure of sampling unevenness. Note that $w\in L^1(\nu)$ is
+automatic, whereas the assumption $w\in L^2(\nu)$---equivalently
+$\sigma_w<\infty$---is a genuine restriction, excluding sampling measures
+so concentrated relative to $\nu$ that their $\chi^2$ divergence diverges.
+
+Two features of \eqref{eq:sigma-w} shape what follows. It is defined
+\emph{against the reference measure} $\nu$: it asks how far the sampling
+law departs from the target-averaging weights. 
+
+\begin{definition}[OHC random field]
+\label{def:Y}
+Let $Y: \Omega_Y \to L^2(\nu)$ be a random variable from ocean states to functional space.
+\end{definition}
+
+The bias we study is a property of the \emph{realized} ocean, so we condition on a realization of the field throughout.
+Fix $\omega_Y\in\Omega_Y$ and write $y := Y(\omega_Y,\cdot)\in L^2(\nu)$ for the corresponding realization.
+Because the study concerns a single physical ocean over the period $\T$, we identify $y$ with the true realized OHC field.
+Conditional on the event $\{Y = y\}$; $y$ is a fixed element of $L^2(\nu)$.
+Composing $y$ with the coordinate map yields the real-valued random variable $y(X): \X \to \R$ on the population space.
+
+\begin{definition}[Estimand]
+\label{def:mu}
+The estimand is the \emph{realized mean OHC}, 
+\[
+  \mu = \E_\nu\big[y(X)\big] = \int_\X y \dd\nu.
+\]
+As a functional of the random field, $\mu(Y)$ is itself a random conditional on $\{Y=y\}$ it is a fixed scalar. 
+Where
+\[
+  \sigma^2_Y(y) = \Var_{\nu}(y(X)) = \int_{\X}(y - \mu)^2\dd\nu = \|\,y - \mu\,\|^2_{L^2(\nu)}
+\]
+is the space--time variance of the realized field.
+\end{definition}
+
+\begin{definition}[Design mean]
+\label{def:mu-w}
+The \emph{design mean} is the realized field averaged under the
+sampling measure,
+\[
+  \mu_w = \E_\pi\big[y(X')\big] = \int_\X y \dd\pi.
+\]
+Equivalenty,
+\[
+  \mu_w = \int_\X w\,y \dd\nu = \E_\nu\big[w(X)\,y(X)\big].
+\]
+So $w(X)$ reweights a target draw $X\sim\nu$ into a sampled draw $X'\sim\pi$.
+Non-preferential sampling is $w\equiv 1$ ($\pi=\nu$).
+\end{definition}
+
+Let $\hat\mu$ denote any estimator of $\mu$ built from the observed profiles (for example a kriging/Gaussian-process interpolant).
+Its bias decomposes into a sampling term and a reconstruction term.
+
+\subsection{Bias Decomposition}
+\label{sec:defbias}
+
+\begin{definition}[Bias decomposition]
+\label{def:bias}
+The bias of $\hat\mu$ decomposes as
+\[
+  B(y) := \hat\mu - \mu
+  = \underbrace{\big(\mu_w - \mu\big)}_{\textstyle B_{\mathrm{samp}}(y)}
+  + \underbrace{\big(\hat\mu - \mu_w\big)}_{\textstyle B_{\mathrm{pred}}(y)},
+\]
+where $B_{\mathrm{samp}}(y)$ is the \emph{preferential-sampling bias}
+and $B_{\mathrm{pred}}(y)$ is the \emph{prediction bias}. \end{definition}
+
+The sampling term admits a covariance representation on the population
+space, the starting point for the bound.
+
+\begin{proposition}[Sampling-bias covariance identity]
+\label{prop:cov-identity}
+Conditional on $\{Y=y\}$ and the design, 
+\[
+  B_{\mathrm{samp}}(y) = \mu_w - \mu
+  = \E_\nu\big[(w(X)-1)\,y(X)\big]
+  = \Cov_\nu\big(w(X),\,y(X)\big).
+\]
+\end{proposition}
+
+\begin{proof}
+By Definitions~\ref{def:mu} and~\ref{def:mu-w},
+$\mu_w-\mu=\E_\nu[w(X)y(X)]-\E_\nu[y(X)]=\E_\nu[(w(X)-1)y(X)]$. Expanding the
+covariance about $\mu$ and using~$\E_{\nu}[w(X)]=1$,
+\begin{align*}
+  \Cov_\nu(w(X),y(X)) &= \E_\nu\big[(w(X)-1)(y(X)-\mu)\big] \\
+  &= \E_\nu\big[(w(X)-1)y(X)\big] - \mu\,\E_\nu[w(X)-1] \\
+  &= \E_\nu\big[(w(X)-1)y(X)\big],
+\end{align*}
+since $\E_\nu[w(X)-1]=0$.
+\end{proof}
+
+\begin{remark}[No sampling bias under uncorrelated design]
+\label{rem:zero-bias}
+If, for the realized field, the weight and the field are uncorrelated
+under $\nu$---in particular whenever $w\equiv1$---then
+$\Cov_\nu(w,y)=0$ and $B_{\mathrm{samp}}(y)=0$. Preferential-sampling
+bias arises precisely from co-variation between where the floats
+concentrate ($w$) and the value of the field ($y$).
+\end{remark}
+
+\begin{proposition}[Distribution-free $L^2$ bound]
+\label{prop:l2-bound}
+Under the conditions of Proposition~\ref{prop:cov-identity},
+\[
+  \big|B_{\mathrm{samp}}(y)\big|
+  = \big|\Cov_\nu(w(X),y(X))\big|
+  = |\rho_{w,y}|\,\sigma_w\,\sigma_y
+  \;\le\; \sigma_w\,\sigma_y,
+\]
+where $\rho_{w,y}\in[-1,1]$ is the $\nu$-correlation between $w(X)$ and
+$y(X)$. The bound requires only finite second moments and imposes no
+smoothness assumption on the field.
+\end{proposition}
+
+\subsection{Model-Free Estimation of the Bound}
+\label{sec:estimation}
+
+\begin{definition}[Equal-measure partition and the projection operators]
+\label{def:partition}
+A \emph{level-$K$ partition} is a collection
+$\mathcal{P}_K=\{C_1,\dots,C_K\}$ of disjoint measurable cells with
+$\bigcup_j C_j=\X$ and equal reference measure $\nu(C_j)=1/K$ for all
+$j$. Write $\PK:L^2(\nu)\to L^2(\nu)$ for the \emph{cell-averaging
+operator}, i.e. the conditional expectation
+$\PK f=\E_\nu[f\mid\mathcal{P}_K]$, which replaces a function by its cell
+averages,
+\[
+  (\PK f)(x)=\bar f_j:=\frac{1}{\nu(C_j)}\int_{C_j} f\dd\nu
+  \qquad\text{for }x\in C_j ,
+\]
+and write $\PKp:=\mathsf{I}-\PK$ for the complementary
+\emph{within-cell} (or \emph{fluctuation}) operator,
+\[
+  (\PKp f)(x) := f(x)-(\PK f)(x) = f(x)-\bar f_j
+  \qquad\text{for }x\in C_j .
+\]
+We abbreviate $f^{\perp}:=\PKp f$, so that every $f\in L^2(\nu)$ splits
+as
+\begin{equation}
+  f=\PK f+\PKp f,\qquad\text{i.e.}\qquad \mathsf{I}=\PK+\PKp ,
+  \label{eq:split}
+\end{equation}
+into its between-cell and within-cell parts.
+\end{definition}
+
+The two operators project onto complementary subspaces of $L^2(\nu)$.
+Let
+\[
+  V_K=\Big\{\textstyle\sum_{j=1}^{K}a_j\mathbf{1}_{C_j}\;:\;a_j\in\R\Big\}
+\]
+be the $K$-dimensional subspace of functions constant on each cell (the
+\emph{resolution-$K$} functions), whose indicator basis
+$\{\mathbf{1}_{C_1},\dots,\mathbf{1}_{C_K}\}$ is orthogonal because the
+cells are disjoint. Its orthogonal complement is
+\[
+  V_K^{\perp}=\Big\{g\in L^2(\nu)\;:\;\int_{C_j}g\dd\nu=0
+    \ \text{for every }j\Big\},
+\]
+the functions with zero average on every cell, which carry only sub-cell
+detail.
+
+\begin{lemma}[$\PK$ and $\PKp$ are complementary orthogonal projections]
+\label{lem:projection}
+For every $f\in L^2(\nu)$ we have $\PK f\in V_K$ and $\PKp f\in
+V_K^{\perp}$; the operator $\PK$ is the orthogonal projection of
+$L^2(\nu)$ onto $V_K$, and $\PKp$ the orthogonal projection onto
+$V_K^{\perp}$. Consequently both are idempotent and self-adjoint,
+\[
+  \PK^2=\PK,\qquad (\PKp)^2=\PKp,\qquad \PK\PKp=\PKp\PK=0,
+\]
+their ranges are orthogonal, $\langle \PK f,\ \PKp g\rangle_\nu=0$ for all
+$f,g\in L^2(\nu)$, and the Pythagorean identity
+\begin{equation}
+  \|f\|_{L^2(\nu)}^2=\|\PK f\|_{L^2(\nu)}^2+\|\PKp f\|_{L^2(\nu)}^2
+  \label{eq:pythagoras}
+\end{equation}
+holds.
+\end{lemma}
+
+\begin{proof}
+$\PK f$ is constant on each cell, so $\PK f\in V_K$. For the residual,
+use $\bar f_j\,\nu(C_j)=\int_{C_j}f\dd\nu$ from the definition of the
+cell mean:
+\[
+  \int_{C_j}\PKp f\dd\nu
+  =\int_{C_j}\big(f-\bar f_j\big)\dd\nu
+  =\int_{C_j}f\dd\nu-\bar f_j\,\nu(C_j)=0
+  \qquad\text{for every }j,
+\]
+so $\PKp f\in V_K^{\perp}$ by the characterization above. Orthogonality
+of the ranges follows cell by cell: $\PK f$ takes the constant value
+$\bar f_j$ on $C_j$, so
+\[
+  \big\langle \PK f,\ \PKp g\big\rangle_\nu
+  =\sum_{j=1}^{K}\int_{C_j}\bar f_j\,(\PKp g)\dd\nu
+  =\sum_{j=1}^{K}\bar f_j\underbrace{\int_{C_j}\PKp g\dd\nu}_{=\,0}
+  =0 .
+\]
+In particular $f-\PK f$ is orthogonal to all of $V_K$, which is the
+defining property of the orthogonal projection onto $V_K$; since
+$\PKp=\mathsf{I}-\PK$, it is the orthogonal projection onto
+$V_K^{\perp}$. Idempotence, self-adjointness and $\PK\PKp=0$ are the
+standard consequences, and applying the orthogonality to
+$f=\PK f+\PKp f$ gives \eqref{eq:pythagoras}.
+\end{proof}
+
+
+Intuitively, subtracting the cell mean removes everything a
+piecewise-constant function could capture: the average has already
+extracted all of $f$ that is visible at cell resolution, so the residual
+has nothing left to say there. That residual is $\PKp f$, the
+\emph{within-cell fluctuation}: on each cell it equals $f$ minus that
+cell's mean, and hence integrates to zero within every cell. It lives in
+$V_K^{\perp}$, the functions carrying only sub-cell detail, so the split
+$f=\PK f+\PKp f$ of~\eqref{eq:split} separates $f$ into its coarse,
+between-cell part and its fine, within-cell part.
+
+\subsection{Decomposing the weight and the field}
+\label{sec:decomp-wy}
+
+Lemma~\ref{lem:projection} applies to any $f\in L^2(\nu)$; the two
+functions the bound requires are the centered weight $w-1$ and the field
+anomaly $y-\mu$. Both are centered under $\nu$: $\E_\nu[w]=1$ by
+\eqref{eq:sigma-w}, and $\E_\nu[y]=\mu$ by Definition~\ref{def:mu}.
+Applying the operator identity~\eqref{eq:split} to each,
+\begin{align}
+  w-1 &= \underbrace{\PK(w-1)}_{\text{between-cell}}
+        \;+\;\underbrace{\PKp(w-1)}_{\text{within-cell}}
+        \;=\;w^{\star}+w^{\perp},
+  \label{eq:w-split}\\[2pt]
+  y-\mu &= \underbrace{\PK(y-\mu)}_{\text{between-cell}}
+        \;+\;\underbrace{\PKp(y-\mu)}_{\text{within-cell}}
+        \;=\;y^{\star}+y^{\perp},
+  \label{eq:y-split}
+\end{align}
+where we have written
+\[
+  w^{\star}:=\PK(w-1)=\PK w-1,\qquad w^{\perp}:=\PKp(w-1)=\PKp w,
+\]
+\[
+  y^{\star}:=\PK(y-\mu)=\PK y-\mu,\qquad y^{\perp}:=\PKp(y-\mu)=\PKp y,
+\]
+using that $\PK$ fixes constants ($\PK 1=1$, since $1\in V_K$) and hence
+$\PKp$ annihilates them ($\PKp 1=0$). Concretely, the resolved parts
+$w^{\star},y^{\star}$ are piecewise constant, equal to $\bar w_j-1$ and
+$\bar y_j-\mu$ on $C_j$, while the unresolved parts $w^{\perp},y^{\perp}$
+are $w-\bar w_j$ and $y-\bar y_j$ on $C_j$, each with zero average on
+every cell.
+
+\subsubsection*{Decomposition of the variances}
+
+Because the two components in \eqref{eq:w-split} are orthogonal
+(Lemma~\ref{lem:projection}), the Pythagorean
+identity~\eqref{eq:pythagoras} splits the dispersion of the weight into
+between- and within-cell pieces. Define
+\begin{equation}
+  \sigma_{w^{\star}} := \big\|w^{\star}\big\|_{L^2(\nu)},
+  \qquad
+  \sigma_{w^{\perp}} := \big\|w^{\perp}\big\|_{L^2(\nu)},
+  \label{eq:sigma-w-parts}
+\end{equation}
+and analogously for the field,
+\begin{equation}
+  \sigma_{Y^{\star}} := \big\|y^{\star}\big\|_{L^2(\nu)},
+  \qquad
+  \sigma_{Y^{\perp}} := \big\|y^{\perp}\big\|_{L^2(\nu)} .
+  \label{eq:sigma-Y-parts}
+\end{equation}
+Then
+\begin{equation}
+  \sigma_w^2=\sigma_{w^{\star}}^2+\sigma_{w^{\perp}}^2,
+  \qquad
+  \sigma_Y^2=\sigma_{Y^{\star}}^2+\sigma_{Y^{\perp}}^2 .
+  \label{eq:var-split}
+\end{equation}
+
+These are exactly the law of total variance. Since
+$\PK f=\E_\nu[f\mid\mathcal{P}_K]$, writing $X\sim\nu$ and letting
+$J=J(X)$ denote the (random) index of the cell containing $X$,
+\eqref{eq:var-split} reads
+\[
+  \underbrace{\Var_\nu\big(w(X)\big)}_{\sigma_w^2}
+  =\underbrace{\Var_\nu\Big(\E_\nu\big[w(X)\mid J\big]\Big)}_{
+      \sigma_{w^{\star}}^2\ =\ \sum_j \frac1K\,(\bar w_j-1)^2}
+  \;+\;
+  \underbrace{\E_\nu\Big[\Var_\nu\big(w(X)\mid J\big)\Big]}_{
+      \sigma_{w^{\perp}}^2\ =\ \sum_j \frac1K\,\Var_\nu(w\mid C_j)} ,
+\]
+and identically for $y$: the resolved term is the variance of the cell
+means, and the unresolved term is the mean of the within-cell variances.
+In words, $\sigma_{w^{\star}}$ measures how unevenly sampling effort is
+distributed \emph{across} cells---the dispersion of the cell weights
+$\bar w_j=K\pi_j$ about one---while $\sigma_{w^{\perp}}$ measures the
+sampling structure \emph{inside} cells, which the partition cannot see.
+The same split separates field variation across cells from field
+variation within them.
+
+\subsubsection*{Why the split is useful}
+
+The decompositions \eqref{eq:w-split}--\eqref{eq:y-split} are what allow
+the bias itself to be separated by scale. Substituting them into the
+covariance identity of Proposition~\ref{prop:cov-identity} and using the
+orthogonality $\langle \PK f,\PKp g\rangle_\nu=0$ of
+Lemma~\ref{lem:projection} to kill the two cross terms,
+\begin{equation}
+  B_{\mathrm{samp}}
+  =\big\langle\, w-1,\; y-\mu \,\big\rangle_\nu
+  =\underbrace{\big\langle\, w^{\star},\; y^{\star} \,\big\rangle_\nu}_{\text{between-cell}}
+  \;+\;\underbrace{\big\langle\, w^{\perp},\; y^{\perp} \,\big\rangle_\nu}_{\text{within-cell}} ,
+  \label{eq:bias-split}
+\end{equation}
+so the resolved and unresolved scales contribute additively and without
+interference. Applying Cauchy--Schwarz to each term of
+\eqref{eq:bias-split} separately pairs $\sigma_{w^{\star}}$ with
+$\sigma_{Y^{\star}}$ and $\sigma_{w^{\perp}}$ with $\sigma_{Y^{\perp}}$,
+giving
+\[
+  \big|B_{\mathrm{samp}}\big|
+  \;\le\;\sigma_{w^{\star}}\,\sigma_{Y^{\star}}
+  \;+\;\sigma_{w^{\perp}}\,\sigma_{Y^{\perp}} ,
+\]
+which is the content of Proposition~\ref{prop:scale-decomp}. This is what
+makes a coarse partition---one the float counts can actually
+support---admissible for bounding the bias, provided the within-cell
+field variation $\sigma_{Y^{\perp}}$ is small.
+
+
+\begin{proposition}[Scale-decomposition bound]
+\label{prop:scale-decomp}
+Conditional on the realized field $\{Y=y\}$ and the design, and under
+the hypotheses of Proposition~\ref{prop:cov-identity}, for any
+partition $\mathcal{P}_K$,
+\[
+  B_{\mathrm{samp}}
+  =\underbrace{\big\langle\,w^{\star},\ y^{\star}\,\big\rangle_\nu}_{\text{between-cell}}
+  +\underbrace{\big\langle\,w^{\perp},\ y^{\perp}\,\big\rangle_\nu}_{\text{within-cell}},
+\]
+and
+\[
+  |B_{\mathrm{samp}}|
+  \;\le\; \sigma_{w^{\star}}\,\sigma_{Y^{\star}}
+        \;+\;\sigma_{w^{\perp}}\,\sigma_{Y^{\perp}}
+  \;\le\; \sigma_w\,\sigma_Y ,
+\]
+with $w^{\star},w^{\perp},y^{\star},y^{\perp}$ as in
+\eqref{eq:w-split}--\eqref{eq:y-split} and the four dispersions as in
+\eqref{eq:sigma-w-parts}--\eqref{eq:sigma-Y-parts}. In particular, the
+scale-decomposed bound is never looser than the raw Cauchy--Schwarz
+bound $\sigma_w\sigma_Y$.
+\end{proposition}
+
+\begin{proof}
+Substitute the decompositions $w-1=w^{\star}+w^{\perp}$ and
+$y-\mu=y^{\star}+y^{\perp}$ of \eqref{eq:w-split}--\eqref{eq:y-split}
+into the covariance identity
+$B_{\mathrm{samp}}=\langle w-1,\,y-\mu\rangle_\nu$
+(Proposition~\ref{prop:cov-identity}). Bilinearity of the inner product
+gives four terms,
+\begin{align*}
+  B_{\mathrm{samp}}
+  &=\big\langle\, w^{\star}+w^{\perp},\ y^{\star}+y^{\perp} \,\big\rangle_\nu\\[2pt]
+  &=\underbrace{\big\langle\, w^{\star},\ y^{\star} \,\big\rangle_\nu}_{\text{between-cell}}
+   \;+\;\underbrace{\big\langle\, w^{\star},\ y^{\perp} \,\big\rangle_\nu}_{\text{cross term}}
+   \;+\;\underbrace{\big\langle\, w^{\perp},\ y^{\star} \,\big\rangle_\nu}_{\text{cross term}}
+   \;+\;\underbrace{\big\langle\, w^{\perp},\ y^{\perp} \,\big\rangle_\nu}_{\text{within-cell}} .
+\end{align*}
+The two cross terms vanish by the orthogonality $V_K\perp V_K^{\perp}$ of
+Lemma~\ref{lem:projection}: $w^{\star},y^{\star}\in V_K$ are constant on
+each cell, while $w^{\perp},y^{\perp}\in V_K^{\perp}$ have zero average
+on each cell. Explicitly, splitting the integral over the cells and
+pulling out the constant value $\bar w_j-1$ of $w^{\star}$ on $C_j$,
+\[
+  \big\langle\, w^{\star},\ y^{\perp} \,\big\rangle_\nu
+  =\int_{\X} w^{\star}\,y^{\perp}\dd\nu
+  =\sum_{j=1}^{K}\int_{C_j}(\bar w_j-1)\,y^{\perp}\dd\nu
+  =\sum_{j=1}^{K}(\bar w_j-1)\underbrace{\int_{C_j}y^{\perp}\dd\nu}_{=\,0}
+  =0 ,
+\]
+and symmetrically $\langle w^{\perp},y^{\star}\rangle_\nu=0$, exchanging
+the roles of $w$ and $y$. Only the between-cell and within-cell terms
+survive, which is the stated two-term identity; Cauchy--Schwarz applied
+to each of them separately yields
+\[
+  |B_{\mathrm{samp}}|
+  \;\le\;\big|\big\langle w^{\star},y^{\star}\big\rangle_\nu\big|
+        +\big|\big\langle w^{\perp},y^{\perp}\big\rangle_\nu\big|
+  \;\le\;\sigma_{w^{\star}}\sigma_{Y^{\star}}
+        +\sigma_{w^{\perp}}\sigma_{Y^{\perp}} .
+\]
+
+For the final inequality, apply the Cauchy--Schwarz inequality in $\R^2$
+to the vectors
+$\mathbf a=(\sigma_{w^{\star}},\sigma_{w^{\perp}})$ and
+$\mathbf b=(\sigma_{Y^{\star}},\sigma_{Y^{\perp}})$:
+\[
+  \sigma_{w^{\star}}\sigma_{Y^{\star}}+\sigma_{w^{\perp}}\sigma_{Y^{\perp}}
+  =\mathbf a\cdot\mathbf b
+  \;\le\;\|\mathbf a\|\,\|\mathbf b\|
+  =\sqrt{\sigma_{w^{\star}}^2+\sigma_{w^{\perp}}^2}\,
+   \sqrt{\sigma_{Y^{\star}}^2+\sigma_{Y^{\perp}}^2}
+  =\sigma_w\,\sigma_Y ,
+\]
+the last equality being the Pythagorean identities \eqref{eq:var-split}.
+Equality holds precisely when $\mathbf a$ and $\mathbf b$ are parallel,
+i.e. when $w$ and $y$ distribute their dispersion between the resolved
+and unresolved scales in the same proportion,
+$\sigma_{w^{\perp}}/\sigma_{w^{\star}}=\sigma_{Y^{\perp}}/\sigma_{Y^{\star}}$;
+otherwise the scale-decomposed bound is strictly tighter.
+\end{proof}
+
+The estimation status of the four factors is the crux. Three are
+recoverable model-free: $\sigma_{w^{\star}}$ from float counts
+(Section~\ref{sec:sigmawK}), and $\sigma_{Y^{\star}}$ and
+$\sigma_{Y^{\perp}}$ from a reanalysis (Section~\ref{sec:sigmaY}). The
+fourth, $\sigma_{w^{\perp}}$---the sampling roughness \emph{below} the
+cell scale---cannot be estimated from a sparse point pattern without
+reintroducing a sub-cell intensity model, and is the single quantity we
+decline to estimate. Proposition~\ref{prop:scale-decomp} confines it to a
+product with $\sigma_{Y^{\perp}}$, so it matters only to the extent the
+field varies within cells; Section~\ref{sec:resolution} chooses the cell
+scale to make $\sigma_{Y^{\perp}}$ small and thereby renders the
+unestimated term negligible.
+
+\begin{remark}[Why decomposing by scale tightens the bound]
+\label{rem:why-tighter}
+The gain has a simple geometric source. The raw bound
+$|B_{\mathrm{samp}}|\le\sigma_w\sigma_Y$ applies Cauchy--Schwarz once, to
+the whole functions $w-1$ and $y-\mu$, and is therefore attained only in
+the extreme case $y-\mu\propto w-1$: the field anomaly aligned with the
+sampling anomaly \emph{everywhere, at every scale simultaneously}. That
+is a strong requirement, and the raw bound pays for assuming it.
+
+The scale decomposition instead applies Cauchy--Schwarz twice, once
+within each of two orthogonal scale bands, and so only has to assume
+alignment \emph{within} bands rather than across them. Writing
+$\rho_{\star}$ and $\rho_{\perp}$ for the $L^2(\nu)$ correlations of the
+resolved and unresolved components,
+\[
+  B_{\mathrm{samp}}
+  =\rho_{\star}\,\sigma_{w^{\star}}\sigma_{Y^{\star}}
+   +\rho_{\perp}\,\sigma_{w^{\perp}}\sigma_{Y^{\perp}},
+  \qquad \rho_{\star},\rho_{\perp}\in[-1,1],
+\]
+so the two-term bound is the case $\rho_{\star}=\rho_{\perp}=1$, whereas
+the raw bound $\sigma_w\sigma_Y$ additionally requires the two bands to
+have matching variance profiles. Concretely, suppose the sampling
+weight is rough but the field is smooth: $w$ carries most of its
+dispersion below the cell scale (advective filaments, eddy-driven
+clustering), while $y$ carries most of its dispersion above it (the
+large-scale front). Then $\sigma_{w^{\perp}}$ is large and
+$\sigma_{Y^{\perp}}$ small, while $\sigma_{w^{\star}}$ is small and
+$\sigma_{Y^{\star}}$ large. Their products are the \emph{small--large}
+pairings
+$\sigma_{w^{\star}}\sigma_{Y^{\star}}$ and
+$\sigma_{w^{\perp}}\sigma_{Y^{\perp}}$, both modest, whereas
+$\sigma_w\sigma_Y$ multiplies the two \emph{totals}---in effect crediting
+the bias with the cross pairings $\sigma_{w^{\perp}}\sigma_{Y^{\star}}$
+and $\sigma_{w^{\star}}\sigma_{Y^{\perp}}$, which the orthogonality of
+the bands has already shown to contribute nothing.
+
+That is the essential point: fine-scale sampling structure cannot bias a
+regional average of a field that is nearly constant at those scales,
+because the two live in orthogonal subspaces and the corresponding cross
+terms in \eqref{eq:bias-split} are exactly zero. Cauchy--Schwarz applied
+to the totals cannot see this cancellation and charges for it anyway;
+applied band-by-band, it does not. Equality in
+Proposition~\ref{prop:scale-decomp} therefore requires
+$\sigma_{w^{\perp}}/\sigma_{w^{\star}}
+=\sigma_{Y^{\perp}}/\sigma_{Y^{\star}}$---the weight and the field must
+allocate their dispersion across scales in the same proportions---and the
+more the two profiles differ, the tighter the improvement.
+
+The practical consequence is what licenses a coarse partition. The one
+factor we cannot estimate model-free, $\sigma_{w^{\perp}}$, enters only
+through the product $\sigma_{w^{\perp}}\sigma_{Y^{\perp}}$. Choosing
+cells at or below the field's decorrelation length makes
+$\sigma_{Y^{\perp}}$---the field variation \emph{inside} a cell---small,
+which suppresses that term regardless of how rough the sub-cell sampling
+turns out to be. The unresolvable part of the sampling pattern is thereby
+confined to precisely the scales at which it is bias-irrelevant.
+\end{remark}
+
+
+\subsection{Estimating $\sigma_{w^{\star}}$ from float counts}
+\label{sec:sigmawK}
+
+The \emph{cell weight} is the ratio of the sampling mass of the cell to its reference mass,
+\begin{equation}
+  \bar w_j \;=\; \frac{1}{\nu(C_j)}\int_{C_j}w\dd\nu \;=\; \frac{\pi(C_j)}{\nu(C_j)} \;=\; \frac{\pi_j}{1/K}
+  \;=\; K\pi_j ,
+  \label{eq:cell-weight}
+\end{equation}
+where $\pi_j:=\pi(C_j)$ for the probability that a randomly sampled
+profile lies in cell $C_j$.
+This is coarse cell counterpart of the pointwise weight $w$ of
+Definition~\ref{def:w}: $\bar w_j=1$ means cell $j$ is sampled exactly as
+under uniform coverage, $\bar w_j>1$ over-sampled (preferential),
+$\bar w_j<1$ under-sampled, and $\bar w_j=0$ unsampled. Because
+$\sum_j\pi_j=1$ and $\nu(C_j)=1/K$, the weights are mean-one under the
+reference measure, $\sum_j\nu(C_j)\bar w_j=\sum_j\pi_j=1$.
+
+Let $n_j:=N(C_j)$ be the number of profiles observed in cell $j$ and
+$n=\sum_j n_j$ the total. The natural estimator of $\bar w_j$ is
+\begin{equation}
+  \widehat{\bar w}_j=K\,\frac{n_j}{n}=\frac{n_j}{\,n/K\,}
+  =\frac{\text{observed count in }C_j}{\text{count expected under uniform}} ,
+  \label{eq:wbar-hat}
+\end{equation}
+so that a map of $\widehat{\bar w}_j$ over the domain displays directly
+where floats over- and under-sample relative to uniform coverage.
+
+$\sigma^2_{w^{\star}}$ is then the variance of the cells weights about one.
+This is because $w^{\star}=\PK w-1$ is a constant function on each
+cell with cell value on $C_j$ is $\bar w_j-1$.
+
+Accordingly,
+\begin{align}
+  \sigma_{w^{\star}}^2
+  &=\int_{\X}(w^{\star})^2\dd\nu
+   =\sum_{j=1}^{K}\int_{C_j}\big(\bar w_j-1\big)^2\dd\nu
+   =\sum_{j=1}^{K}\big(\bar w_j-1\big)^2\,\nu(C_j)
+   =\frac{1}{K}\sum_{j=1}^{K}\big(K\pi_j-1\big)^2 \notag\\[2pt]
+  &=\frac{1}{K}\sum_{j=1}^{K}\Big(K^2\pi_j^2-2K\pi_j+1\Big)
+   =K\sum_{j=1}^{K}\pi_j^2\;-\;2\underbrace{\sum_{j=1}^{K}\pi_j}_{=\,1}
+     \;+\;\frac{1}{K}\underbrace{\sum_{j=1}^{K}1}_{=\,K} \notag\\[2pt]
+  &=K\sum_{j=1}^{K}\pi_j^2-1 .
+  \label{eq:sigmawK-def}
+\end{align}
+
+Note, uniform sampling within the partition
+($\pi_j=1/K$ for all $j$, i.e. $\bar w_j\equiv1$) gives
+$K\cdot K^{-1}-1=0$.
+Whereas when all sampling mass is in a single cell gives 
+$K-1$.
+Hence, $0\le\sigma_{w^{\star}}\le\sqrt{K-1}$.
+
+\begin{assumption}[Profiles sample the sampling measure]
+\label{ass:sample-pi}
+Conditional on the total $N$, the profile locations are independent draws
+from the sampling measure $\pi$ of Definition~\ref{def:pi}; equivalently,
+the cell counts follow
+$(n_1,\dots,n_K)\sim\mathrm{Multinomial}\big(N;\pi_1,\dots,\pi_K\big)$
+with $\pi_j=\pi(C_j)$.
+\end{assumption}
+
+The plug-in $\hat\pi_j=n_j/N$ gives
+\[
+  \sigwhatsqplug
+  =K\sum_j\hat\pi_j^2-1=\frac{X^2}{N},
+  \qquad X^2=\sum_{j=1}^{K}\frac{(n_j-N/K)^2}{N/K},
+\]
+where $X^2$ is \emph{Pearson's goodness-of-fit statistic for
+uniformity}.
+This plug-in estimator is upward biased and removing the diagonal (self-pairs) removes the bias (Lemma~\ref{lem:unbiased}):
+\begin{equation}
+  \boxed{\;
+  \sigwhatsq
+  \;=\;K\sum_{j=1}^{K}\frac{n_j(n_j-1)}{N(N-1)}\;-\;1\;}
+  \label{eq:sigmawK-hat}
+\end{equation}
+
+\begin{remark}[Negative estimates]
+\label{rem:negative}
+Being unbiased for a non-negative quantity,
+\eqref{eq:sigmawK-hat} can take negative values in finite samples.
+A negative value arises exactly when the observed coincidence rate falls below the uniform rate, $\sum_j n_j(n_j-1)/[N(N-1)]<1/K$, and so indicates sampling at least as
+even as the reference measure.
+We retain the signed value for interval construction and report
+$\sigwhat=\sqrt{\max\{0,\sigwhatsq\}}$
+as the point estimate; near-zero results are stated on the $\sigma^2$
+scale with their signed interval, as ``consistent with zero'' rather than
+truncated.
+\end{remark}
+
+\begin{lemma}[Bias of the plug-in; unbiasedness of \eqref{eq:sigmawK-hat}]
+\label{lem:unbiased}
+Under Assumption~\ref{ass:sample-pi},
+\[
+  \E\big[\sigwhatsqplug\big]
+  =\sigma_{w^{\star}}^2+\frac{K}{N}\Big(1-\textstyle\sum_j\pi_j^2\Big),
+  \qquad
+  \E\big[\sigwhatsq\big]=\sigma_{w^{\star}}^2 .
+\]
+The plug-in bias is non-negative, vanishing only in the degenerate case
+$\sum_j\pi_j^2=1$ (all sampling mass in one cell), and grows with $K/N$;
+the diagonal-removed estimator~\eqref{eq:sigmawK-hat} is exactly unbiased
+for every $n\ge 2$ and every $K$.
+\end{lemma}
+
+\begin{proof}
+\begin{align}
+  \mathrm{Bias}\big(\sigwhatsqplug\big)
+  &=\E\Big[K\sum_{j=1}^{K}\hat\pi_j^2-1\Big]
+    -\Big(K\sum_{j=1}^{K}\pi_j^2-1\Big)
+   =K\sum_{j=1}^{K}\Big(\E\big[\hat\pi_j^2\big]-\pi_j^2\Big),
+  \label{eq:bias-plug}\\[4pt]
+  \mathrm{Bias}\big(\sigwhatsq\big)
+  &=\E\Big[K\sum_{j=1}^{K}\frac{n_j(n_j-1)}{N(N-1)}-1\Big]
+    -\Big(K\sum_{j=1}^{K}\pi_j^2-1\Big)
+   =K\sum_{j=1}^{K}\Big(\E\Big[\frac{n_j(n_j-1)}{N(N-1)}\Big]-\pi_j^2\Big).
+  \label{eq:bias-diag}
+\end{align}
+It therefore suffices to evaluate the two cell-level expectations.
+
+\emph{Step 1: moments of the counts.} Under
+Assumption~\ref{ass:sample-pi} the counts are multinomial, so each
+marginal is $n_j\sim\mathrm{Binomial}(N,\pi_j)$, giving
+\[
+  \E[n_j]=N\pi_j,\qquad \Var(n_j)=N\pi_j(1-\pi_j),\qquad
+  \E[n_j^2]=\Var(n_j)+\E[n_j]^2=N\pi_j(1-\pi_j)+N^2\pi_j^2 .
+\]
+
+\emph{Step 2: the plug-in cell term is biased.} Dividing the second
+moment by $N^2$,
+\[
+  \E\big[\hat\pi_j^2\big]=\frac{\E[n_j^2]}{N^2}
+  =\pi_j^2+\frac{1}{N}\,\pi_j(1-\pi_j)
+  \;>\;\pi_j^2 \quad\text{whenever }0<\pi_j<1 ,
+\]
+so each cell term over-estimates $\pi_j^2$ by $\pi_j(1-\pi_j)/N$.
+Substituting into \eqref{eq:bias-plug} and using $\sum_j\pi_j=1$,
+\[
+  \mathrm{Bias}\big(\sigwhatsqplug\big)
+  =K\sum_{j=1}^{K}\frac{\pi_j(1-\pi_j)}{N}
+  =\frac{K}{N}\Big(\sum_{j=1}^{K}\pi_j-\sum_{j=1}^{K}\pi_j^2\Big)
+  =\frac{K}{N}\Big(1-\sum_{j=1}^{K}\pi_j^2\Big),
+\]
+which is the first claim. It is non-negative because
+$\sum_j\pi_j^2\le\big(\sum_j\pi_j\big)^2=1$, vanishing only when all
+sampling mass lies in a single cell, and it grows linearly in $K/N$.
+
+\emph{Step 3: removing the self-pairs.} The inflation arises because
+$n_j^2$ counts all $N^2$ \emph{ordered} pairs of profiles falling in
+$C_j$, including the $N$ pairs of a profile with itself. A pair of
+\emph{distinct} profiles lies in $C_j$ with probability $\pi_j^2$, since
+the two are independent draws (Assumption~\ref{ass:sample-pi}); a
+profile paired with itself lies there with probability $\pi_j$, as it
+coincides with itself by definition. The self-pairs are thus spurious
+coincidences, and $n_j(n_j-1)=n_j^2-n_j$ removes exactly those $N$
+terms, leaving the $N(N-1)$ ordered pairs of distinct profiles. Hence
+\[
+  \E\big[n_j(n_j-1)\big]=N(N-1)\,\pi_j^2 ,
+  \qquad\text{so}\qquad
+  \E\Big[\frac{n_j(n_j-1)}{N(N-1)}\Big]=\pi_j^2 ,
+\]
+the normalization matching the number of pairs retained. Each cell term
+is therefore exactly unbiased for $\pi_j^2$, and \eqref{eq:bias-diag}
+gives
+\[
+  \mathrm{Bias}\big(\sigwhatsq\big)
+  =K\sum_{j=1}^{K}\big(\pi_j^2-\pi_j^2\big)=0 ,
+\]
+i.e. $\E\big[\sigwhatsq\big]=\sigma_{w^{\star}}^2$
+for every $N\ge2$ and every $K$.
+\end{proof}
+
+
+\begin{remark}[Trajectory dependence and the between-float estimator]
+\label{rem:trajectory}
+Argo profiles from one float trace a single advective path, so the independence assumption of profiles from the same float may be violated.
+
+However, under certain reasonable conditions, within-float clustering inflates $\sigwhat$, which is the conservative direction for a bound. 
+
+[[Add]]
+
+Therefore, we also present an alternative \emph{between-float} unbiased estimator that counts only coincidence pairs from distinct floats.
+Let $m_{lj}$ be the number of profiles of float $l$ in cell $j$ and $d_l=\sum_j m_{lj}$ its total, \begin{equation} \sigwhatsqbf = K\,\frac{\sum_j n_j(n_j-1)-\sum_l\sum_j m_{lj}(m_{lj}-1)} {n(n-1)-\sum_l d_l(d_l-1)}\;-\;1 , \label{eq:sigmawK-bf} \end{equation} which removes the within-float diagonal and normalizes by the between-float pair total.
+It is unbiased for $\sigma_{w^{\star}}^2$ under the weaker assumption that only \emph{distinct} floats are independent draws from $\pi$ (Lemma~\ref{lem:bf-unbiased}), with no within-float independence assumed.
+The gap between \eqref{eq:sigmawK-hat} and \eqref{eq:sigmawK-bf} is precisely the within-float clustering, so reporting both is a direct diagnostic of how much of the apparent dispersion is trajectory autocorrelation rather than preferential sampling.
+\end{remark}
+
+\begin{lemma}[Unbiasedness of the between-float estimator]
+\label{lem:bf-unbiased}
+Let
+$S_{\mathrm{bf}}=\sum_j n_j(n_j-1)-\sum_l\sum_j m_{lj}(m_{lj}-1)$ and
+$P_{\mathrm{bf}}=N(N-1)-\sum_l d_l(d_l-1)$, so that
+$\sigwhatsqbf
+=K\,S_{\mathrm{bf}}/P_{\mathrm{bf}}-1$ in~\eqref{eq:sigmawK-bf}. If
+profiles from \emph{distinct} floats are independent draws with marginal
+distribution $\pi$ then $\E\big[\sigwhatsqbf\big] = \sigma_{w^{\star}}^2$.
+\end{lemma}
+
+\begin{proof}
+Writing $n_j=\sum_l m_{lj}$ and $N=\sum_l d_l$, and splitting the ordered
+pairs into same-float and distinct-float pairs,
+\[
+  \sum_j n_j(n_j-1)
+  =\underbrace{\sum_{l\ne l'}\sum_j m_{lj}m_{l'j}}_{=\,S_{\mathrm{bf}}}
+   +\sum_l\sum_j m_{lj}(m_{lj}-1),
+  \qquad
+  N(N-1)=\underbrace{\sum_{l\ne l'}d_l d_{l'}}_{=\,P_{\mathrm{bf}}}
+   +\sum_l d_l(d_l-1),
+\]
+so $S_{\mathrm{bf}}$ counts ordered pairs of profiles from distinct
+floats lying in a common cell, and $P_{\mathrm{bf}}$ counts all ordered
+distinct-float pairs. Each such pair is a pair of independent draws with
+marginal $\pi$, hence lies in a common cell with probability
+$\sum_j\pi_j^2$; therefore
+$\E[S_{\mathrm{bf}}]=P_{\mathrm{bf}}\sum_j\pi_j^2$ and
+\[
+  \E\big[\sigwhatsqbf\big]
+  =K\sum_j\pi_j^2-1=\sigma_{w^{\star}}^2 .
+\]
+By removing the within-float terms from both numerator and denominator no within-float independence is assumed.
+\end{proof}

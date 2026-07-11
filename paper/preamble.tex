@@ -1,0 +1,29 @@
+% Packages and document-wide setup. Notation macros live in macros.tex.
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{bm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[colorlinks=true,citecolor=blue,linkcolor=blue,urlcolor=blue, pdfencoding=auto, psdextra]{hyperref}
+\usepackage[capitalise]{cleveref}
+\usepackage{natbib}
+\bibpunct{(}{)}{;}{a}{}{,} % ASA-style author-year citation punctuation, for use with asa.bst
+\usepackage{etoolbox}
+
+% Theorem environments, numbered within section.
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{assumption}{Assumption}[section]
+\theoremstyle{plain}
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}{Lemma}[section]
+\newtheorem{corollary}{Corollary}[section]
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}[section]
+\newtheorem{example}{Example}[section]
+
+\newcommand{\definend}{\hfill$\diamond$}
+%\AtEndEnvironment{definition}{\definend}
