@@ -42,7 +42,7 @@ Formally, $w$ is the Radon--Nikodym derivative of $\pi$ with respect to $\nu$.
 
 ::: {.callout-tip title="Intuition"}
 - $\nu$ is the **target population distribution** (uniform over space-time)
-- $\pi$ is the **sampling distribution**. If you draw a profile at random from the sampling process, $\pi(E)$ is the probabilit that the profile lies in the space-time region $E$.
+- $\pi$ is the **sampling distribution**. If you draw a profile at random from the sampling process, $\pi(E)$ is the probability that the profile lies in the space-time region $E$.
 - $w$ is the **relative sampling propensity**.
   - $w(x) = 1$ *floats are sampled as if uniformly near $x$*
   - $w(x) = 2$ *floats are sampled twice as often compared to uniform sampling near $x$*
