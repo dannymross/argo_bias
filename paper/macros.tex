@@ -1,8 +1,3 @@
-% Convenience notation macros, shared across all chapters in sections/.
-% Keep this the single source of truth for paper-wide notation -- add a
-% macro here (not ad hoc in a chapter file) as soon as a symbol is used
-% in more than one section.
-
 \newcommand{\X}{\mathcal{X}}
 \newcommand{\T}{\mathcal{T}}
 \newcommand{\F}{\mathcal{F}}
@@ -18,9 +13,26 @@
 \newcommand{\PK}{\mathsf{P}}
 \newcommand{\PKp}{\mathsf{P}^{\perp}}
 
-% Estimators of sigma_{w*}^2 (Section~\ref{sec:sigmawK}). Hat is kept on
-% just \sigma -- writing \widehat{\sigma_{w^\star}^2} instead is too wide.
-\newcommand{\sigwhat}{\hat\sigma_{w^{\star}}}                    % point estimate (sqrt of the variance estimator)
-\newcommand{\sigwhatsq}{\hat\sigma_{w^{\star}}^2}                % diagonal-removed unbiased estimator, eq:sigmawK-hat
-\newcommand{\sigwhatsqplug}{\hat\sigma_{w^{\star}}^{2\,\mathrm{plug}}}  % plug-in (upward-biased) estimator
-\newcommand{\sigwhatsqbf}{\hat\sigma_{w^{\star}}^{2\,\mathrm{bf}}}      % between-float unbiased estimator, eq:sigmawK-bf
+\newcommand{\1}{\mathbbm{1}}
+% Auto-ordered proof appendix: \deferproof{key}{<full proof environment>}
+% called right after a proposition/lemma leaves a "Proof in Appendix" jump
+% link at the call site and stashes the proof itself (unexpanded, so
+% align/label/eqref inside it behave exactly as if written in place) in a
+% token list. \printdeferredproofs (called once, in sections/proofs.tex)
+% replays the stash in call order, so the appendix always matches the
+% order results appear in the body -- reordering \deferproof calls in
+% methodology.tex reorders the printed proofs to match, no manual
+% re-sequencing of proofs.tex needed.
+\newtoks\deferredProofsToks
+\deferredProofsToks{}
+\newcommand{\deferproof}[2]{%
+  \hyperref[proof:#1]{\emph{Proof in Appendix~\ref{app:proofs}.}}%
+  \global\deferredProofsToks=\expandafter{\the\deferredProofsToks
+    \phantomsection\label{proof:#1}#2}%
+}
+\newcommand{\printdeferredproofs}{\the\deferredProofsToks}
+
+\newcommand{\sigwhat}{\hat\sigma_{w^{\star}}} 
+\newcommand{\sigwhatsq}{\hat\sigma_{w^{\star}}^2}
+\newcommand{\sigwhatsqplug}{\hat\sigma_{w^{\star}}^{2\,\mathrm{plug}}}
+\newcommand{\sigwhatsqbf}{\hat\sigma_{w^{\star}}^{2\,\mathrm{bf}}}  

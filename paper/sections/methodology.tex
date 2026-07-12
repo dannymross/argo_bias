@@ -1,5 +1,20 @@
-\section{Background and Methodology}
+\section{Background}
+\label{sec:background}
+
+Argo floats park and drift at 1000m depth between profiling cycles.
+Their locations are determined by currents at that depth, not by experimental design.
+If 1000m currents are correlated with upper-ocean temperature or salinity, then Argo-based estimates of quantities like space-time averaged ocean heat content (OHC) could be biased.
+This is widely suspected to be negligible, but the magnitude of this bias has not yet been bounded statistically.
+
+This section sets up the estimand, the sampling mechanism, and the resulting sampling-induced bias.
+Three logically distinct sources of randomness appear, each on its own probability space: a \emph{field} space carrying the ocean heat content (OHC) field, which---following model-based geostatistics and the hierarchical Bayesian OHC model of \citet{baugh2022} on which this work builds---we treat as a \emph{stochastic process}; a \emph{sampling} space carrying the Argo float point process; and a \emph{population} space on which a random space--time coordinate is drawn and against which the target average is defined.
+Our analysis of the sampling bias is carried out \emph{conditional} on a realization of the field and on the sampling design; conditional on these, the field and the sampling weight are fixed functions and the only operative randomness is the target coordinate.
+This conditioning is what allows a distribution-free bound to coexist with, and indeed validate, a stochastic-field model rather than contradict it.
+
+\section{Methodology}
 \label{sec:methodology}
+
+All proofs are collected in Appendix~\ref{app:proofs}.
 
 \subsection{Notation and Estimand}
 \label{sec:def}
@@ -162,8 +177,8 @@ Conditional on $\{Y=y\}$ and the design,
   = \Cov_\nu\big(w(X),\,y(X)\big).
 \]
 \end{proposition}
-
-\begin{proof}
+\deferproof{cov-identity}{%
+\begin{proof}[Proof of Proposition~\ref{prop:cov-identity}]
 By Definitions~\ref{def:mu} and~\ref{def:mu-w},
 $\mu_w-\mu=\E_\nu[w(X)y(X)]-\E_\nu[y(X)]=\E_\nu[(w(X)-1)y(X)]$. Expanding the
 covariance about $\mu$ and using~$\E_{\nu}[w(X)]=1$,
@@ -173,7 +188,8 @@ covariance about $\mu$ and using~$\E_{\nu}[w(X)]=1$,
   &= \E_\nu\big[(w(X)-1)y(X)\big],
 \end{align*}
 since $\E_\nu[w(X)-1]=0$.
-\end{proof}
+\end{proof}%
+}
 
 \begin{remark}[No sampling bias under uncorrelated design]
 \label{rem:zero-bias}
@@ -198,7 +214,7 @@ $y(X)$. The bound requires only finite second moments and imposes no
 smoothness assumption on the field.
 \end{proposition}
 
-\subsection{Model-Free Estimation of the Bound}
+\section{Estimation}
 \label{sec:estimation}
 
 \begin{definition}[Equal-measure partition and the projection operators]
@@ -245,6 +261,17 @@ cells are disjoint. Its orthogonal complement is
 the functions with zero average on every cell, which carry only sub-cell
 detail.
 
+\begin{remark}
+\label{rem:buildK}
+Assuming $\nu$ is a measure over normalized area and time, equal-measure
+cells are constructed by partitioning  
+longitude into equal intervals, $\sin(\mathrm{lat})$ into equal
+intervals (equal area on the sphere), and time into equal intervals,
+so that $C_j$ is a longitude~$\times\sin(\mathrm{lat})\times$ time box
+and $K=K_{\mathrm{lon}}K_{\mathrm{lat}}K_{\mathrm{t}}$. Each cell then
+has equal meausre $\nu(C_j)=1/K$.
+\end{remark}
+
 \begin{lemma}[$\PK$ and $\PKp$ are complementary orthogonal projections]
 \label{lem:projection}
 For every $f\in L^2(\nu)$ we have $\PK f\in V_K$ and $\PKp f\in
@@ -262,8 +289,8 @@ $f,g\in L^2(\nu)$, and the Pythagorean identity
 \end{equation}
 holds.
 \end{lemma}
-
-\begin{proof}
+\deferproof{projection}{%
+\begin{proof}[Proof of Lemma~\ref{lem:projection}]
 $\PK f$ is constant on each cell, so $\PK f\in V_K$. For the residual,
 use $\bar f_j\,\nu(C_j)=\int_{C_j}f\dd\nu$ from the definition of the
 cell mean:
@@ -288,8 +315,8 @@ $\PKp=\mathsf{I}-\PK$, it is the orthogonal projection onto
 $V_K^{\perp}$. Idempotence, self-adjointness and $\PK\PKp=0$ are the
 standard consequences, and applying the orthogonality to
 $f=\PK f+\PKp f$ gives \eqref{eq:pythagoras}.
-\end{proof}
-
+\end{proof}%
+}
 
 Intuitively, subtracting the cell mean removes everything a
 piecewise-constant function could capture: the average has already
@@ -434,8 +461,8 @@ with $w^{\star},w^{\perp},y^{\star},y^{\perp}$ as in
 scale-decomposed bound is never looser than the raw Cauchy--Schwarz
 bound $\sigma_w\sigma_Y$.
 \end{proposition}
-
-\begin{proof}
+\deferproof{scale-decomp}{%
+\begin{proof}[Proof of Proposition~\ref{prop:scale-decomp}]
 Substitute the decompositions $w-1=w^{\star}+w^{\perp}$ and
 $y-\mu=y^{\star}+y^{\perp}$ of \eqref{eq:w-split}--\eqref{eq:y-split}
 into the covariance identity
@@ -492,92 +519,87 @@ i.e. when $w$ and $y$ distribute their dispersion between the resolved
 and unresolved scales in the same proportion,
 $\sigma_{w^{\perp}}/\sigma_{w^{\star}}=\sigma_{Y^{\perp}}/\sigma_{Y^{\star}}$;
 otherwise the scale-decomposed bound is strictly tighter.
-\end{proof}
+\end{proof}%
+}
 
-The estimation status of the four factors is the crux. Three are
-recoverable model-free: $\sigma_{w^{\star}}$ from float counts
-(Section~\ref{sec:sigmawK}), and $\sigma_{Y^{\star}}$ and
-$\sigma_{Y^{\perp}}$ from a reanalysis (Section~\ref{sec:sigmaY}). The
-fourth, $\sigma_{w^{\perp}}$---the sampling roughness \emph{below} the
-cell scale---cannot be estimated from a sparse point pattern without
-reintroducing a sub-cell intensity model, and is the single quantity we
-decline to estimate. Proposition~\ref{prop:scale-decomp} confines it to a
-product with $\sigma_{Y^{\perp}}$, so it matters only to the extent the
-field varies within cells; Section~\ref{sec:resolution} chooses the cell
-scale to make $\sigma_{Y^{\perp}}$ small and thereby renders the
-unestimated term negligible.
+\section{Implementation}
+\label{sec:implementation}
 
-\begin{remark}[Why decomposing by scale tightens the bound]
-\label{rem:why-tighter}
-The gain has a simple geometric source. The raw bound
-$|B_{\mathrm{samp}}|\le\sigma_w\sigma_Y$ applies Cauchy--Schwarz once, to
-the whole functions $w-1$ and $y-\mu$, and is therefore attained only in
-the extreme case $y-\mu\propto w-1$: the field anomaly aligned with the
-sampling anomaly \emph{everywhere, at every scale simultaneously}. That
-is a strong requirement, and the raw bound pays for assuming it.
+The variance components that define the preferential sampling bound can be estimated without fitting assumption-heavy models.
+Namely, $\sigma_{w^{\star}}$ can be estimated from float counts (Section~\ref{sec:sigmawK}), and $\sigma_{Y^{\star}}$ and $\sigma_{Y^{\perp}}$ from a reanalysis product.
+$\sigma_{w^{\perp}}$, the sampling variability \emph{within} the cell scale cannot be estimated from a sparse point pattern without reintroducing a within-cell intensity model.
+However, proposition~\ref{prop:scale-decomp} confines it to a product with $\sigma_{Y^{\perp}}$, so the magnitude of $\sigma_{w^{\star}}$ only matters to the extent the OHC field varies within cells.
+Therefore, our goal is to determine the cell scale such that within-cell OHC variability, $\sigma_{Y^{\perp}}$, is small such that the $\sigma_{w^{\star}}$ $\sigma_{Y^{\perp}}$ product is negligible.
 
-The scale decomposition instead applies Cauchy--Schwarz twice, once
-within each of two orthogonal scale bands, and so only has to assume
-alignment \emph{within} bands rather than across them. Writing
-$\rho_{\star}$ and $\rho_{\perp}$ for the $L^2(\nu)$ correlations of the
-resolved and unresolved components,
-\[
-  B_{\mathrm{samp}}
-  =\rho_{\star}\,\sigma_{w^{\star}}\sigma_{Y^{\star}}
-   +\rho_{\perp}\,\sigma_{w^{\perp}}\sigma_{Y^{\perp}},
-  \qquad \rho_{\star},\rho_{\perp}\in[-1,1],
-\]
-so the two-term bound is the case $\rho_{\star}=\rho_{\perp}=1$, whereas
-the raw bound $\sigma_w\sigma_Y$ additionally requires the two bands to
-have matching variance profiles. Concretely, suppose the sampling
-weight is rough but the field is smooth: $w$ carries most of its
-dispersion below the cell scale (advective filaments, eddy-driven
-clustering), while $y$ carries most of its dispersion above it (the
-large-scale front). Then $\sigma_{w^{\perp}}$ is large and
-$\sigma_{Y^{\perp}}$ small, while $\sigma_{w^{\star}}$ is small and
-$\sigma_{Y^{\star}}$ large. Their products are the \emph{small--large}
-pairings
-$\sigma_{w^{\star}}\sigma_{Y^{\star}}$ and
-$\sigma_{w^{\perp}}\sigma_{Y^{\perp}}$, both modest, whereas
-$\sigma_w\sigma_Y$ multiplies the two \emph{totals}---in effect crediting
-the bias with the cross pairings $\sigma_{w^{\perp}}\sigma_{Y^{\star}}$
-and $\sigma_{w^{\star}}\sigma_{Y^{\perp}}$, which the orthogonality of
-the bands has already shown to contribute nothing.
+\subsection{Choosing the resolution}
+\label{sec:resolution}
 
-That is the essential point: fine-scale sampling structure cannot bias a
-regional average of a field that is nearly constant at those scales,
-because the two live in orthogonal subspaces and the corresponding cross
-terms in \eqref{eq:bias-split} are exactly zero. Cauchy--Schwarz applied
-to the totals cannot see this cancellation and charges for it anyway;
-applied band-by-band, it does not. Equality in
-Proposition~\ref{prop:scale-decomp} therefore requires
-$\sigma_{w^{\perp}}/\sigma_{w^{\star}}
-=\sigma_{Y^{\perp}}/\sigma_{Y^{\star}}$---the weight and the field must
-allocate their dispersion across scales in the same proportions---and the
-more the two profiles differ, the tighter the improvement.
+Three length scales meet in this region and must not be conflated.
+The reanalysis \emph{rendering} scale ($1/12^\circ$, ${\approx}7$\,km here) is the resolution at which the field product carries information; it is the right grid for the internal computation of $\sigma_{Y,K}$ and $\sigma_Y^{\perp}$ via \eqref{eq:sigmaYK-hat}--\eqref{eq:sigmaYperp-hat}, but it says nothing about the resolution the floats can support.
+The field \emph{relevance} scale---the OHC decorrelation length---sets how finely $w$ ever \emph{needs} to be resolved, because within cells smaller than this the field is nearly constant, $\sigma_Y^{\perp}$ is small, and sub-cell sampling structure cannot bias the regional mean.
 
-The practical consequence is what licenses a coarse partition. The one
-factor we cannot estimate model-free, $\sigma_{w^{\perp}}$, enters only
-through the product $\sigma_{w^{\perp}}\sigma_{Y^{\perp}}$. Choosing
-cells at or below the field's decorrelation length makes
-$\sigma_{Y^{\perp}}$---the field variation \emph{inside} a cell---small,
-which suppresses that term regardless of how rough the sub-cell sampling
-turns out to be. The unresolvable part of the sampling pattern is thereby
-confined to precisely the scales at which it is bias-irrelevant.
-\end{remark}
+The float \emph{sampling} scale is the band of partitions the observed point pattern can support. For a $K_{\mathrm{lon}}\times K_{\mathrm{lat}}$ partition of the box---here $\Delta\lambda=6^\circ$ of longitude by $\Delta\phi=4^\circ$ of latitude about $\phi_0=38^\circ$---the zonal and meridional cell sides are
+\begin{equation}
+  \Delta x=\frac{\Delta\lambda}{K_{\mathrm{lon}}}\,(111\,\mathrm{km})\cos\phi_0
+    =\frac{525\,\mathrm{km}}{K_{\mathrm{lon}}},
+  \qquad
+  \Delta y=\frac{\Delta\phi}{K_{\mathrm{lat}}}\,(111\,\mathrm{km})
+    =\frac{444\,\mathrm{km}}{K_{\mathrm{lat}}},
+  \label{eq:cell-km}
+\end{equation}
+taking $111$\,km per degree and $\cos38^\circ\approx0.79$. Two point counts bracket the band, each converted to a spacing through $\sqrt{|A|/n}$---the side of one of $n$ equal cells tiling the domain area $|A|\approx2.3\times10^5\,\mathrm{km}^2$ (Figure~\ref{fig:sampling-scale}). The $40$ distinct floats give $\sqrt{|A|/40}\approx76$\,km, i.e.\ $K_{\mathrm{lon}}\times K_{\mathrm{lat}}\approx7\times6$ by \eqref{eq:cell-km}; finer than this the surviving coincidences are increasingly \emph{within}-float, so \eqref{eq:sigmawK-hat} picks up trajectory autocorrelation on top of preferential sampling---an upward, hence conservative, contribution (Remark~\ref{rem:trajectory}). All $364$ profiles give $\sqrt{|A|/364}\approx25$\,km, i.e.\ ${\approx}21\times18$, the one-profile-per-cell scale ($K\approx N$). The estimator is not undefined here---the expected coincidence count $N(N-1)\sum_j\pi_j^2\approx N^2/K$ stays positive until cells are an order of magnitude finer ($K\gtrsim N^2$, ${\sim}1$\,km, where every $n_j\le1$ forces $\sigwhatsq\equiv-1$)---but with mean occupancy $\E[n_j]=N\pi_j\approx1$---so that, for near-uniform $\pi$, only ${\approx}26\%$ of cells hold two or more profiles under the $\mathrm{Binomial}(N,\pi_j)$ marginal of Assumption~\ref{ass:sample-pi}---the coincidences grow sparse and increasingly \emph{within}-float, so the $U$-statistic variance and the jackknife intervals inflate. It is thus the practical precision floor rather than a floor of definition. Rather than retreat to the coarse, float-limited end, we evaluate the all-pairs estimator \eqref{eq:sigmawK-hat} on all $364$ profiles across the whole $25$--$76$\,km band. It is biased only in the safe direction, and, resting on more pairs and better-populated cells, has lower sampling variance than its between-float counterpart. Its \emph{independent} information nonetheless amounts to only ${\approx}40$ floats, so its uncertainty is quantified by float-level (cluster) resampling rather than by treating profiles as independent (Section~\ref{sec:uncertainty}).
 
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[x=0.62cm,y=0.62cm]
+  \def\cols{6}
+  \def\rows{5}
+  % reference cell
+  \fill[blue!12] (0,0) rectangle (1,1);
+  % grid and domain boundary
+  %\draw[gray!55,thin] (0,0) grid (\cols,\rows);
+  \draw[line width=0.9pt] (0,0) rectangle (\cols,\rows);
+  % one point per cell
+  \foreach \i in {0,...,5}{\foreach \j in {0,...,4}{%
+    \fill (\i+0.5,\j+0.5) circle (1.1pt);}}
+  \draw[line width=0.9pt] (0,0) rectangle (1,1);
+  % side length s
+  \draw[<->] (0,-0.5) -- (1,-0.5) node[midway,below]{$s$};
+  \draw[<->] (-0.5,0) -- (-0.5,1) node[midway,left]{$s$};
+  % labels
+  \node[above] at (\cols/2,\rows+0.15) {$A$};
+\end{tikzpicture}
+\caption{The sampling scale $s=\sqrt{|A|/n}$. Tiling the analysis domain
+(area $|A|$) into $n$ equal cells makes each a square of side $s$ with
+$n\,s^{2}=|A|$; equivalently $s$ is the spacing of $n$ points placed one
+per cell (dots). For our box, $|A|\approx2.3\times10^{5}\,\mathrm{km}^2$,
+the $L=40$ floats give $s\approx76$\,km
+($K_{\mathrm{lon}}\times K_{\mathrm{lat}}\approx7\times6$) and all $364$
+profiles give $s\approx25$\,km (${\approx}21\times18$)---the coarse and
+fine ends of the resolution band.}
+\label{fig:sampling-scale}
+\end{figure}
+
+Since $\sigma_w$ is resolution-dependent, we report not a single number but the \emph{refinement curve} $K\mapsto\hat\sigma_{w,K}$ across this band, each rung with its float-clustered interval.
+The field factors $\sigma_{Y,K},\sigma_Y^{\perp}$ are evaluated on the \emph{same} partition at each rung---computed on the $1/12^\circ$ grid and aggregated to the current cells---so that the two fields share the partition at every resolution, which is the only consistency Proposition~\ref{prop:scale-decomp} requires.
+The relevance scale is fixed empirically from the reanalysis (an isotropic empirical variogram of OHC in the box, read at the $1/e$-decorrelation lag) rather than eyeballed, and we verify it lies at or below the ${\approx}75$\,km sampling scale.
+That ordering is what makes the residual safe: the unestimated $\sigma_w^{\perp}$ lives at scales finer than the cells, where $\sigma_Y^{\perp}$ is already small, so their product is negligible relative to the leading term $\sigma_{w,K}\sigma_{Y,K}$.
+We report the diagnostic ratio $\hat\sigma_Y^{\perp}/\hat\sigma_Y$---the fraction of field variance below the cell scale---as direct evidence that the dropped term is small.
 
 \subsection{Estimating $\sigma_{w^{\star}}$ from float counts}
 \label{sec:sigmawK}
 
-The \emph{cell weight} is the ratio of the sampling mass of the cell to its reference mass,
+\begin{definition}[Cell sampling weight]
+\label{def:sweight}
+Let $\bar w_j$ be the \emph{sampling weight} for cell $j$, which is the ratio of the sampling mass of the cell to its reference mass,
 \begin{equation}
   \bar w_j \;=\; \frac{1}{\nu(C_j)}\int_{C_j}w\dd\nu \;=\; \frac{\pi(C_j)}{\nu(C_j)} \;=\; \frac{\pi_j}{1/K}
   \;=\; K\pi_j ,
   \label{eq:cell-weight}
 \end{equation}
-where $\pi_j:=\pi(C_j)$ for the probability that a randomly sampled
-profile lies in cell $C_j$.
+where $\pi_j:=\pi(C_j)$ for the probability that a randomly sampled profile lies in cell $C_j$.
+\end{definition}
+
 This is coarse cell counterpart of the pointwise weight $w$ of
 Definition~\ref{def:w}: $\bar w_j=1$ means cell $j$ is sampled exactly as
 under uniform coverage, $\bar w_j>1$ over-sampled (preferential),
@@ -586,39 +608,48 @@ $\sum_j\pi_j=1$ and $\nu(C_j)=1/K$, the weights are mean-one under the
 reference measure, $\sum_j\nu(C_j)\bar w_j=\sum_j\pi_j=1$.
 
 Let $n_j:=N(C_j)$ be the number of profiles observed in cell $j$ and
-$n=\sum_j n_j$ the total. The natural estimator of $\bar w_j$ is
+$N=\sum_j n_j$ the total. The natural estimator of $\bar w_j$ is
 \begin{equation}
-  \widehat{\bar w}_j=K\,\frac{n_j}{n}=\frac{n_j}{\,n/K\,}
+  \widehat{\bar w}_j=K\,\frac{n_j}{N}=\frac{n_j}{\,N/K\,}
   =\frac{\text{observed count in }C_j}{\text{count expected under uniform}} ,
   \label{eq:wbar-hat}
 \end{equation}
 so that a map of $\widehat{\bar w}_j$ over the domain displays directly
 where floats over- and under-sample relative to uniform coverage.
 
-$\sigma^2_{w^{\star}}$ is then the variance of the cells weights about one.
-This is because $w^{\star}=\PK w-1$ is a constant function on each
-cell with cell value on $C_j$ is $\bar w_j-1$.
+\begin{lemma}[Cell sampling weight variance]
+\label{lem:sigmawcell}
+The variance of the cell sampling weights is
+\[
+  \sigma^2_{w^{\star}} = K\sum_{j=1}^{K}\pi_j^2-1 .
+\]
+\end{lemma}
+\deferproof{sigmawcell}{%
+\begin{proof}[Proof of Lemma~\ref{lem:sigmawcell}]
+$\sigma^2_{w^{\star}}$ is the variance of the cells weights about one.
+This is because $w^{\star}=\PK w-1$ is a constant function on each cell with cell value on $C_j$ is $\bar w_j-1$.
 
 Accordingly,
-\begin{align}
+\begin{align*}
   \sigma_{w^{\star}}^2
   &=\int_{\X}(w^{\star})^2\dd\nu
    =\sum_{j=1}^{K}\int_{C_j}\big(\bar w_j-1\big)^2\dd\nu
    =\sum_{j=1}^{K}\big(\bar w_j-1\big)^2\,\nu(C_j)
-   =\frac{1}{K}\sum_{j=1}^{K}\big(K\pi_j-1\big)^2 \notag\\[2pt]
+   =\frac{1}{K}\sum_{j=1}^{K}\big(K\pi_j-1\big)^2 \\
   &=\frac{1}{K}\sum_{j=1}^{K}\Big(K^2\pi_j^2-2K\pi_j+1\Big)
    =K\sum_{j=1}^{K}\pi_j^2\;-\;2\underbrace{\sum_{j=1}^{K}\pi_j}_{=\,1}
-     \;+\;\frac{1}{K}\underbrace{\sum_{j=1}^{K}1}_{=\,K} \notag\\[2pt]
+     \;+\;\frac{1}{K}\underbrace{\sum_{j=1}^{K}1}_{=\,K} \\
   &=K\sum_{j=1}^{K}\pi_j^2-1 .
   \label{eq:sigmawK-def}
-\end{align}
+\end{align*}
+\end{proof}%
+}
 
-Note, uniform sampling within the partition
-($\pi_j=1/K$ for all $j$, i.e. $\bar w_j\equiv1$) gives
-$K\cdot K^{-1}-1=0$.
-Whereas when all sampling mass is in a single cell gives 
-$K-1$.
+Note, uniform sampling within the partition ($\pi_j=1/K$ for all $j$, i.e.
+$\bar w_j\equiv1$) gives $K\cdot K^{-1}-1=0$.
+Whereas when all sampling mass is in a single cell gives $K-1$.
 Hence, $0\le\sigma_{w^{\star}}\le\sqrt{K-1}$.
+Thus, between-cell sampling variability can increase arbitrarily as the number of cells $K$ grows, degenerating as almost all cells have zero observed counts.
 
 \begin{assumption}[Profiles sample the sampling measure]
 \label{ass:sample-pi}
@@ -639,9 +670,8 @@ where $X^2$ is \emph{Pearson's goodness-of-fit statistic for
 uniformity}.
 This plug-in estimator is upward biased and removing the diagonal (self-pairs) removes the bias (Lemma~\ref{lem:unbiased}):
 \begin{equation}
-  \boxed{\;
   \sigwhatsq
-  \;=\;K\sum_{j=1}^{K}\frac{n_j(n_j-1)}{N(N-1)}\;-\;1\;}
+  \;=\;K\sum_{j=1}^{K}\frac{n_j(n_j-1)}{N(N-1)}\;-\;1
   \label{eq:sigmawK-hat}
 \end{equation}
 
@@ -670,16 +700,15 @@ Under Assumption~\ref{ass:sample-pi},
 The plug-in bias is non-negative, vanishing only in the degenerate case
 $\sum_j\pi_j^2=1$ (all sampling mass in one cell), and grows with $K/N$;
 the diagonal-removed estimator~\eqref{eq:sigmawK-hat} is exactly unbiased
-for every $n\ge 2$ and every $K$.
+for every $N\ge 2$ and every $K$.
 \end{lemma}
-
-\begin{proof}
+\deferproof{unbiased}{%
+\begin{proof}[Proof of Lemma~\ref{lem:unbiased}]
 \begin{align}
   \mathrm{Bias}\big(\sigwhatsqplug\big)
   &=\E\Big[K\sum_{j=1}^{K}\hat\pi_j^2-1\Big]
     -\Big(K\sum_{j=1}^{K}\pi_j^2-1\Big)
-   =K\sum_{j=1}^{K}\Big(\E\big[\hat\pi_j^2\big]-\pi_j^2\Big),
-  \label{eq:bias-plug}\\[4pt]
+   =K\sum_{j=1}^{K}\Big(\E\big[\hat\pi_j^2\big]-\pi_j^2\Big), \\
   \mathrm{Bias}\big(\sigwhatsq\big)
   &=\E\Big[K\sum_{j=1}^{K}\frac{n_j(n_j-1)}{N(N-1)}-1\Big]
     -\Big(K\sum_{j=1}^{K}\pi_j^2-1\Big)
@@ -738,54 +767,399 @@ gives
 \]
 i.e. $\E\big[\sigwhatsq\big]=\sigma_{w^{\star}}^2$
 for every $N\ge2$ and every $K$.
-\end{proof}
+\end{proof}%
+}
 
 
 \begin{remark}[Trajectory dependence and the between-float estimator]
 \label{rem:trajectory}
-Argo profiles from one float trace a single advective path, so the independence assumption of profiles from the same float may be violated.
-
-However, under certain reasonable conditions, within-float clustering inflates $\sigwhat$, which is the conservative direction for a bound. 
-
-[[Add]]
-
-Therefore, we also present an alternative \emph{between-float} unbiased estimator that counts only coincidence pairs from distinct floats.
-Let $m_{lj}$ be the number of profiles of float $l$ in cell $j$ and $d_l=\sum_j m_{lj}$ its total, \begin{equation} \sigwhatsqbf = K\,\frac{\sum_j n_j(n_j-1)-\sum_l\sum_j m_{lj}(m_{lj}-1)} {n(n-1)-\sum_l d_l(d_l-1)}\;-\;1 , \label{eq:sigmawK-bf} \end{equation} which removes the within-float diagonal and normalizes by the between-float pair total.
-It is unbiased for $\sigma_{w^{\star}}^2$ under the weaker assumption that only \emph{distinct} floats are independent draws from $\pi$ (Lemma~\ref{lem:bf-unbiased}), with no within-float independence assumed.
-The gap between \eqref{eq:sigmawK-hat} and \eqref{eq:sigmawK-bf} is precisely the within-float clustering, so reporting both is a direct diagnostic of how much of the apparent dispersion is trajectory autocorrelation rather than preferential sampling.
+Estimator~\eqref{eq:sigmawK-hat} treats all profiles as independent draws
+from $\pi$ (Assumption~\ref{ass:sample-pi}), yet profiles from one float
+trace a single advective path and are not mutually independent. The
+resulting error is nonetheless one-sided under the physically relevant
+form of that dependence. Writing $c_a$ for the cell of profile $a$ and
+extending the computation of Lemma~\ref{lem:unbiased} without its
+independence step,
+\begin{equation}
+  \E\big[\sigwhatsq\big]-\sigma_{w^{\star}}^2
+  =\frac{K}{N(N-1)}\sum_{a\ne b}
+     \Big(\Prob(c_a=c_b)-\textstyle\sum_j\pi_j^2\Big),
+  \label{eq:diag-bias-identity}
+\end{equation}
+an exact identity over the ordered pairs of distinct profiles. Two
+independent draws from $\pi$ share a cell with probability exactly
+$\sum_j\pi_j^2$, so each summand is the excess coincidence of a pair over
+that baseline. Between-float pairs contribute nothing when distinct floats
+are independent, and a non-negative amount under the shared advection
+discussed below; within-float pairs---two cycles of one float, some ten
+days and a short displacement apart relative to the cell scale---fall in a
+common cell at least as often as independent draws, so their summands are
+non-negative. Hence $\E\big[\sigwhatsq\big]\ge\sigma_{w^{\star}}^2$:
+within-float clustering inflates \eqref{eq:sigmawK-hat}, the conservative
+direction for an upper bound on $\sigma_{w^{\star}}$.
 \end{remark}
+
+Therefore, we also present an alternative \emph{between-float} estimator that counts only coincidence pairs from distinct floats.
+Let $m_{\ell j}$ be the number of profiles of float $\ell$ in cell $j$ and $d_\ell=\sum_j m_{\ell j}$ its total, \begin{equation} \sigwhatsqbf = K\,\frac{\sum_j n_j(n_j-1)-\sum_\ell\sum_j m_{\ell j}(m_{\ell j}-1)} {N(N-1)-\sum_\ell d_\ell(d_\ell-1)}\;-\;1 , \label{eq:sigmawK-bf} \end{equation} which removes the within-float diagonal and normalizes by the between-float pair total.
+Under the assumption that \emph{distinct} floats are independent draws from $\pi$, it is unbiased for $\sigma_{w^{\star}}^2$ (Lemma~\ref{lem:bf-unbiased}), with no within-float independence required, so it removes the within-float autocorrelation to which \eqref{eq:sigmawK-hat} is exposed.
+This between-float independence is, however, only approximate: floats with a shared deployment or advective history---nearby releases entrained in the same current or mesoscale features---have positively associated cell memberships, so two of their profiles fall in a common cell with probability at least $\sum_j\pi_j^2$, and hence $\E\big[\sigwhatsqbf\big]\ge\sigma_{w^{\star}}^2$. The residual bias is thus in the same upward direction as the within-float clustering the estimator removes---conservative for an upper bound on $\sigma_{w^{\star}}$---and the between-float coherence it leaves is the weaker term, the same water parcel no longer being shared and trajectories diverging over time. We therefore use \eqref{eq:sigmawK-bf} in this spirit, as a conservative input to the bound rather than an exactly unbiased estimator.
+Comparing \eqref{eq:sigmawK-hat} and \eqref{eq:sigmawK-bf}, which differ only through the within-float diagonal terms removed from the latter, is moreover an assumption-free diagnostic of how much of the sampling variability is trajectory autocorrelation rather than preferential sampling.
 
 \begin{lemma}[Unbiasedness of the between-float estimator]
 \label{lem:bf-unbiased}
-Let
-$S_{\mathrm{bf}}=\sum_j n_j(n_j-1)-\sum_l\sum_j m_{lj}(m_{lj}-1)$ and
-$P_{\mathrm{bf}}=N(N-1)-\sum_l d_l(d_l-1)$, so that
-$\sigwhatsqbf
-=K\,S_{\mathrm{bf}}/P_{\mathrm{bf}}-1$ in~\eqref{eq:sigmawK-bf}. If
-profiles from \emph{distinct} floats are independent draws with marginal
+If profiles from \emph{distinct} floats are independent draws with marginal
 distribution $\pi$ then $\E\big[\sigwhatsqbf\big] = \sigma_{w^{\star}}^2$.
 \end{lemma}
+\deferproof{bf-unbiased}{%
+\begin{proof}[Proof of Lemma~\ref{lem:bf-unbiased}]
+Index profiles by $(\ell,i)$, with $\ell=1,\dots,L$ the float and
+$i=1,\dots,d_\ell$ the profile within float $\ell$; let
+$c_{\ell i}\in\{1,\dots,K\}$ be the cell membership of profile $(\ell,i)$, so that
+\[
+  m_{\ell j}=\sum_{i=1}^{d_\ell}\1\{c_{\ell i}=j\},\qquad
+  n_j=\sum_{\ell}m_{\ell j},\qquad
+  N=\sum_\ell d_\ell .
+\]
+We use only the two hypotheses of the lemma:
+\begin{enumerate}
+\item[(A1)] $\Prob(c_{\ell i}=j)=\pi_j$ for every profile $(\ell,i)$ and
+  cell $j$;
+\item[(A2)] the cell membership vectors of distinct floats are independent,
+  $(c_{\ell i})_{i\le d_\ell}\perp\!\!\!\perp(c_{\ell'i'})_{i'\le d_{\ell'}}$
+  for $\ell\ne\ell'$.
+\end{enumerate}
+Nothing is assumed about the joint distribution
+$(c_{\ell 1},\dots,c_{\ell d_\ell})$ of the cells within a single float.
+Write
+$S_{\mathrm{bf}}=\sum_j n_j(n_j-1)-\sum_\ell\sum_j m_{\ell j}(m_{\ell j}-1)$
+and $P_{\mathrm{bf}}=N(N-1)-\sum_\ell d_\ell(d_\ell-1)$ for the numerator
+and denominator of~\eqref{eq:sigmawK-bf}, so
+$\sigwhatsqbf=K\,S_{\mathrm{bf}}/P_{\mathrm{bf}}-1$.
 
-\begin{proof}
-Writing $n_j=\sum_l m_{lj}$ and $N=\sum_l d_l$, and splitting the ordered
-pairs into same-float and distinct-float pairs,
+The whole argument rests on one structural observation: $S_{\mathrm{bf}}$
+and $P_{\mathrm{bf}}$ are sums over the \emph{same} index set, the ordered
+pairs of profiles drawn from two \emph{distinct} floats. The denominator
+counts all such pairs; the numerator counts those that land in a common
+cell. Each pair coincides with one and the same expected probability
+$\sum_j\pi_j^2$, so $\E[S_{\mathrm{bf}}]=\bigl(\sum_j\pi_j^2\bigr)
+P_{\mathrm{bf}}$ term by term, and the ratio is exactly $\sum_j\pi_j^2$.
+The three steps below make this precise.
+
+\emph{Step 1 (the between-float pair set).}
+Let
 \[
-  \sum_j n_j(n_j-1)
-  =\underbrace{\sum_{l\ne l'}\sum_j m_{lj}m_{l'j}}_{=\,S_{\mathrm{bf}}}
-   +\sum_l\sum_j m_{lj}(m_{lj}-1),
-  \qquad
-  N(N-1)=\underbrace{\sum_{l\ne l'}d_l d_{l'}}_{=\,P_{\mathrm{bf}}}
-   +\sum_l d_l(d_l-1),
+  \mathcal B=\bigl\{\bigl((\ell,i),(\ell',i')\bigr):\ \ell\ne\ell',\
+    i\le d_\ell,\ i'\le d_{\ell'}\bigr\}
 \]
-so $S_{\mathrm{bf}}$ counts ordered pairs of profiles from distinct
-floats lying in a common cell, and $P_{\mathrm{bf}}$ counts all ordered
-distinct-float pairs. Each such pair is a pair of independent draws with
-marginal $\pi$, hence lies in a common cell with probability
-$\sum_j\pi_j^2$; therefore
-$\E[S_{\mathrm{bf}}]=P_{\mathrm{bf}}\sum_j\pi_j^2$ and
+be the ordered pairs of profiles belonging to two distinct floats. Its
+size depends only on the design $(d_\ell)_\ell$: since $N=\sum_\ell d_\ell$,
 \[
-  \E\big[\sigwhatsqbf\big]
-  =K\sum_j\pi_j^2-1=\sigma_{w^{\star}}^2 .
+  |\mathcal B|=\sum_{\ell\ne\ell'}d_\ell d_{\ell'}
+  =\Bigl(\sum_\ell d_\ell\Bigr)^2-\sum_\ell d_\ell^2
+  =N(N-1)-\sum_\ell d_\ell(d_\ell-1)=P_{\mathrm{bf}} .
 \]
-By removing the within-float terms from both numerator and denominator no within-float independence is assumed.
-\end{proof}
+Thus $P_{\mathrm{bf}}$ is a deterministic constant, strictly positive as
+soon as two floats each contribute a profile.
+
+\emph{Step 2 ($S_{\mathrm{bf}}$ counts the coinciding pairs in $\mathcal B$).}
+Expanding $n_j=\sum_\ell m_{\ell j}$ separates diagonal from off-diagonal
+terms,
+\[
+  n_j(n_j-1)=n_j^2-n_j
+  =\sum_\ell m_{\ell j}(m_{\ell j}-1)+\sum_{\ell\ne\ell'}m_{\ell j}m_{\ell'j},
+\]
+so summing over $j$ cancels the within-float diagonal against the term
+subtracted in $S_{\mathrm{bf}}$, leaving
+\[
+  S_{\mathrm{bf}}=\sum_{\ell\ne\ell'}\sum_{j=1}^{K}m_{\ell j}m_{\ell'j}
+  =\sum_{\ell\ne\ell'}\sum_{i=1}^{d_\ell}\sum_{i'=1}^{d_{\ell'}}
+    \sum_{j=1}^{K}\1\{c_{\ell i}=j\}\1\{c_{\ell'i'}=j\}
+  =\sum_{((\ell,i),(\ell',i'))\in\mathcal B}\1\{c_{\ell i}=c_{\ell'i'}\},
+\]
+where the second equality inserts the definition of $m_{\ell j}$ and the
+third uses
+$\sum_j\1\{c_{\ell i}=j\}\1\{c_{\ell'i'}=j\}=\1\{c_{\ell i}=c_{\ell'i'}\}$. So
+$S_{\mathrm{bf}}$ is exactly the number of pairs in $\mathcal B$ that fall
+in a common cell; every pair with $\ell=\ell'$ has dropped out.
+
+\emph{Step 3 (each pair in $\mathcal B$ coincides with probability
+$\sum_j\pi_j^2$).}
+Fix $\bigl((\ell,i),(\ell',i')\bigr)\in\mathcal B$, so $\ell\ne\ell'$.
+Decomposing over the common cell and applying (A2) then (A1),
+\[
+  \E\bigl[\1\{c_{\ell i}=c_{\ell'i'}\}\bigr]
+  =\sum_{j=1}^{K}\Prob\bigl(c_{\ell i}=j,\;c_{\ell'i'}=j\bigr)
+  \overset{\text{(A2)}}{=}\sum_{j=1}^{K}\Prob(c_{\ell i}=j)\Prob(c_{\ell'i'}=j)
+  \overset{\text{(A1)}}{=}\sum_{j=1}^{K}\pi_j^{2}.
+\]
+This is the same constant for every pair in $\mathcal B$, independent of
+$i,i'$; (A2) is invoked only across the two distinct floats $\ell\ne\ell'$,
+never within a float.
+
+\emph{Step 4 (assembly).}
+By Step 2 and linearity, summing the constant of Step 3 over the
+$|\mathcal B|=P_{\mathrm{bf}}$ pairs of Step 1,
+\[
+  \E[S_{\mathrm{bf}}]
+  =\sum_{((\ell,i),(\ell',i'))\in\mathcal B}
+     \E\bigl[\1\{c_{\ell i}=c_{\ell'i'}\}\bigr]
+  =P_{\mathrm{bf}}\sum_{j=1}^{K}\pi_j^{2}.
+\]
+Since $P_{\mathrm{bf}}$ is deterministic and nonzero,
+\[
+  \E\bigl[\sigwhatsqbf\bigr]
+  =\frac{K\,\E[S_{\mathrm{bf}}]}{P_{\mathrm{bf}}}-1
+  =K\sum_{j=1}^{K}\pi_j^{2}-1
+  =\sigma_{w^{\star}}^{2}.
+\]
+The within-float contributions $\sum_\ell\sum_j m_{\ell j}(m_{\ell j}-1)$ and
+$\sum_\ell d_\ell(d_\ell-1)$ cancelled in Steps~1--2, before any expectation was
+taken, so no assumption on the dependence among a single float's profiles
+was needed. (Such dependence still affects $\Var[\sigwhatsqbf]$, but not
+its mean.)
+\end{proof}%
+}
+
+\subsection{Testing uniform sampling}
+\label{sec:uniformity-test}
+
+The dispersion $\sigma_{w,K}$ also supports a formal test of the null of
+uniform sampling, $H_0:\pi=\nu$ (equivalently $\pi_j=1/K$ for all $j$).
+Under $H_0$ the plug-in dispersion is a rescaled Pearson
+goodness-of-fit statistic,
+\[
+  X^2=\sum_{j=1}^{K}\frac{(n_j-N/K)^2}{N/K}
+     =N\,\widehat{\sigma_{w,K}^2}^{\,\mathrm{plug}},
+\]
+and preferential sampling makes $X^2$ (and $\widehat{\sigma_{w,K}^2}$)
+large. The classical reference $X^2\sim\chi^2_{K-1}$ is \emph{not} valid
+here: the profiles are cluster-dependent (Remark~\ref{rem:trajectory}),
+which over-disperses the cell counts and inflates $X^2$ under $H_0$, so a
+$\chi^2_{K-1}$ $p$-value over-rejects and reports spurious preferential
+sampling; the sparse expected counts $N/K$ compound this.
+
+We calibrate instead by a float-level permutation null that preserves
+the within-float trajectory dependence. Each whole float is given an
+independent uniform rigid shift in the reference coordinates
+$(\mathrm{lon},\ \sin\mathrm{lat},\ t)$, wrapped toroidally onto the
+domain; this leaves each float's internal geometry---hence its
+within-float clustering and $d_\ell$---intact while placing floats
+independently and uniformly, so the permutation distribution reproduces
+the within-float over-dispersion of the data under $H_0$. It does not
+reproduce \emph{between}-float dependence: the independent per-float
+shifts place floats independently, whereas shared advection positively
+correlates nearby floats, so the null is mildly under-dispersed and the
+test correspondingly anti-conservative in that component. Removing this
+would require shifting whole advective clusters jointly, which we leave
+to future work; here we simply flag the direction of the effect. For a statistic
+$T\in\{X^2,\ \widehat{\sigma_{w,K}^2}^{\,\mathrm{bf}}\}$ with observed
+value $T_{\mathrm{obs}}$ and $B$ permutation replicates
+$T^{(1)},\dots,T^{(B)}$, the one-sided $p$-value is
+\[
+  \hat p=\frac{1+\#\{b:\,T^{(b)}\ge T_{\mathrm{obs}}\}}{B+1}.
+\]
+The between-float statistic~\eqref{eq:sigmawK-bf} is the more
+informative choice: it is free of the within-float clustering that the
+permutation must otherwise absorb, and is centered at $0$ under $H_0$
+when distinct floats are independent (Lemma~\ref{lem:bf-unbiased}). It
+does not remove between-float dependence, which the per-float shift also
+omits from the null, so a small $\hat p$ is evidence against uniformity
+\emph{or} against unmodelled between-float coherence, and should be read
+with the caveat above.
+
+Two cautions. A large $\hat p$ is evidence of \emph{no detectable}
+departure from uniform, not of exact uniformity; with few floats the
+test has limited power, so we treat it as corroboration and let the
+effect size $\sigma_{w,K}$ with its interval---in particular the upper
+confidence limit the bound requires---carry the quantitative claim.
+Second, the gap between the permutation $\hat p$ and the naive
+$\chi^2_{K-1}$ $p$-value is itself worth reporting, as it quantifies how
+much the trajectory dependence would have inflated a naive test.
+
+\subsection{Estimating $\sigma_{Y,K}$ and $\sigma_Y^{\perp}$ from a
+reanalysis}
+\label{sec:sigmaY}
+
+The field factors require a value of $y$ throughout $\X$, including the
+space--time cells the floats avoided. We take it from an independent
+reanalysis (GLORYS12; Remark~\ref{rem:glorys}) rather than from the
+float observations, and the reason is not convenience but bias.
+
+\begin{proposition}[Float-only field dispersion is contaminated]
+\label{prop:float-contam}
+The empirical dispersion of $Y$ over the float locations estimates
+$\Var_\pi(Y)$, not $\Var_\nu(Y)=\sigma_Y^2$, and
+\[
+  \Var_\pi(Y)-\Var_\nu(Y)=\Cov_\nu\!\big(w,(Y-\mu)^2\big).
+\]
+\end{proposition}
+\deferproof{float-contam}{%
+\begin{proof}[Proof of Proposition~\ref{prop:float-contam}]
+The float locations are draws from $\pi$ (Assumption~\ref{ass:sample-pi}),
+so their empirical variance is consistent for $\Var_\pi(Y)$. Using
+$\dd\pi=w\dd\nu$ and $\E_\nu[w]=1$,
+$\Var_\pi(Y)=\int(y-\mu_\pi)^2 w\dd\nu$; expanding and comparing with
+$\int(y-\mu)^2\dd\nu$ gives the stated covariance, the sampling bias of
+the squared-anomaly field.
+\end{proof}%
+}
+
+The discrepancy is non-zero for exactly the reason $B_{\mathrm{samp}}$
+is: it is the $w$--$Y$ coupling the paper studies, applied to
+$(Y-\mu)^2$. A float-only $\hat\sigma_Y$ would thus be inflated when
+floats favor the high-variability front and deflated when they collect
+in quiescent water. De-biasing by importance weighting
+($\widehat{\sigma_Y^2}=\frac1n\sum_i w(x_i)^{-1}(y(x_i)-\hat\mu)^2$)
+recovers $\Var_\nu(Y)$ in principle but requires $w$---the object we
+avoid modeling---and is dominated by $1/w$ in the undersampled cells
+where floats are scarcest, so its variance is largest exactly where the
+bound is most sensitive. We therefore do not estimate $\sigma_Y$ from
+the floats.
+
+The reanalysis provides $y$ over $\nu$: constrained by satellite
+altimetry, sea-surface temperature, and model dynamics, it carries an
+OHC value in every cell, including the float-sparse ones, breaking the
+dependence on the Argo sampling pattern. On the level-$K$ partition,
+with $y$ evaluated on the native $1/12^\circ$ grid and aggregated to
+cells,
+\begin{align}
+  \widehat{\sigma_{Y,K}^2}
+  &=\sum_{j=1}^{K}\tfrac1K\big(\bar y_j-\hat\mu\big)^2,
+  &\bar y_j&=\text{area-weighted mean of $y$ over the grid nodes in }C_j,
+  \ \hat\mu=\tfrac1K\textstyle\sum_j\bar y_j,
+  \label{eq:sigmaYK-hat}\\[2pt]
+  \big(\widehat{\sigma_Y^{\perp}}\big)^2
+  &=\sum_{j=1}^{K}\tfrac1K\,\widehat{\Var}_\nu\!\big(y\mid C_j\big),
+  &&\text{(mean within-cell variance of $y$).}
+  \label{eq:sigmaYperp-hat}
+\end{align}
+These are direct quadratures of a densely observed field, so---unlike
+$\sigma_{w,K}$---no diagonal removal or count-noise correction is
+needed, and $\sigma_Y^2=\sigma_{Y,K}^2+(\sigma_Y^{\perp})^2$ is
+recoverable in full. Computing $\sigma_Y^{\perp}$ from the native grid
+rather than pre-averaging to cells is essential: it is the genuine
+sub-cell field variance, and it is the quantity that controls the
+unestimated residual in Proposition~\ref{prop:scale-decomp}.
+
+\begin{remark}[Direction of reanalysis error]
+\label{rem:conservative-Y}
+Data assimilation tends to \emph{attenuate} anomaly amplitude, so a
+reanalysis is liable to understate $\sigma_Y$---the unsafe direction for
+a bound. We treat the field proxy as a sensitivity axis rather than a
+single source: $\sigma_{Y,K}$ and $\sigma_Y^{\perp}$ are recomputed on
+at least one product with different Argo dependence (e.g. an
+Argo-independent or differently-assimilated analysis), and the
+\emph{largest} $\hat\sigma_Y$ across products is carried into the bound.
+Agreement across products with differing Argo reliance also answers,
+empirically, the concern that the reanalysis merely re-expresses the
+Argo data (Remark~\ref{rem:glorys}).
+\end{remark}
+
+
+\subsection{Uncertainty quantification}
+\label{sec:uncertainty}
+
+The two factors carry different kinds of uncertainty, and we keep them
+separate.
+
+For $\sigma_{w,K}$, the relevant variability is sampling variability
+over floats, and the multinomial/normal approximation to the $\chi^2$
+statistic is invalid because of the trajectory dependence of
+Remark~\ref{rem:trajectory}. Because
+$\sum_j n_j(n_j-1)=\sum_{\ell\neq\ell'}O_{\ell\ell'}$, where
+$O_{\ell\ell'}$ is the footprint overlap of floats $\ell$ and $\ell'$,
+the estimator is a degree-two U-statistic in the floats; a
+with-replacement float bootstrap is consequently biased, since a
+duplicated float injects a spurious self-overlap $O_{\ell\ell}$. We
+therefore use a \emph{delete-one-float jackknife}: recompute the
+estimator with each float's profiles removed in turn and form the
+jackknife variance over the $L=40$ floats. The
+float---not the profile---is the resampling unit, which reflects the
+effective sample size and propagates the within-float correlation into
+the interval; the intervals widen at the fine end of the refinement
+curve, honestly displaying what $40$ tracks can resolve.
+
+Concretely, both estimators are functions of the $L$ float footprints
+$\{m_{\ell j}\}$, and the numerator of \eqref{eq:sigmawK-hat} decomposes
+over float pairs as
+$\sum_j n_j(n_j-1)=\sum_{\ell\ne\ell'}O_{\ell\ell'}+\sum_\ell\sum_j m_{\ell j}(m_{\ell j}-1)$
+with $O_{\ell\ell'}=\sum_j m_{\ell j}m_{\ell'j}$, exhibiting it as a
+degree-two $U$-statistic in the floats. The delete-one-float jackknife
+variance is
+\begin{equation}
+  \widehat V_{\mathrm{jack}}
+  =\frac{L-1}{L}\sum_{\ell=1}^{L}\big(\hat\theta_{(-\ell)}-\bar\theta_{(\cdot)}\big)^2,
+  \qquad \bar\theta_{(\cdot)}=\frac1L\sum_{\ell=1}^{L}\hat\theta_{(-\ell)},
+  \label{eq:jackvar}
+\end{equation}
+where $\hat\theta_{(-\ell)}$ recomputes $\widehat{\sigma_{w,K}^2}$ (or its
+between-float variant) with float $\ell$'s profiles removed; the reported
+interval is $\hat\theta\pm z_{1-\alpha/2}\,\widehat V_{\mathrm{jack}}^{1/2}$
+on the $\sigma^2$ scale, with $\sigma$-scale endpoints
+$\sqrt{\max(0,\cdot)}$. For $U$-statistics this jackknife is consistent
+for the asymptotic variance \citep{arvesen1969}.
+
+The with-replacement float bootstrap, by contrast, is biased for this
+functional. When a float is resampled more than once, its identical
+copies form coincidence pairs that two distinct floats never would, each
+adding a spurious self-overlap $O_{\ell\ell}=\sum_j m_{\ell j}^2$; these ties shift
+the bootstrap distribution of $\widehat{\sigma_{w,K}^2}$ upward and break
+interval coverage---in simulation a with-replacement float bootstrap
+attained $\approx 50\%$ coverage against a nominal $95\%$, whereas the
+jackknife \eqref{eq:jackvar} attained $\approx 95\%$. The jackknife only
+deletes and never duplicates, so it avoids the ties; we use it
+throughout and retain the bootstrap only as a diagnostic.
+
+For $\sigma_Y$, the relevant uncertainty is field-proxy uncertainty,
+not sampling uncertainty, so a float bootstrap is inappropriate. We
+quantify it by the spread of $\hat\sigma_Y$ across reanalysis products
+(Remark~\ref{rem:conservative-Y}), carrying the conservative (largest)
+value and reporting the range.
+
+The reported bound at each resolution is
+$\hat\sigma_{w,K}\,\hat\sigma_{Y,K}$, with an interval obtained by
+combining the delete-one-float jackknife interval \eqref{eq:jackvar} of
+$\hat\sigma_{w,K}$ with the across-product range of $\hat\sigma_{Y,K}$,
+accompanied by the
+residual diagnostic $\hat\sigma_Y^{\perp}/\hat\sigma_Y$. To interpret
+severity, we express the bound relative to an external yardstick---the
+estimated regional OHC trend over the period, and the posterior
+standard deviation of the hierarchical OHC model
+(Remark~\ref{rem:coherence})---so that ``not severe'' is stated as a
+fraction of a signal the reader already trusts rather than in absolute
+units.
+
+\subsection{Summary of the procedure}
+\label{sec:procedure}
+
+\begin{enumerate}
+\item Fix the relevance scale from an empirical OHC variogram on the
+  reanalysis; choose a bracket of equal-measure partitions
+  (Definition~\ref{def:partition}) spanning the ${\approx}25$--$76$\,km
+  sampling band \eqref{eq:cell-km}, verifying it is at or above the
+  relevance scale.
+\item Retain all profiles (no thinning): the within-float clustering
+  this leaves biases $\hat\sigma_{w,K}$ upward only, the safe direction
+  for the bound (Remark~\ref{rem:trajectory}).
+\item At each partition: form counts $\{n_j\}$ and compute
+  $\hat\sigma_{w,K}$ by \eqref{eq:sigmawK-hat}; aggregate the
+  $1/12^\circ$ reanalysis to the same cells and compute
+  $\hat\sigma_{Y,K}$ and $\hat\sigma_Y^{\perp}$ by
+  \eqref{eq:sigmaYK-hat}--\eqref{eq:sigmaYperp-hat}.
+\item Repeat step~3 across reanalysis products; retain the largest
+  $\hat\sigma_{Y,K}$ (Remark~\ref{rem:conservative-Y}).
+\item Delete-one-float jackknife $\hat\sigma_{w,K}$ for intervals
+  \eqref{eq:jackvar} (Section~\ref{sec:uncertainty}).
+\item Report the refinement curve of the bound
+  $\hat\sigma_{w,K}\hat\sigma_{Y,K}$ with intervals, the residual
+  diagnostic $\hat\sigma_Y^{\perp}/\hat\sigma_Y$, and the bound as a
+  fraction of the OHC trend and of the model posterior SD.
+\end{enumerate}
+
+The resulting guarantee depends on the data through counts of floats in
+cells and averages of an independent field over those cells; the only
+modeling choice is the cell scale, which is pinned to a measured
+decorrelation length and displayed as a curve rather than fixed
+silently. The complex spatio-temporal intensity model of
+Remark~\ref{rem:hat-w} and the advection simulator are reserved as
+independent cross-checks on this estimate, not as inputs to it.
