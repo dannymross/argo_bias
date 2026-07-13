@@ -11,6 +11,7 @@ project:
     #- "reports/pilot_simulation.qmd"  # temporarily disabled to speed up nac.qmd preview
     - "reports/nac.qmd"
     - "reports/nac_gp.qmd"
+    - "reports/resolution.qmd"
 
 execute:
   freeze: auto
@@ -38,7 +39,8 @@ website:
         contents:
           - reports/nac.qmd
           - reports/nac_gp.qmd
-          
+          - reports/resolution.qmd
+
 
 format:
   html:

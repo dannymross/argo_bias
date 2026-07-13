@@ -194,8 +194,58 @@ plot_variograms <- function(res) {
   }
 }
 
+## ---- GLORYS OHC loader + CSV export for the resolution.qmd report ----
+## Reads the native-grid OHC written by code/export_glorys_ohc.py (see
+## code/leakage_curve.R for the same loader) and, given a depth, runs the
+## variogram analysis and writes tidy result tables consumed by code/leakage.py.
+read_glorys_ohc <- function(dir, years, cols) {
+  files <- file.path(dir, sprintf("glorys_ohc_%d.csv", years))
+  files <- files[file.exists(files)]
+  stopifnot(length(files) > 0)
+  dt <- data.table::rbindlist(lapply(files, data.table::fread,
+                                     select = c("lon", "lat", "date", cols)))
+  dt[, date := as.Date(date)]
+  as.data.frame(dt)
+}
+
+## Long-format directional curves from one spatial_variogram() data.frame.
+vg_long <- function(vg, field, depth) do.call(rbind, lapply(c("omni","zonal","merid"),
+  function(dir) data.frame(depth = depth, field = field, direction = dir,
+    dist_km = vg$dist_km, gamma = vg[[paste0("gamma_", dir)]],
+    n = vg[[paste0("n_", dir)]], sill = vg$sill[1], row.names = NULL)))
+
+write_variogram_tables <- function(out_ranges, out_curves, out_acf,
+                                   depths = c("700", "2000"),
+                                   config = default_config(),
+                                   dir = file.path("data", "glorys_ohc")) {
+  yrs  <- as.integer(format(config$analysis, "%Y"))
+  base <- read_glorys_ohc(dir, yrs[1]:yrs[2], paste0("ohc_", depths))
+  rg <- list(); cv <- list(); ac <- list()
+  for (d in depths) {
+    g <- base; g$ohc <- g[[paste0("ohc_", d)]]; g <- g[!is.na(g$ohc), , drop = FALSE]
+    res <- run_variogram_analysis(g, config)
+    res$ranges$depth <- d; rg[[d]] <- res$ranges
+    cv[[d]] <- rbind(vg_long(res$vg_raw, "raw", d), vg_long(res$vg_ds, "deseas", d))
+    ac[[d]] <- data.frame(depth = d, lag_days = res$temporal$lag_days,
+                          acf = res$temporal$acf, efold_days = res$temporal$efold_days)
+  }
+  dir.create(dirname(out_ranges), showWarnings = FALSE, recursive = TRUE)
+  data.table::fwrite(do.call(rbind, rg), out_ranges)
+  data.table::fwrite(do.call(rbind, cv), out_curves)
+  data.table::fwrite(do.call(rbind, ac), out_acf)
+}
+
+## CLI: Rscript code/variogram.R <ranges.csv> <curves.csv> <acf.csv> [depths]
+VARIOGRAM_CLI_ARGS <- commandArgs(trailingOnly = TRUE)
+if (length(VARIOGRAM_CLI_ARGS) >= 3) {
+  depths <- if (length(VARIOGRAM_CLI_ARGS) >= 4)
+    strsplit(VARIOGRAM_CLI_ARGS[4], ",")[[1]] else c("700", "2000")
+  write_variogram_tables(VARIOGRAM_CLI_ARGS[1], VARIOGRAM_CLI_ARGS[2],
+                         VARIOGRAM_CLI_ARGS[3], depths)
+}
+
 ## ========================= SELF-TEST ================================
-if (!exists("RUN_SELFTEST")) RUN_SELFTEST <- TRUE
+if (!exists("RUN_SELFTEST")) RUN_SELFTEST <- length(VARIOGRAM_CLI_ARGS) < 3
 if (RUN_SELFTEST) {
   set.seed(1)
   box <- list(lon = c(-68,-62), lat = c(36,40))
