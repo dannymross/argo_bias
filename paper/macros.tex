@@ -26,13 +26,18 @@
 \newtoks\deferredProofsToks
 \deferredProofsToks{}
 \newcommand{\deferproof}[2]{%
-  \hyperref[proof:#1]{\emph{Proof in Appendix~\ref{app:proofs}.}}%
+  \hyperref[proof:#1]{\emph{Proof.}}%
   \global\deferredProofsToks=\expandafter{\the\deferredProofsToks
     \phantomsection\label{proof:#1}#2}%
 }
 \newcommand{\printdeferredproofs}{\the\deferredProofsToks}
 
-\newcommand{\sigwhat}{\hat\sigma_{w^{\star}}} 
+\newcommand{\sigwhat}{\hat\sigma_{w^{\star}}}
 \newcommand{\sigwhatsq}{\hat\sigma_{w^{\star}}^2}
 \newcommand{\sigwhatsqplug}{\hat\sigma_{w^{\star}}^{2\,\mathrm{plug}}}
-\newcommand{\sigwhatsqbf}{\hat\sigma_{w^{\star}}^{2\,\mathrm{bf}}}  
+\newcommand{\sigwhatsqbf}{\hat\sigma_{w^{\star}}^{2\,\mathrm{bf}}}
+
+\newcommand{\sigYhat}{\hat\sigma_{Y^{\star}}}
+\newcommand{\sigYhatsq}{\hat\sigma_{Y^{\star}}^2}
+\newcommand{\sigYperphat}{\hat\sigma_{Y^{\perp}}}
+\newcommand{\sigYperphatsq}{\hat\sigma_{Y^{\perp}}^2}

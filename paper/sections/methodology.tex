@@ -525,7 +525,7 @@ otherwise the scale-decomposed bound is strictly tighter.
 \section{Implementation}
 \label{sec:implementation}
 
-The variance components that define the preferential sampling bound can be estimated without fitting assumption-heavy models.
+The variance components that define the preferential sampling bound can be estimated without fitting models.
 Namely, $\sigma_{w^{\star}}$ can be estimated from float counts (Section~\ref{sec:sigmawK}), and $\sigma_{Y^{\star}}$ and $\sigma_{Y^{\perp}}$ from a reanalysis product.
 $\sigma_{w^{\perp}}$, the sampling variability \emph{within} the cell scale cannot be estimated from a sparse point pattern without reintroducing a within-cell intensity model.
 However, proposition~\ref{prop:scale-decomp} confines it to a product with $\sigma_{Y^{\perp}}$, so the magnitude of $\sigma_{w^{\star}}$ only matters to the extent the OHC field varies within cells.
@@ -534,11 +534,178 @@ Therefore, our goal is to determine the cell scale such that within-cell OHC var
 \subsection{Choosing the resolution}
 \label{sec:resolution}
 
-Three length scales meet in this region and must not be conflated.
-The reanalysis \emph{rendering} scale ($1/12^\circ$, ${\approx}7$\,km here) is the resolution at which the field product carries information; it is the right grid for the internal computation of $\sigma_{Y,K}$ and $\sigma_Y^{\perp}$ via \eqref{eq:sigmaYK-hat}--\eqref{eq:sigmaYperp-hat}, but it says nothing about the resolution the floats can support.
-The field \emph{relevance} scale---the OHC decorrelation length---sets how finely $w$ ever \emph{needs} to be resolved, because within cells smaller than this the field is nearly constant, $\sigma_Y^{\perp}$ is small, and sub-cell sampling structure cannot bias the regional mean.
 
-The float \emph{sampling} scale is the band of partitions the observed point pattern can support. For a $K_{\mathrm{lon}}\times K_{\mathrm{lat}}$ partition of the box---here $\Delta\lambda=6^\circ$ of longitude by $\Delta\phi=4^\circ$ of latitude about $\phi_0=38^\circ$---the zonal and meridional cell sides are
+The partition $\mathcal{P}_K$ is the only tuning choice in
+\eqref{eq:sigmawK-hat}, and it is not free. The resolved dispersion
+$\sigma_{w^{\star}}$ is genuinely resolution-dependent, and in a
+particular direction.
+
+\begin{lemma}[Coarsening is a monotone lower bound]
+\label{lem:coarsening}
+For any partition $\mathcal{P}_K$,
+\[
+  \sigma_{w^{\star}}\;\le\;\sigma_w,
+  \qquad\text{with}\qquad
+  \sigma_w^2-\sigma_{w^{\star}}^2
+  =\sigma_{w^{\perp}}^2
+  =\E_\nu\big[\Var_\nu(w\mid\mathcal{P}_K)\big]\;\ge\;0 .
+\]
+Moreover, under refinement the bound tightens monotonically: if
+$\mathcal{P}_{K'}$ refines $\mathcal{P}_{K}$, in the sense that every
+cell of $\mathcal{P}_{K}$ is a union of cells of $\mathcal{P}_{K'}$, then
+$\sigma_{w^{\star}}(\mathcal{P}_{K})\le\sigma_{w^{\star}}(\mathcal{P}_{K'})\le\sigma_w$.
+The same statements hold verbatim for the field, with
+$(\sigma_{Y^{\star}},\sigma_{Y^{\perp}},\sigma_Y)$ in place of
+$(\sigma_{w^{\star}},\sigma_{w^{\perp}},\sigma_w)$.
+\end{lemma}
+
+\deferproof{coarsening}{%
+\begin{proof}
+The identity is the Pythagorean decomposition \eqref{eq:var-split},
+$\sigma_w^2=\sigma_{w^{\star}}^2+\sigma_{w^{\perp}}^2$, together with the
+identification of the within-cell term as an expected conditional
+variance (Section~\ref{sec:decomp-wy}); non-negativity of
+$\sigma_{w^{\perp}}^2=\|w^{\perp}\|_{L^2(\nu)}^2$ gives
+$\sigma_{w^{\star}}\le\sigma_w$. For monotonicity, refinement enlarges the
+subspace of piecewise-constant functions, $V_{K}\subseteq V_{K'}$, and
+the norm of an orthogonal projection cannot decrease when the range is
+enlarged: $\|\mathsf{P}_{V_{K}}f\|\le\|\mathsf{P}_{V_{K'}}f\|$ for every
+$f\in L^2(\nu)$. Applying this to $f=w-1$ gives the claim.
+\end{proof}%
+}
+
+Two consequences shape everything below. First, the coarse estimator is
+\emph{conservative in the wrong direction} for a naive bound: since
+$\sigma_{w^{\star}}\le\sigma_w$, the product $\sigma_{w^{\star}}\sigma_Y$
+is \emph{not} a valid upper bound on $|B_{\mathrm{samp}}|$---it may
+understate it. This is precisely why the bound must be taken in its
+scale-decomposed form,
+$\sigma_{w^{\star}}\sigma_{Y^{\star}}+\sigma_{w^{\perp}}\sigma_{Y^{\perp}}$
+(Proposition~\ref{prop:scale-decomp}), which pairs the coarse weight
+dispersion only with the coarse field dispersion and accounts separately
+for what lies below the cell scale.
+
+Second, $K$ cannot be chosen by refining until the estimate stabilizes.
+Lemma~\ref{lem:coarsening} says the refinement curve
+$K\mapsto\sigma_{w^{\star}}$ climbs monotonically toward $\sigma_w$; and
+because Argo trajectories cluster at short range, the empirical curve
+does not plateau within any resolution the data support---it simply
+continues to rise, at fine scales driven by trajectory autocorrelation
+and count noise rather than by preferential sampling
+(Section~\ref{sec:resolution}, ``Why the estimator degrades when
+$N/K<1$''). There is no resolution at which the data reveal ``the true
+$\sigma_w$''. The cell scale must therefore be fixed \emph{externally},
+and the remainder of this section does so by bracketing it between two
+limits: a \emph{relevance} scale from above, below which resolving $w$ is
+unnecessary, and a \emph{sampling} scale from below, beyond which
+resolving $w$ is infeasible. Three scales are in play and must not be
+conflated.
+
+The lemma applies to the field as well, but with a decisive difference in
+consequence. For the weight, $\sigma_{w^{\star}}\le\sigma_w$ is a genuine
+obstruction: the missing piece $\sigma_{w^{\perp}}$ cannot be recovered
+from a sparse point pattern, and the refinement curve does not plateau,
+so $\sigma_w$ is not identified from the data. For the field, by
+contrast, the reanalysis is dense: $\sigma_{Y^{\star}}$,
+$\sigma_{Y^{\perp}}$ and $\sigma_Y$ are all directly computable on the
+native grid, and the identity
+$\sigma_Y^2=\sigma_{Y^{\star}}^2+\sigma_{Y^{\perp}}^2$ can be verified
+numerically. Of the four factors in the scale-decomposed bound of
+Proposition~\ref{prop:scale-decomp}, exactly one---$\sigma_{w^{\perp}}$---is
+unavailable, and it is paired with one---$\sigma_{Y^{\perp}}$---that is
+both measurable and, by Lemma~\ref{lem:coarsening}, monotonically
+decreasing under refinement. This pairing is what makes the bound usable:
+refining the partition drives $\sigma_{Y^{\perp}}\downarrow 0$ and with it
+the unestimated product, at the cost of driving $N/K$ toward the
+coincidence-starved regime in which $\sigma_{w^{\star}}$ itself becomes
+unestimable. The two monotonicities run in opposite directions along the
+same refinement axis, and the operating band is where both remain
+tolerable.
+
+%The partition $\mathcal{P}_K$ is the only tuning choice in \eqref{eq:sigmawK-hat}, and it is not free: $\sigma_{w^{\star}}$ is genuinely resolution-dependent, increasing monotonically to $\sigma_w$ as the partition refines (Lemma~\ref{lem:coarsening}).
+%It cannot therefore be selected by refining until the estimate stabilizes---there is no plateau to find, and for a finite point pattern the empirical curve simply climbs.
+%The cell scale must be fixed \emph{externally}, and this section does so by bracketing it between two physically and statistically meaningful limits: a \emph{relevance} scale from above, below which resolving $w$ is unnecessary, and a \emph{sampling} scale from below, beyond which resolving $w$ is infeasible.
+%Three scales are in play and must not be conflated.
+
+\subsubsection*{The rendering scale}
+
+The reanalysis is delivered at $1/12^\circ$ (${\approx}7$\,km here). This
+is the resolution at which the \emph{field product} carries information,
+and it is the right grid on which to compute the field factors
+$\sigYhat$ and $\sigYperphat$ internally via
+\eqref{eq:sigmaYK-hat}--\eqref{eq:sigmaYperp-hat}---in particular,
+$\sigma_{Y^{\perp}}$ must be evaluated from the native grid rather than
+from cell-averaged values, or the sub-cell variance it is meant to
+capture is discretized away. It says nothing, however, about the
+resolution the float pattern can support, and it is not a candidate cell
+scale for $\sigma_{w^{\star}}$.
+
+\subsubsection*{The relevance scale: how finely $w$ needs to be resolved}
+
+By Proposition~\ref{prop:scale-decomp}, the one factor we decline to
+estimate, $\sigma_{w^{\perp}}$, enters the bound only through the product
+$\sigma_{w^{\perp}}\sigma_{Y^{\perp}}$. Sub-cell sampling structure is
+therefore bias-irrelevant to the extent that the field is constant within
+cells: choosing cells no larger than the OHC decorrelation length makes
+$\sigma_{Y^{\perp}}$ small and suppresses the unestimated term regardless
+of how rough the sub-cell sampling turns out to be. The relevance scale
+is thus the OHC decorrelation length, and we fix it empirically from the
+reanalysis rather than by inspection.
+
+\paragraph{Procedure.} For each estimand (raw OHC and deseasonalized
+OHC; Section~\ref{sec:sigmaY}) we proceed as follows.
+\begin{enumerate}
+\item \emph{Field construction.} Compute OHC on the native $1/12^\circ$
+  grid over the analysis window. For the raw estimand, remove a
+  per-snapshot planar trend in $(\mathrm{lon},\mathrm{lat})$; the box
+  spans the Gulf Stream front, whose standing gradient otherwise renders
+  the variogram non-stationary and unbounded. For the deseasonalized
+  estimand, subtract the reanalysis climatology
+  (Remark~\ref{rem:glorys}) and remove the per-snapshot mean.
+\item \emph{Projection.} Convert $(\mathrm{lon},\mathrm{lat})$ to a local
+  planar frame in kilometres about the box centre, so that lags and
+  ranges are directly comparable to the sampling scale of
+  \eqref{eq:cell-km}.
+\item \emph{Directional empirical variogram.} Within each snapshot, form
+  all pairs of grid points (subsampling for tractability), and accumulate
+  the semivariance $\tfrac12(y_i-y_j)^2$ into bins of separation
+  distance. Classify each pair by orientation and accumulate separately
+  for zonal ($|\theta|<30^\circ$), meridional ($|\theta|>60^\circ$) and
+  omnidirectional bins. Pool across snapshots. \emph{The variogram must
+  be directional}: the frontal structure of this region is strongly
+  anisotropic, with long correlation along the current and short
+  correlation across it, and an isotropic average would conceal the
+  short scale, which is the binding one.
+\item \emph{Range extraction.} From each directional variogram read the
+  decorrelation length two ways---the empirical $1/e$ crossing, i.e.\ the
+  lag at which $\gamma(h)=(1-e^{-1})\,\mathrm{sill}$, and the range
+  parameter of a fitted exponential (or Mat\'ern) model---and report
+  both. The $1/e$ crossing is the robust primary, as the parametric fit
+  can fail on noisy or hole-effect variograms.
+\item \emph{Temporal scale.} Separately, compute the lagged
+  autocorrelation of the de-seasonalized regional-mean OHC series and
+  read its $e$-folding lag, which together with the seasonal amplitude
+  determines the number of time bins $K_t$
+  (Section~\ref{sec:leakage}).
+\end{enumerate}
+
+\paragraph{The binding number.} Write $L_{\mathrm{merid}}$ and
+$L_{\mathrm{zonal}}$ for the two directional ranges. Because
+$\sigma_{Y^{\perp}}$ is controlled by field variation in \emph{every}
+direction within a cell, it is the \emph{shorter} of the two---here the
+across-front, meridional scale---that governs the residual term. The
+relevance scale is therefore $L_{\mathrm{rel}}:=L_{\mathrm{merid}}$, and
+the requirement is that cells be no coarser than $L_{\mathrm{rel}}$. As
+the ranges depend on the de-trending choices of step~1, we report them
+under an alternative de-trending as a sensitivity check and, where these
+disagree, adopt the shorter (conservative) value.
+
+\subsubsection*{The sampling scale: how finely $w$ can be resolved}
+
+For a $K_{\mathrm{lon}}\times K_{\mathrm{lat}}$ partition of the box---%
+here $\Delta\lambda=6^\circ$ of longitude by $\Delta\phi=4^\circ$ of
+latitude about $\phi_0=38^\circ$---the zonal and meridional cell sides
+are
 \begin{equation}
   \Delta x=\frac{\Delta\lambda}{K_{\mathrm{lon}}}\,(111\,\mathrm{km})\cos\phi_0
     =\frac{525\,\mathrm{km}}{K_{\mathrm{lon}}},
@@ -547,44 +714,180 @@ The float \emph{sampling} scale is the band of partitions the observed point pat
     =\frac{444\,\mathrm{km}}{K_{\mathrm{lat}}},
   \label{eq:cell-km}
 \end{equation}
-taking $111$\,km per degree and $\cos38^\circ\approx0.79$. Two point counts bracket the band, each converted to a spacing through $\sqrt{|A|/n}$---the side of one of $n$ equal cells tiling the domain area $|A|\approx2.3\times10^5\,\mathrm{km}^2$ (Figure~\ref{fig:sampling-scale}). The $40$ distinct floats give $\sqrt{|A|/40}\approx76$\,km, i.e.\ $K_{\mathrm{lon}}\times K_{\mathrm{lat}}\approx7\times6$ by \eqref{eq:cell-km}; finer than this the surviving coincidences are increasingly \emph{within}-float, so \eqref{eq:sigmawK-hat} picks up trajectory autocorrelation on top of preferential sampling---an upward, hence conservative, contribution (Remark~\ref{rem:trajectory}). All $364$ profiles give $\sqrt{|A|/364}\approx25$\,km, i.e.\ ${\approx}21\times18$, the one-profile-per-cell scale ($K\approx N$). The estimator is not undefined here---the expected coincidence count $N(N-1)\sum_j\pi_j^2\approx N^2/K$ stays positive until cells are an order of magnitude finer ($K\gtrsim N^2$, ${\sim}1$\,km, where every $n_j\le1$ forces $\sigwhatsq\equiv-1$)---but with mean occupancy $\E[n_j]=N\pi_j\approx1$---so that, for near-uniform $\pi$, only ${\approx}26\%$ of cells hold two or more profiles under the $\mathrm{Binomial}(N,\pi_j)$ marginal of Assumption~\ref{ass:sample-pi}---the coincidences grow sparse and increasingly \emph{within}-float, so the $U$-statistic variance and the jackknife intervals inflate. It is thus the practical precision floor rather than a floor of definition. Rather than retreat to the coarse, float-limited end, we evaluate the all-pairs estimator \eqref{eq:sigmawK-hat} on all $364$ profiles across the whole $25$--$76$\,km band. It is biased only in the safe direction, and, resting on more pairs and better-populated cells, has lower sampling variance than its between-float counterpart. Its \emph{independent} information nonetheless amounts to only ${\approx}40$ floats, so its uncertainty is quantified by float-level (cluster) resampling rather than by treating profiles as independent (Section~\ref{sec:uncertainty}).
+taking $111$\,km per degree and $\cos38^\circ\approx0.79$. Two point
+counts bracket the feasible band, each converted to a spacing through
+$s=\sqrt{|A|/n}$---the side of one of $n$ equal cells tiling the domain
+area $|A|\approx2.3\times10^{5}\,\mathrm{km}^2$
+(Figure~\ref{fig:sampling-scale}). All $N=364$ profiles give
+$s\approx25$\,km, i.e.\ ${\approx}21\times18$ cells: the
+one-profile-per-cell scale, $K\approx N$. The $F=40$ distinct floats---%
+the independent replication units---give $s\approx76$\,km, i.e.\
+$K_{\mathrm{lon}}\times K_{\mathrm{lat}}\approx7\times6$.
 
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}[x=0.62cm,y=0.62cm]
   \def\cols{6}
   \def\rows{5}
-  % reference cell
   \fill[blue!12] (0,0) rectangle (1,1);
-  % grid and domain boundary
-  %\draw[gray!55,thin] (0,0) grid (\cols,\rows);
   \draw[line width=0.9pt] (0,0) rectangle (\cols,\rows);
-  % one point per cell
   \foreach \i in {0,...,5}{\foreach \j in {0,...,4}{%
     \fill (\i+0.5,\j+0.5) circle (1.1pt);}}
   \draw[line width=0.9pt] (0,0) rectangle (1,1);
-  % side length s
   \draw[<->] (0,-0.5) -- (1,-0.5) node[midway,below]{$s$};
   \draw[<->] (-0.5,0) -- (-0.5,1) node[midway,left]{$s$};
-  % labels
   \node[above] at (\cols/2,\rows+0.15) {$A$};
 \end{tikzpicture}
 \caption{The sampling scale $s=\sqrt{|A|/n}$. Tiling the analysis domain
 (area $|A|$) into $n$ equal cells makes each a square of side $s$ with
 $n\,s^{2}=|A|$; equivalently $s$ is the spacing of $n$ points placed one
-per cell (dots). For our box, $|A|\approx2.3\times10^{5}\,\mathrm{km}^2$,
-the $L=40$ floats give $s\approx76$\,km
-($K_{\mathrm{lon}}\times K_{\mathrm{lat}}\approx7\times6$) and all $364$
-profiles give $s\approx25$\,km (${\approx}21\times18$)---the coarse and
-fine ends of the resolution band.}
+per cell (dots). For our box,
+$|A|\approx2.3\times10^{5}\,\mathrm{km}^2$, the $F=40$ floats give
+$s\approx76$\,km ($K_{\mathrm{lon}}\times K_{\mathrm{lat}}\approx7\times6$)
+and all $N=364$ profiles give $s\approx25$\,km (${\approx}21\times18$)---%
+the coarse and fine ends of the resolution band.}
 \label{fig:sampling-scale}
 \end{figure}
 
-Since $\sigma_w$ is resolution-dependent, we report not a single number but the \emph{refinement curve} $K\mapsto\hat\sigma_{w,K}$ across this band, each rung with its float-clustered interval.
-The field factors $\sigma_{Y,K},\sigma_Y^{\perp}$ are evaluated on the \emph{same} partition at each rung---computed on the $1/12^\circ$ grid and aggregated to the current cells---so that the two fields share the partition at every resolution, which is the only consistency Proposition~\ref{prop:scale-decomp} requires.
-The relevance scale is fixed empirically from the reanalysis (an isotropic empirical variogram of OHC in the box, read at the $1/e$-decorrelation lag) rather than eyeballed, and we verify it lies at or below the ${\approx}75$\,km sampling scale.
-That ordering is what makes the residual safe: the unestimated $\sigma_w^{\perp}$ lives at scales finer than the cells, where $\sigma_Y^{\perp}$ is already small, so their product is negligible relative to the leading term $\sigma_{w,K}\sigma_{Y,K}$.
-We report the diagnostic ratio $\hat\sigma_Y^{\perp}/\hat\sigma_Y$---the fraction of field variance below the cell scale---as direct evidence that the dropped term is small.
+\paragraph{Why the estimator degrades when $N/K<1$.} The mean occupancy
+$N/K$ is the natural measure of how much the counts can support, and
+$N/K<1$ marks a qualitative change rather than merely a noisier regime.
+Estimator~\eqref{eq:sigmawK-hat} reads the data only through
+coincidences: by \eqref{eq:ustat}, $\widehat{\sigma_{w^{\star}}^2}=K U_N-1$
+where $U_N$ is the fraction of distinct profile pairs sharing a cell, and
+under near-uniform sampling the expected number of coincident ordered
+pairs is
+\[
+  \E\Big[\sum_j n_j(n_j-1)\Big]=N(N-1)\sum_j\pi_j^2\approx\frac{N^2}{K}
+  =\frac{N}{K}\cdot N .
+\]
+Once $N/K<1$ this total falls below $N$ and is often in the single
+digits: cells holding a lone profile contribute $n_j(n_j-1)=0$, so the
+statistic is determined by the few cells that happen to catch two. Four
+consequences follow.
+
+\emph{Quantization.} One additional coincident pair moves
+$\widehat{\sigma_{w^{\star}}^2}$ by $2K/[N(N-1)]\approx 2K/N^2$, which
+exceeds $2/N$ once $N/K<1$. The estimator's support becomes a coarse
+lattice and it cannot resolve small departures from uniformity even in
+principle.
+
+\emph{Variance inflation.} Near uniformity $\Var(U_N)$ is of order
+$\theta/N\approx 1/(NK)$, so
+$\Var\big(\widehat{\sigma_{w^{\star}}^2}\big)\sim K/N$: the standard error
+grows like $\sqrt{K/N}$ while the estimand remains $O(1)$. That this is
+the same ratio $K/N$ governing the plug-in bias of
+Lemma~\ref{lem:unbiased} is no accident---both pathologies have the
+single source of too few pairs per cell.
+
+\emph{Grid-phase dependence.} At fine scales, whether two nearby profiles
+share a cell depends on where the boundaries happen to fall. Two
+partitions with identical $K$ can yield materially different
+$\widehat{\sigma_{w^{\star}}}$, so the statistic reads boundary placement
+rather than sampling structure---the signature of having passed the
+resolvable scale.
+
+\emph{Degeneracy and untrustworthy intervals.} When no two distinct
+profiles share a cell, $\sum_j n_j(n_j-1)=0$ and
+$\widehat{\sigma_{w^{\star}}^2}=-1$ exactly, its minimum; this occurs with
+certainty once $K\gtrsim N^2$. The delete-one-float jackknife
+\eqref{eq:jackvar} is consistent for smooth functionals, but in this
+regime the statistic is a jumpy, discrete function of the data and the
+justification lapses---indeed the jackknife standard error collapses
+toward zero where the estimate is degenerate, so intervals can
+spuriously \emph{narrow} exactly where they are least reliable.
+
+Accordingly we require mean occupancy comfortably above one. This is the
+same guidance as the classical requirement that Pearson expected cell
+counts exceed ${\approx}5$, and for the same reason:
+$\widehat{\sigma_{w^{\star}}^2}^{\,\mathrm{plug}}=X^2/N$ exactly, so the
+sparse-cell caveat transfers verbatim. Because the independent units are
+the $F$ floats rather than the $N$ profiles, the effective occupancy is
+nearer $F/K$ than $N/K$ and the constraint binds sooner than the raw
+profile count suggests; the float-based spacing $s\approx76$\,km is
+therefore the honest coarse anchor.
+
+\subsubsection*{The operating band, and the verdict}
+
+The two scales bracket the choice from opposite directions: cells must be
+\emph{fine enough} that $\sigma_{Y^{\perp}}$ is small
+($\Delta x,\Delta y\lesssim L_{\mathrm{rel}}$), and \emph{coarse enough}
+that coincidences are countable ($N/K$, effectively $F/K$, not below
+one). The band is non-empty precisely when
+\begin{equation}
+  L_{\mathrm{rel}} \;\gtrsim\; s_F=\sqrt{|A|/F}\approx 76\,\mathrm{km},
+  \label{eq:verdict}
+\end{equation}
+i.e.\ when the field's shortest decorrelation length is no finer than the
+scale the floats can resolve. Condition \eqref{eq:verdict} is not assumed:
+it is the verdict that the variogram procedure above returns, and it is
+reported as such. Its two branches lead to materially different claims,
+and which obtains is an empirical matter to be settled per region and
+period.
+
+If \eqref{eq:verdict} holds, cells at the sampling scale sit within a
+decorrelation length, $\sigma_{Y^{\perp}}$ is correspondingly small, and
+the residual $\sigma_{w^{\perp}}\sigma_{Y^{\perp}}$ is negligible against
+the leading term $\sigma_{w^{\star}}\sigma_{Y^{\star}}$. The bound is then
+certified at the operating resolution: the sampling structure we cannot
+resolve lies at scales where the field does not vary, and so cannot bias
+a regional mean.
+
+If instead $L_{\mathrm{rel}}<s_F$, there is a band of field structure,
+between $L_{\mathrm{rel}}$ and $s_F$, that is bias-relevant but that the
+float pattern cannot resolve. The residual term is then not automatically
+negligible and must be confronted rather than assumed away: we report the
+bound as conditional on the unresolved $\sigma_{w^{\perp}}$, rather than
+claiming a certified envelope.
+
+In either branch we report the diagnostic
+\begin{equation}
+  \frac{\sigYperphat}{\hat\sigma_Y}
+  \;=\;\text{fraction of field variance below the cell scale},
+  \label{eq:residual-diagnostic}
+\end{equation}
+computed from the reanalysis on the operating partition, as direct
+evidence of the magnitude of the dropped term. Because $\sigma_{Y^{\perp}}$
+is estimable from the dense reanalysis even when $\sigma_{w^{\perp}}$ is
+not, \eqref{eq:residual-diagnostic} quantifies how much of the residual
+product can be bounded regardless of the verdict---a small value confines
+the unresolved sampling roughness to scales at which it cannot matter,
+whatever its size. This test, applied to any region and period, is what
+determines whether a bound can be certified there, and it is the honest
+failure mode of the method: where the data cannot support a certified
+bound, the procedure says so rather than returning a reassuring number.
+
+\subsubsection*{Reporting}
+
+Because $\sigma_{w^{\star}}$ is resolution-dependent by construction, we
+report not a single value but the \emph{refinement curve}
+$K\mapsto\sigwhat$ across the $25$--$76$\,km band, each rung carrying its
+float-clustered interval (Section~\ref{sec:uncertainty}), with
+$L_{\mathrm{rel}}$ and $s_F$ marked. The field factors
+$\sigYhat,\sigYperphat$ are evaluated on the \emph{same} partition at
+each rung---computed on the $1/12^\circ$ grid and aggregated to the
+current cells---so that the two fields share the partition at every
+resolution, which is the only consistency
+Proposition~\ref{prop:scale-decomp} requires.
+
+Within this band we evaluate the all-pairs
+estimator~\eqref{eq:sigmawK-hat} on all $N=364$ profiles rather than
+retreating to the coarse, float-limited end. Resting on more pairs and
+better-populated cells, it has lower sampling variance than its
+between-float counterpart~\eqref{eq:sigmawK-bf}; and where consecutive
+surfacings of a float re-enter the same cell, the additional
+within-float coincidences inflate the estimate, which by
+Lemma~\ref{lem:clustering-inflates} is the conservative direction for a
+bound (under the checkable condition $c\ge\theta$ that a float coincides
+with itself at least as often as two independent draws would). Its
+\emph{independent} information nonetheless amounts to only $F=40$
+floats, so uncertainty is quantified by float-level resampling rather
+than by treating profiles as independent, and we report
+\eqref{eq:sigmawK-bf} alongside as the estimate free of any within-float
+independence assumption. The gap between the two is itself the diagnostic
+of how much apparent dispersion is trajectory autocorrelation rather than
+preferential sampling.
+
 
 \subsection{Estimating $\sigma_{w^{\star}}$ from float counts}
 \label{sec:sigmawK}
@@ -923,15 +1226,15 @@ its mean.)
 \subsection{Testing uniform sampling}
 \label{sec:uniformity-test}
 
-The dispersion $\sigma_{w,K}$ also supports a formal test of the null of
+The dispersion $\sigwhat$ also supports a formal test of the null of
 uniform sampling, $H_0:\pi=\nu$ (equivalently $\pi_j=1/K$ for all $j$).
 Under $H_0$ the plug-in dispersion is a rescaled Pearson
 goodness-of-fit statistic,
 \[
   X^2=\sum_{j=1}^{K}\frac{(n_j-N/K)^2}{N/K}
-     =N\,\widehat{\sigma_{w,K}^2}^{\,\mathrm{plug}},
+     =N\,\sigwhatsqplug,
 \]
-and preferential sampling makes $X^2$ (and $\widehat{\sigma_{w,K}^2}$)
+and preferential sampling makes $X^2$ (and $\sigwhatsq$)
 large. The classical reference $X^2\sim\chi^2_{K-1}$ is \emph{not} valid
 here: the profiles are cluster-dependent (Remark~\ref{rem:trajectory}),
 which over-disperses the cell counts and inflates $X^2$ under $H_0$, so a
@@ -952,7 +1255,7 @@ correlates nearby floats, so the null is mildly under-dispersed and the
 test correspondingly anti-conservative in that component. Removing this
 would require shifting whole advective clusters jointly, which we leave
 to future work; here we simply flag the direction of the effect. For a statistic
-$T\in\{X^2,\ \widehat{\sigma_{w,K}^2}^{\,\mathrm{bf}}\}$ with observed
+$T\in\{X^2,\ \sigwhatsqbf\}$ with observed
 value $T_{\mathrm{obs}}$ and $B$ permutation replicates
 $T^{(1)},\dots,T^{(B)}$, the one-sided $p$-value is
 \[
@@ -970,13 +1273,13 @@ with the caveat above.
 Two cautions. A large $\hat p$ is evidence of \emph{no detectable}
 departure from uniform, not of exact uniformity; with few floats the
 test has limited power, so we treat it as corroboration and let the
-effect size $\sigma_{w,K}$ with its interval---in particular the upper
+effect size $\sigwhat$ with its interval---in particular the upper
 confidence limit the bound requires---carry the quantitative claim.
 Second, the gap between the permutation $\hat p$ and the naive
 $\chi^2_{K-1}$ $p$-value is itself worth reporting, as it quantifies how
 much the trajectory dependence would have inflated a naive test.
 
-\subsection{Estimating $\sigma_{Y,K}$ and $\sigma_Y^{\perp}$ from a
+\subsection{Estimating $\sigma_{Y^{\star}}$ and $\sigma_{Y^{\perp}}$ from a
 reanalysis}
 \label{sec:sigmaY}
 
@@ -1023,20 +1326,20 @@ dependence on the Argo sampling pattern. On the level-$K$ partition,
 with $y$ evaluated on the native $1/12^\circ$ grid and aggregated to
 cells,
 \begin{align}
-  \widehat{\sigma_{Y,K}^2}
+  \sigYhatsq
   &=\sum_{j=1}^{K}\tfrac1K\big(\bar y_j-\hat\mu\big)^2,
   &\bar y_j&=\text{area-weighted mean of $y$ over the grid nodes in }C_j,
   \ \hat\mu=\tfrac1K\textstyle\sum_j\bar y_j,
   \label{eq:sigmaYK-hat}\\[2pt]
-  \big(\widehat{\sigma_Y^{\perp}}\big)^2
+  \sigYperphatsq
   &=\sum_{j=1}^{K}\tfrac1K\,\widehat{\Var}_\nu\!\big(y\mid C_j\big),
   &&\text{(mean within-cell variance of $y$).}
   \label{eq:sigmaYperp-hat}
 \end{align}
 These are direct quadratures of a densely observed field, so---unlike
-$\sigma_{w,K}$---no diagonal removal or count-noise correction is
-needed, and $\sigma_Y^2=\sigma_{Y,K}^2+(\sigma_Y^{\perp})^2$ is
-recoverable in full. Computing $\sigma_Y^{\perp}$ from the native grid
+$\sigwhatsq$---no diagonal removal or count-noise correction is
+needed, and $\sigma_Y^2=\sigma_{Y^{\star}}^2+\sigma_{Y^{\perp}}^2$ is
+recoverable in full. Computing $\sigYperphat$ from the native grid
 rather than pre-averaging to cells is essential: it is the genuine
 sub-cell field variance, and it is the quantity that controls the
 unestimated residual in Proposition~\ref{prop:scale-decomp}.
@@ -1046,7 +1349,7 @@ unestimated residual in Proposition~\ref{prop:scale-decomp}.
 Data assimilation tends to \emph{attenuate} anomaly amplitude, so a
 reanalysis is liable to understate $\sigma_Y$---the unsafe direction for
 a bound. We treat the field proxy as a sensitivity axis rather than a
-single source: $\sigma_{Y,K}$ and $\sigma_Y^{\perp}$ are recomputed on
+single source: $\sigYhat$ and $\sigYperphat$ are recomputed on
 at least one product with different Argo dependence (e.g. an
 Argo-independent or differently-assimilated analysis), and the
 \emph{largest} $\hat\sigma_Y$ across products is carried into the bound.
@@ -1062,7 +1365,7 @@ Argo data (Remark~\ref{rem:glorys}).
 The two factors carry different kinds of uncertainty, and we keep them
 separate.
 
-For $\sigma_{w,K}$, the relevant variability is sampling variability
+For $\sigwhat$, the relevant variability is sampling variability
 over floats, and the multinomial/normal approximation to the $\chi^2$
 statistic is invalid because of the trajectory dependence of
 Remark~\ref{rem:trajectory}. Because
@@ -1092,7 +1395,7 @@ variance is
   \qquad \bar\theta_{(\cdot)}=\frac1L\sum_{\ell=1}^{L}\hat\theta_{(-\ell)},
   \label{eq:jackvar}
 \end{equation}
-where $\hat\theta_{(-\ell)}$ recomputes $\widehat{\sigma_{w,K}^2}$ (or its
+where $\hat\theta_{(-\ell)}$ recomputes $\sigwhatsq$ (or its
 between-float variant) with float $\ell$'s profiles removed; the reported
 interval is $\hat\theta\pm z_{1-\alpha/2}\,\widehat V_{\mathrm{jack}}^{1/2}$
 on the $\sigma^2$ scale, with $\sigma$-scale endpoints
@@ -1103,7 +1406,7 @@ The with-replacement float bootstrap, by contrast, is biased for this
 functional. When a float is resampled more than once, its identical
 copies form coincidence pairs that two distinct floats never would, each
 adding a spurious self-overlap $O_{\ell\ell}=\sum_j m_{\ell j}^2$; these ties shift
-the bootstrap distribution of $\widehat{\sigma_{w,K}^2}$ upward and break
+the bootstrap distribution of $\sigwhatsq$ upward and break
 interval coverage---in simulation a with-replacement float bootstrap
 attained $\approx 50\%$ coverage against a nominal $95\%$, whereas the
 jackknife \eqref{eq:jackvar} attained $\approx 95\%$. The jackknife only
@@ -1117,11 +1420,11 @@ quantify it by the spread of $\hat\sigma_Y$ across reanalysis products
 value and reporting the range.
 
 The reported bound at each resolution is
-$\hat\sigma_{w,K}\,\hat\sigma_{Y,K}$, with an interval obtained by
+$\sigwhat\,\sigYhat$, with an interval obtained by
 combining the delete-one-float jackknife interval \eqref{eq:jackvar} of
-$\hat\sigma_{w,K}$ with the across-product range of $\hat\sigma_{Y,K}$,
+$\sigwhat$ with the across-product range of $\sigYhat$,
 accompanied by the
-residual diagnostic $\hat\sigma_Y^{\perp}/\hat\sigma_Y$. To interpret
+residual diagnostic $\sigYperphat/\hat\sigma_Y$. To interpret
 severity, we express the bound relative to an external yardstick---the
 estimated regional OHC trend over the period, and the posterior
 standard deviation of the hierarchical OHC model
@@ -1139,20 +1442,20 @@ units.
   sampling band \eqref{eq:cell-km}, verifying it is at or above the
   relevance scale.
 \item Retain all profiles (no thinning): the within-float clustering
-  this leaves biases $\hat\sigma_{w,K}$ upward only, the safe direction
+  this leaves biases $\sigwhat$ upward only, the safe direction
   for the bound (Remark~\ref{rem:trajectory}).
 \item At each partition: form counts $\{n_j\}$ and compute
-  $\hat\sigma_{w,K}$ by \eqref{eq:sigmawK-hat}; aggregate the
+  $\sigwhat$ by \eqref{eq:sigmawK-hat}; aggregate the
   $1/12^\circ$ reanalysis to the same cells and compute
-  $\hat\sigma_{Y,K}$ and $\hat\sigma_Y^{\perp}$ by
+  $\sigYhat$ and $\sigYperphat$ by
   \eqref{eq:sigmaYK-hat}--\eqref{eq:sigmaYperp-hat}.
 \item Repeat step~3 across reanalysis products; retain the largest
-  $\hat\sigma_{Y,K}$ (Remark~\ref{rem:conservative-Y}).
-\item Delete-one-float jackknife $\hat\sigma_{w,K}$ for intervals
+  $\sigYhat$ (Remark~\ref{rem:conservative-Y}).
+\item Delete-one-float jackknife $\sigwhat$ for intervals
   \eqref{eq:jackvar} (Section~\ref{sec:uncertainty}).
 \item Report the refinement curve of the bound
-  $\hat\sigma_{w,K}\hat\sigma_{Y,K}$ with intervals, the residual
-  diagnostic $\hat\sigma_Y^{\perp}/\hat\sigma_Y$, and the bound as a
+  $\sigwhat\sigYhat$ with intervals, the residual
+  diagnostic $\sigYperphat/\hat\sigma_Y$, and the bound as a
   fraction of the OHC trend and of the model posterior SD.
 \end{enumerate}
 
