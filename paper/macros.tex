@@ -14,15 +14,7 @@
 \newcommand{\PKp}{\mathsf{P}^{\perp}}
 
 \newcommand{\1}{\mathbbm{1}}
-% Auto-ordered proof appendix: \deferproof{key}{<full proof environment>}
-% called right after a proposition/lemma leaves a "Proof in Appendix" jump
-% link at the call site and stashes the proof itself (unexpanded, so
-% align/label/eqref inside it behave exactly as if written in place) in a
-% token list. \printdeferredproofs (called once, in sections/proofs.tex)
-% replays the stash in call order, so the appendix always matches the
-% order results appear in the body -- reordering \deferproof calls in
-% methodology.tex reorders the printed proofs to match, no manual
-% re-sequencing of proofs.tex needed.
+
 \newtoks\deferredProofsToks
 \deferredProofsToks{}
 \newcommand{\deferproof}[2]{%

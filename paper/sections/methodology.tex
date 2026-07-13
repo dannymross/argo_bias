@@ -7,9 +7,6 @@ If 1000m currents are correlated with upper-ocean temperature or salinity, then 
 This is widely suspected to be negligible, but the magnitude of this bias has not yet been bounded statistically.
 
 This section sets up the estimand, the sampling mechanism, and the resulting sampling-induced bias.
-Three logically distinct sources of randomness appear, each on its own probability space: a \emph{field} space carrying the ocean heat content (OHC) field, which---following model-based geostatistics and the hierarchical Bayesian OHC model of \citet{baugh2022} on which this work builds---we treat as a \emph{stochastic process}; a \emph{sampling} space carrying the Argo float point process; and a \emph{population} space on which a random space--time coordinate is drawn and against which the target average is defined.
-Our analysis of the sampling bias is carried out \emph{conditional} on a realization of the field and on the sampling design; conditional on these, the field and the sampling weight are fixed functions and the only operative randomness is the target coordinate.
-This conditioning is what allows a distribution-free bound to coexist with, and indeed validate, a stochastic-field model rather than contradict it.
 
 \section{Methodology}
 \label{sec:methodology}
@@ -34,16 +31,13 @@ $x = (s,t)$, with spatial location $s \in A$ and time $t \in \T$.
 Let $\nu$ be the \emph{reference} or \emph{target} probability measure on $(\X,\F)$ such that $\nu(E) := |E|\, /\, |\X|$ for all  $E \in \F$.
 \end{definition}
 
-$\nu(E)$ is the probability that a profile drawn uniformly from the space-time domain lies in $E$.
-
 \begin{definition}[Sampling probability measure]
 \label{def:pi}
 Let $\pi$ be the \emph{sampling} probability measure on $(\X,\F)$.
 \end{definition}
 
-$\pi(E)$ is the probability that a profile drawn at random from the \emph{sampling} or realized advection process lies in $E$. 
 
-\begin{definition}[Target-population random point]
+\begin{definition}[Target-population random profile]
 \label{def:X}
 Let $X = (S,T)$ be the \emph{coordinate map} on $(\X,\F,\nu)$, i.e., the identity function $X : \X \to \X$, $X(x) = x$.
 Its distribution is the reference measure by construction, $X \sim \nu$.
@@ -51,9 +45,17 @@ Thus, $\Prob(X \in E) = \nu(E)$ for every $E \in \F$.
 \end{definition}
 
 \begin{definition}[Sampled-population random profile]
-\label{def:X'}
-Let $X' = (S,T)$ be a random variable on $(\X,\F,\pi)$, with distribution the sampling measure, $X' \sim \pi$.
-Thus, $\Prob(X' \in E) = \pi(E)$ for every $E \in \F$. 
+\label{def:Z}
+Let $Z = (S,T)$ be a random variable on $(\X,\F,\pi)$, with distribution the sampling measure, $Z \sim \pi$.
+Thus, $\Prob(Z \in E) = \pi(E)$ for every $E \in \F$.
+\end{definition}
+
+$\nu(E)$ is the probability that a profile drawn \emph{uniformly} from the space-time domain lies in $E$.
+Whereas, $\pi(E)$ is the probability that a profile drawn at random from the \emph{sampling} or realized advection process lies in $E$.
+
+\begin{definition}[Observed profiles]
+\label{def:Zi}
+The $N$ observed profile locations are realizations of $N$ random elements $Z_1,\dots,Z_N$, each marginally distributed as $Z_i \sim \pi$ (Definition~\ref{def:Z}).
 \end{definition}
 
 \begin{definition}[Sampling weight]
@@ -61,16 +63,14 @@ Thus, $\Prob(X' \in E) = \pi(E)$ for every $E \in \F$.
 Assume $\pi \ll \nu$. The \emph{sampling weight} is the Radon--Nikodym
 derivative $w := \dd\pi/\dd\nu$: the $\nu$-almost-everywhere unique,
 non-negative, $\F$-measurable function on $\X$ with
-$\pi(E)=\int_E w\dd\nu$ for all $E\in\F$. We assume further that
+$\pi(E)=\int_E \dd\pi = \int_E w\dd\nu$ for all $E\in\F$. We assume further that
 $w \in L^2(\nu)$.
 \end{definition}
 
 Composing with the target draw $X\sim\nu$ (Definition~\ref{def:X}) gives
 the non-negative random variable $w(X)$; note that $w:\X\to[0,\infty)$ is
 a deterministic function on the domain, while $w(X)$ is its composition
-with the random location, so that expectations such as $\E_\nu[w]$ below
-are shorthand for moments of $w(X)$ under $X\sim\nu$. For $\nu$-almost
-every $x\in\X$, Lebesgue differentiation gives
+with the random location. Lebesgue differentiation gives
 \[
   w(x) \;=\; \lim_{E \downarrow x} \frac{\pi(E)}{\nu(E)}
         \;=\; \lim_{E \downarrow x}
@@ -78,9 +78,16 @@ every $x\in\X$, Lebesgue differentiation gives
 \]
 so $w$ is the local ratio of sampling density to reference density. Where
 $w \equiv 1$ the region is sampled exactly in proportion to its
-space--time extent, i.e. as if uniformly; $w > 1$ marks over-sampling
+space--time extent, i.e., as if uniformly; $w > 1$ marks over-sampling
 (preferential), $w < 1$ under-sampling; and if $w = 0$ $\nu$-a.e. on a set
 $E$ with $\nu(E)>0$, then $\pi(E)=0$ and $E$ is never sampled.
+
+Intuitively, $w(X)$ reweights a target draw $X\sim\nu$ into a sampled draw $Z\sim\pi$.
+Non-preferential sampling is $w\equiv 1$ ($\pi=\nu$).
+\[
+  \Prob(w(X) \in E) = \int_E w\dd\nu = \int_E \dd\pi = \pi(E).
+\]
+
 
 Because $\pi$ is a probability measure, $w(X)$ is mean-one,
 \[
@@ -135,17 +142,15 @@ is the space--time variance of the realized field.
 
 \begin{definition}[Design mean]
 \label{def:mu-w}
-The \emph{design mean} is the realized field averaged under the
-sampling measure,
+The \emph{design mean} is the mean of the realized field under the sampling measure,
 \[
-  \mu_w = \E_\pi\big[y(X')\big] = \int_\X y \dd\pi.
+  \mu_w = \E_\pi\big[y(Z)\big] = \int_\X y \dd\pi.
 \]
 Equivalenty,
 \[
   \mu_w = \int_\X w\,y \dd\nu = \E_\nu\big[w(X)\,y(X)\big].
 \]
-So $w(X)$ reweights a target draw $X\sim\nu$ into a sampled draw $X'\sim\pi$.
-Non-preferential sampling is $w\equiv 1$ ($\pi=\nu$).
+
 \end{definition}
 
 Let $\hat\mu$ denote any estimator of $\mu$ built from the observed profiles (for example a kriging/Gaussian-process interpolant).
@@ -223,7 +228,7 @@ A \emph{level-$K$ partition} is a collection
 $\mathcal{P}_K=\{C_1,\dots,C_K\}$ of disjoint measurable cells with
 $\bigcup_j C_j=\X$ and equal reference measure $\nu(C_j)=1/K$ for all
 $j$. Write $\PK:L^2(\nu)\to L^2(\nu)$ for the \emph{cell-averaging
-operator}, i.e. the conditional expectation
+operator}, i.e., the conditional expectation
 $\PK f=\E_\nu[f\mid\mathcal{P}_K]$, which replaces a function by its cell
 averages,
 \[
@@ -333,8 +338,8 @@ between-cell part and its fine, within-cell part.
 
 Lemma~\ref{lem:projection} applies to any $f\in L^2(\nu)$; the two
 functions the bound requires are the centered weight $w-1$ and the field
-anomaly $y-\mu$. Both are centered under $\nu$: $\E_\nu[w]=1$ by
-\eqref{eq:sigma-w}, and $\E_\nu[y]=\mu$ by Definition~\ref{def:mu}.
+anomaly $y-\mu$. Both are centered under $\nu$: $\E_\nu[w(X)]=1$ by
+\eqref{eq:sigma-w}, and $\E_\nu[y(X)]=\mu$ by Definition~\ref{def:mu}.
 Applying the operator identity~\eqref{eq:split} to each,
 \begin{align}
   w-1 &= \underbrace{\PK(w-1)}_{\text{between-cell}}
@@ -394,10 +399,10 @@ $J=J(X)$ denote the (random) index of the cell containing $X$,
 \[
   \underbrace{\Var_\nu\big(w(X)\big)}_{\sigma_w^2}
   =\underbrace{\Var_\nu\Big(\E_\nu\big[w(X)\mid J\big]\Big)}_{
-      \sigma_{w^{\star}}^2\ =\ \sum_j \frac1K\,(\bar w_j-1)^2}
+      \sigma_{w^{\star}}^2\ =\ \frac1K \sum_j (\bar w_j-1)^2}
   \;+\;
   \underbrace{\E_\nu\Big[\Var_\nu\big(w(X)\mid J\big)\Big]}_{
-      \sigma_{w^{\perp}}^2\ =\ \sum_j \frac1K\,\Var_\nu(w\mid C_j)} ,
+      \sigma_{w^{\perp}}^2\ =\ \frac1K \sum_j \Var_\nu(w\mid C_j)} ,
 \]
 and identically for $y$: the resolved term is the variance of the cell
 means, and the unresolved term is the mean of the within-cell variances.
@@ -956,9 +961,9 @@ Thus, between-cell sampling variability can increase arbitrarily as the number o
 
 \begin{assumption}[Profiles sample the sampling measure]
 \label{ass:sample-pi}
-Conditional on the total $N$, the profile locations are independent draws
-from the sampling measure $\pi$ of Definition~\ref{def:pi}; equivalently,
-the cell counts follow
+Conditional on the total $N$, the random elements $Z_1,\dots,Z_N$ of
+Definition~\ref{def:Zi} are independent draws from the sampling measure
+$\pi$ of Definition~\ref{def:pi}; equivalently, the cell counts follow
 $(n_1,\dots,n_K)\sim\mathrm{Multinomial}\big(N;\pi_1,\dots,\pi_K\big)$
 with $\pi_j=\pi(C_j)$.
 \end{assumption}
