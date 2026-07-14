@@ -70,14 +70,18 @@ DEPTHS = ["700", "2000"]
 D = "../data/leakage"
 TIME_CSV, FULL_CSV, SPATIAL_CSV = f"{D}/leakage_time.csv", f"{D}/leakage_full.csv", f"{D}/leakage_spatial.csv"
 VG_RANGES, VG_CURVES, VG_ACF = f"{D}/variogram_ranges.csv", f"{D}/variogram_curves.csv", f"{D}/variogram_acf.csv"
+ARGO_CSV, OCC_CSV, SWEEP_CSV = f"{D}/argo_compare.csv", f"{D}/argo_occupancy.csv", f"{D}/argo_sweep.csv"
 
 if not all(os.path.exists(p) for p in (TIME_CSV, FULL_CSV, SPATIAL_CSV)):
     R.run_leakage_curves(TIME_CSV, FULL_CSV, SPATIAL_CSV, depths=DEPTHS)
 if not all(os.path.exists(p) for p in (VG_RANGES, VG_CURVES, VG_ACF)):
     R.run_variogram(VG_RANGES, VG_CURVES, VG_ACF, depths=DEPTHS)
+if not all(os.path.exists(p) for p in (ARGO_CSV, OCC_CSV, SWEEP_CSV)):
+    R.run_argo_comparison(ARGO_CSV, OCC_CSV, SWEEP_CSV, depths=DEPTHS)
 
 time_df, full_df, spatial_df = R.load_tables(TIME_CSV, FULL_CSV, SPATIAL_CSV)
 vg_ranges, vg_curves, vg_acf = R.load_tables(VG_RANGES, VG_CURVES, VG_ACF)
+argo_df, occ_df, sweep_df = R.load_tables(ARGO_CSV, OCC_CSV, SWEEP_CSV)
 ```
 
 # Spatial resolution {#sec-spatial}
@@ -260,3 +264,133 @@ _emit("Combined space$\\times$time variance fraction "
       "$\\sigma_{Y^\\perp}^2/\\sigma_Y^2$:")
 _emit(pd.DataFrame(rows).to_html(index=False, border=0))
 ```
+
+# Observed Argo profiles vs GLORYS truth {#sec-argo}
+
+Everything above is computed on the dense GLORYS field, i.e. against the
+reference measure $\nu$. The real Argo profiles instead realize the *sampling*
+measure $\pi$: their spatial–temporal locations are a point pattern with
+intensity proportional to $\pi$, and their OHC is the field sampled at those
+points. Using the observed profile OHC (`data/argo_ohc.csv`, restricted to the
+same NAC box and 2020–2022) we can (i) measure how uneven the sampling actually
+is — the between-cell weight dispersion $\sigma_{w^\star}$ that the GLORYS field
+alone cannot supply — and (ii) check whether the sparse, clustered sample
+*recovers* the field's within/between-cell OHC structure or distorts it, as
+preferential sampling would. This is the empirical counterpart of the bias
+bound: it pairs the observed $\sigma_{w^\star}$ with the GLORYS $\sigma_{Y^\star}$.
+
+::: {.callout-warning appearance="simple"}
+**Depth reliability.** In this box $99\%$ of profiles reach $700$ m but only
+$\sim\!5\%$ reach $2000$ m (median profile depth $\approx 1980$ m). The Argo
+$0$–$2000$ m OHC is therefore integrated over a truncated, profile-dependent
+column: this biases its *mean* low and inflates its *within-cell variance*
+independently of sampling. **The $0$–$700$ m comparison is the clean one and we
+read the conclusions from it;** $0$–$2000$ m is shown for completeness under
+this caveat.
+:::
+
+## Sampling weights (occupancy)
+
+On the operating grid, occupancy estimates the cell sampling probability
+$\pi_j = n_j/N$ and hence the between-cell weight $\bar w_j = K\pi_j$
+($\bar w_j = 1$ is uniform, $\nu$-matched sampling). Its dispersion is the
+resolved sampling factor
+$\sigma_{w^\star}^2 = \tfrac1K\sum_j(\bar w_j-1)^2$ (eq. *sigma-w-parts*).
+
+```{python}
+#| label: argo-occupancy
+#| echo: false
+#| output: asis
+for d in DEPTHS:
+    _emit(f'\n### {R.DEPTH_LABEL[d]}\n')
+    _show_fig(R.plot_argo_occupancy(occ_df, d))
+```
+
+The profiles keep all $K_{\mathrm{lon}}\times K_{\mathrm{lat}}=30$ operating
+cells populated ($\geq 5$ profiles each), with a moderate resolved dispersion
+$\sigma_{w^\star}\approx 0.34$. Occupancy is the binding constraint on how fine
+the grid can go: as cells shrink past the float floor $s_F$, cells empty out and
+the within-cell terms become inestimable.
+
+```{python}
+#| label: argo-sweep
+#| echo: false
+#| output: asis
+_show_fig(R.plot_argo_sweep(sweep_df, "700"))
+```
+
+## Within- and between-cell OHC: Argo vs GLORYS
+
+For each $K_t$ the profiles are binned into the same equal-measure
+$\mathcal{P}_K$ cells; cell means and within-cell variances are taken over the
+profiles (unweighted — the sample already carries the sampling intensity), and
+the field factors use equal cell weight $1/K$. Solid lines are the GLORYS truth
+(reference measure); open markers the Argo sample.
+
+```{python}
+#| label: argo-compare
+#| echo: false
+#| output: asis
+for d in DEPTHS:
+    _emit(f'\n### {R.DEPTH_LABEL[d]}\n')
+    _show_fig(R.plot_within_between_compare(argo_df, full_df, d))
+```
+
+At $0$–$700$ m the sparse sample recovers the field structure well: the
+between-cell factor $\sigma_{Y^\star}$ and the within-cell fraction
+$\sigma_{Y^\perp}^2/\sigma_Y^2$ track the GLORYS truth closely, with the Argo
+$\sigma_{Y^\perp}$ mildly inflated (few profiles per cell, and profiles in a
+cell span different days within the time bin add temporal spread to the "spatial"
+within-cell term). At $0$–$2000$ m the Argo within-cell fraction is visibly
+inflated relative to truth — the variable profile-depth truncation flagged above,
+not a property of the field.
+
+## Realized bias and the design-based cap
+
+The naive profile average $\hat\mu_\pi = \tfrac1N\sum_i y_i$ is the $\pi$-mean;
+its gap from the GLORYS $\nu$-mean $\mu$ is the *realized* discrepancy, while
+the cell-averaged estimator $\hat\mu_{\mathrm{grid}} = \tfrac1K\sum_j\bar y_j$
+partially corrects the between-cell oversampling. The design-based **between-cell
+cap** $\sigma_{w^\star}\sigma_{Y^\star}$ (observed $\sigma_{w^\star}$, truth
+$\sigma_{Y^\star}$) bounds the *preferential-sampling* part of the bias.
+
+```{python}
+#| label: argo-bias
+#| echo: false
+#| output: asis
+rows = []
+for d in DEPTHS:
+    for kt in (1, 3, 6, 12):
+        s = R.argo_bias_summary(argo_df, full_df, d, kt)
+        rows.append({"depth": R.DEPTH_LABEL[d], "K_t": kt,
+                     "sigma_w*": round(s["sigma_wstar"], 3),
+                     "sigma_Y* (GJ)": round(s["sigma_Ystar_glorys"], 2),
+                     "cap sigma_w*sigma_Y* (GJ)": round(s["bound_between"], 2),
+                     "|bias| naive (GJ)": round(abs(s["bias_naive"]), 2),
+                     "|bias| grid (GJ)": round(abs(s["bias_grid"]), 2)})
+_emit(pd.DataFrame(rows).to_html(index=False, border=0))
+
+s7 = R.argo_bias_summary(argo_df, full_df, "700", 1)
+_emit(f"At $0$–$700$ m the naive profile mean underestimates the GLORYS truth by "
+      f"**{abs(s7['bias_naive']):.2f} GJ m$^{{-2}}$** "
+      f"(${100*s7['bias_naive']/s7['mu_truth']:+.1f}\\%$ of "
+      f"$\\mu={s7['mu_truth']:.1f}$), and cell-averaging trims this to "
+      f"{abs(s7['bias_grid']):.2f}. Even the tightest, pure-spatial cap "
+      f"($K_t=1$) $\\sigma_{{w^\\star}}\\sigma_{{Y^\\star}}={s7['bound_between']:.2f}$ "
+      f"GJ m$^{{-2}}$ contains it — whereas at $0$–$2000$ m the truncation-inflated "
+      f"gap exceeds that cap, confirming it is not sampling alone.")
+```
+
+::: {.callout-note appearance="simple"}
+**What this gap does and does not isolate.** The realized naive/grid discrepancy
+conflates preferential sampling with any systematic GLORYS-vs-observation offset
+(reanalysis mean-state bias, representativeness) — and at $0$–$2000$ m with the
+depth truncation above, which is why the $2000$ m $|$bias$|$ can exceed the
+preferential-sampling cap. Only the design-based product
+$\sigma_{w^\star}\sigma_{Y^\star}$ (plus the within-cell term) isolates the
+sampling contribution as a worst case. The clean sampling-only bias — GLORYS
+co-located at the float positions, same field on both sides — is the subject of
+the main sampling-bias experiment; this section is an independent check with the
+real profiles that the sampling is preferential ($\sigma_{w^\star}>0$) and that
+the field structure the bound relies on is recoverable from the observed sample.
+:::

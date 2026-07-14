@@ -217,6 +217,122 @@ spatial_leakage <- function(dt, box, part_grid) {
      part_grid$dx_km, part_grid$dy_km, part_grid$cell_km))
 }
 
+## ============ observed Argo profiles vs GLORYS truth ================
+## The Argo profiles realize the sampling measure pi (methodology sec. 2):
+## occupancy n_j estimates pi_j = n_j/N, hence the between-cell sampling
+## weights wbar_j = K*pi_j and their dispersion sigma_{w^star}. The naive
+## profile average is the pi-mean mu_w; its departure from the GLORYS
+## nu-mean mu is the realized preferential-sampling bias B_samp. Comparing
+## the Argo within/between OHC factors (estimated from the sparse, clustered
+## profiles) to the GLORYS ones (the dense-field truth) shows how far the
+## observed sample distorts the field's variance structure.
+
+read_argo_ohc <- function(path, cols) {
+  dt <- data.table::fread(path, select = c("lon", "lat", "date", cols))
+  dt[, date := as.Date(substr(date, 1, 10))]
+  as.data.frame(dt)
+}
+
+## OHC in argo_ohc.csv is J m^-2; GLORYS tables are GJ m^-2, so rescale.
+load_argo_ohc <- function(path = file.path("data", "argo_ohc.csv"),
+                          depth = c("700", "2000")) {
+  depth <- match.arg(depth)
+  dt <- read_argo_ohc(path, paste0("ohc_", depth))
+  dt$ohc <- dt[[paste0("ohc_", depth)]] / 1e9
+  dt[!is.na(dt$ohc), c("lon", "lat", "date", "ohc")]
+}
+
+## Equal-measure lon x sin(lat) x time cell index (1..K_lon*K_lat*K_t) for a
+## set of points, shared by the Argo estimators below.
+cell_index <- function(dt, box, period, K_lon, K_lat, Kt) {
+  t     <- as.numeric(dt$date - period[1]); tmax <- as.numeric(period[2] - period[1])
+  e_lon <- seq(box$lon[1], box$lon[2], length.out = K_lon + 1)
+  e_lat <- seq(sin(box$lat[1]*pi/180), sin(box$lat[2]*pi/180), length.out = K_lat + 1)
+  e_t   <- seq(0, tmax, length.out = Kt + 1)
+  bl <- findInterval(dt$lon, e_lon, rightmost.closed = TRUE, all.inside = TRUE)
+  bb <- findInterval(sin(dt$lat*pi/180), e_lat, rightmost.closed = TRUE, all.inside = TRUE)
+  bt <- findInterval(t, e_t, rightmost.closed = TRUE, all.inside = TRUE)
+  (bt - 1L) * (K_lon * K_lat) + (bb - 1L) * K_lon + bl
+}
+
+## Argo within/between-cell OHC factors on the operating partition, per K_t.
+## Profiles ARE the sampling measure, so cell means/variances are unweighted
+## over profiles (no cos(lat): the sample already carries the sampling
+## intensity). Field factors use equal cell weight 1/K_occ over occupied
+## cells (all K occupied at the operating grid). sigma_{w^star} is taken over
+## ALL K nominal cells, empty cells contributing (0-1)^2. mu_naive is the
+## pi-mean (simple profile average); mu_grid the equal-measure cell-averaged
+## estimator; both are compared to the GLORYS nu-mean mu_truth.
+argo_leakage <- function(argo, box, period, K_lon, K_lat, Kt_grid, mu_truth) {
+  y <- argo$ohc; N <- length(y); mu_naive <- mean(y)
+  do.call(rbind, lapply(Kt_grid, function(Kt) {
+    Kall <- K_lon * K_lat * Kt
+    cell <- cell_index(argo, box, period, K_lon, K_lat, Kt)
+    n_j    <- as.numeric(table(cell))
+    ybar_j <- tapply(y, cell, mean)
+    var_j  <- tapply(y, cell, function(v) mean((v - mean(v))^2))
+    Kocc   <- length(ybar_j)
+    muhat  <- mean(ybar_j)
+    sigmaYstar2 <- mean((ybar_j - muhat)^2)
+    sigmaYperp2 <- mean(var_j)
+    sigma_wstar2 <- (sum((Kall * n_j / N - 1)^2) + (Kall - Kocc)) / Kall
+    data.frame(K_t = Kt, K = Kall, n_prof = N, n_occ = Kocc,
+               sigmaYstar2 = sigmaYstar2, sigmaYperp2 = sigmaYperp2,
+               sigmaY2 = sigmaYstar2 + sigmaYperp2,
+               resid = sqrt(sigmaYperp2 / (sigmaYstar2 + sigmaYperp2)),
+               L = sigmaYperp2 / (sigmaYstar2 + sigmaYperp2),
+               sigma_wstar = sqrt(sigma_wstar2),
+               mu_truth = mu_truth, mu_naive = mu_naive, mu_grid = muhat,
+               bias_naive = mu_naive - mu_truth, bias_grid = muhat - mu_truth)
+  }))
+}
+
+## Per-cell Argo occupancy on the operating spatial grid (pooled over time):
+## profile count n_j, sampling weight wbar_j = K*pi_j, and the sample cell
+## mean/SD -- the concrete preferential-sampling map.
+argo_occupancy <- function(argo, box, K_lon, K_lat) {
+  e_lon <- seq(box$lon[1], box$lon[2], length.out = K_lon + 1)
+  e_lat <- seq(sin(box$lat[1]*pi/180), sin(box$lat[2]*pi/180), length.out = K_lat + 1)
+  bl <- findInterval(argo$lon, e_lon, rightmost.closed = TRUE, all.inside = TRUE)
+  bb <- findInterval(sin(argo$lat*pi/180), e_lat, rightmost.closed = TRUE, all.inside = TRUE)
+  clon <- (e_lon[-1] + e_lon[-(K_lon+1)]) / 2
+  clat <- asin((e_lat[-1] + e_lat[-(K_lat+1)]) / 2) * 180 / pi
+  K <- K_lon * K_lat; N <- nrow(argo)
+  grid <- expand.grid(bl = seq_len(K_lon), bb = seq_len(K_lat))
+  cell <- (grid$bb - 1L) * K_lon + grid$bl
+  key  <- (bb - 1L) * K_lon + bl
+  n_j  <- as.integer(table(factor(key, levels = cell)))
+  ybar <- tapply(argo$ohc, factor(key, levels = cell), mean)
+  ysd  <- tapply(argo$ohc, factor(key, levels = cell), sd)
+  data.frame(cell_lon = clon[grid$bl], cell_lat = clat[grid$bb],
+             n = n_j, wbar = K * n_j / N,
+             ohc_mean = as.numeric(ybar), ohc_sd = as.numeric(ysd))
+}
+
+## Spatial sampling floor: as cells shrink, how many can the ~N profiles keep
+## populated (>=2, needed for a within-cell variance)? Pooled over time.
+argo_occupancy_sweep <- function(argo, box, part_grid) {
+  N <- nrow(argo)
+  do.call(rbind, Map(function(Kl, Kb, tkm, ckm) {
+    e_lon <- seq(box$lon[1], box$lon[2], length.out = Kl + 1)
+    e_lat <- seq(sin(box$lat[1]*pi/180), sin(box$lat[2]*pi/180), length.out = Kb + 1)
+    bl <- findInterval(argo$lon, e_lon, rightmost.closed = TRUE, all.inside = TRUE)
+    bb <- findInterval(sin(argo$lat*pi/180), e_lat, rightmost.closed = TRUE, all.inside = TRUE)
+    n_j <- as.numeric(table((bb - 1L) * Kl + bl))
+    K <- Kl * Kb
+    data.frame(target_km = tkm, K_lon = Kl, K_lat = Kb, n_cells = K, cell_km = ckm,
+               n_prof = N, occ = length(n_j), occ_ge2 = sum(n_j >= 2),
+               frac_ge2 = sum(n_j >= 2) / K, min_n = min(n_j), median_n = median(n_j),
+               expected_per_cell = N / K)
+  }, part_grid$K_lon, part_grid$K_lat, part_grid$target_km, part_grid$cell_km))
+}
+
+## GLORYS nu-mean (cos(lat)-and-time-uniform regional-mean OHC) over box+period.
+glorys_truth_mean <- function(glorys, box, period) {
+  d <- filter_domain(glorys, box, period)
+  w <- area_weight(d$lat); sum(w * d$ohc) / sum(w)
+}
+
 ## ------------------------- driver -----------------------------------
 run_leakage_analysis <- function(glorys, config = default_config()) {
   box <- config$box
@@ -289,11 +405,46 @@ write_leakage_tables <- function(out_time, out_full, out_spatial,
   data.table::fwrite(do.call(rbind, ss), out_spatial)
 }
 
+## Observed-Argo-vs-GLORYS comparison tables for resolution.qmd: the per-K_t
+## Argo within/between factors + realized bias, the operating-grid occupancy
+## map, and the spatial sampling-floor sweep. Reads argo_ohc.csv and the
+## GLORYS field once, per depth. Consumed by code/resolution.py.
+write_argo_tables <- function(out_argo, out_occ, out_sweep,
+                              depths = c("700", "2000"),
+                              config = default_config(),
+                              glorys_dir = file.path("data", "glorys_ohc"),
+                              argo_path = file.path("data", "argo_ohc.csv")) {
+  box <- config$box; yrs <- as.integer(format(config$analysis, "%Y"))
+  gbase <- read_glorys_ohc(glorys_dir, yrs[1]:yrs[2], paste0("ohc_", depths))
+  aa <- list(); oo <- list(); ss <- list()
+  for (d in depths) {
+    g <- gbase; g$ohc <- g[[paste0("ohc_", d)]]; g <- g[!is.na(g$ohc), , drop = FALSE]
+    mu_truth <- glorys_truth_mean(g, box, config$analysis)
+    argo <- filter_domain(load_argo_ohc(argo_path, d), box, config$analysis)
+    a <- argo_leakage(argo, box, config$analysis, config$K_lon, config$K_lat,
+                      config$Kt_grid, mu_truth);                a$depth <- d
+    o <- argo_occupancy(argo, box, config$K_lon, config$K_lat);  o$depth <- d
+    s <- argo_occupancy_sweep(argo, box, spatial_part_grid(box, config$spatial_sizes_km))
+    s$depth <- d
+    aa[[d]] <- a; oo[[d]] <- o; ss[[d]] <- s
+  }
+  dir.create(dirname(out_argo), showWarnings = FALSE, recursive = TRUE)
+  data.table::fwrite(do.call(rbind, aa), out_argo)
+  data.table::fwrite(do.call(rbind, oo), out_occ)
+  data.table::fwrite(do.call(rbind, ss), out_sweep)
+}
+
 ## CLI: Rscript code/leakage_curve.R <out_time> <out_full> <out_spatial> [depths]
+##   or  Rscript code/leakage_curve.R argo <out_argo> <out_occ> <out_sweep> [depths]
 ## depths is a comma-separated subset of {700,2000} (default both). Skips the
 ## interactive self-test / RUN_GLORYS blocks below.
 LEAKAGE_CLI_ARGS <- commandArgs(trailingOnly = TRUE)
-if (length(LEAKAGE_CLI_ARGS) >= 3) {
+if (length(LEAKAGE_CLI_ARGS) >= 4 && LEAKAGE_CLI_ARGS[1] == "argo") {
+  depths <- if (length(LEAKAGE_CLI_ARGS) >= 5)
+    strsplit(LEAKAGE_CLI_ARGS[5], ",")[[1]] else c("700", "2000")
+  write_argo_tables(LEAKAGE_CLI_ARGS[2], LEAKAGE_CLI_ARGS[3],
+                    LEAKAGE_CLI_ARGS[4], depths)
+} else if (length(LEAKAGE_CLI_ARGS) >= 3) {
   depths <- if (length(LEAKAGE_CLI_ARGS) >= 4)
     strsplit(LEAKAGE_CLI_ARGS[4], ",")[[1]] else c("700", "2000")
   write_leakage_tables(LEAKAGE_CLI_ARGS[1], LEAKAGE_CLI_ARGS[2],

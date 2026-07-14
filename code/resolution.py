@@ -54,6 +54,13 @@ def run_variogram(out_ranges, out_curves, out_acf, depths=("700", "2000")):
     _run(VARIOGRAM_SCRIPT, (out_ranges, out_curves, out_acf), depths)
 
 
+def run_argo_comparison(out_argo, out_occ, out_sweep, depths=("700", "2000")):
+    cmd = ["Rscript", os.path.abspath(LEAKAGE_SCRIPT), "argo"] + \
+          [os.path.abspath(p) for p in (out_argo, out_occ, out_sweep)] + \
+          [",".join(depths)]
+    subprocess.run(cmd, check=True, cwd=REPO_ROOT)
+
+
 def load_tables(*paths):
     for p in paths:
         df = pd.read_csv(p)
@@ -167,6 +174,99 @@ def plot_temporal_acf(acf_df, depths, figsize=(6.8, 4.4)):
     ax.legend(frameon=False, fontsize=8)
     fig.tight_layout()
     return fig
+
+
+# ---- observed Argo vs GLORYS truth (preferential sampling) ---------------
+def plot_argo_occupancy(occ_df, depth, figsize=(7.4, 4.4)):
+    """Operating-grid map of Argo sampling weight wbar_j = K*pi_j (n_j profiles)."""
+    import matplotlib.pyplot as plt
+
+    o = occ_df[occ_df["depth"] == str(depth)]
+    lons = np.sort(o["cell_lon"].unique()); lats = np.sort(o["cell_lat"].unique())
+    W = np.full((len(lats), len(lons)), np.nan)
+    for _, r in o.iterrows():
+        W[np.where(lats == r["cell_lat"])[0][0],
+          np.where(lons == r["cell_lon"])[0][0]] = r["wbar"]
+    fig, ax = plt.subplots(figsize=figsize)
+    vmax = float(np.nanmax(np.abs(W - 1))) + 1
+    im = ax.imshow(W, origin="lower", cmap="RdBu_r", vmin=2 - vmax, vmax=vmax,
+                   extent=[lons.min() - 0.5, lons.max() + 0.5,
+                           lats.min() - 0.4, lats.max() + 0.4], aspect="auto")
+    for _, r in o.iterrows():
+        ax.text(r["cell_lon"], r["cell_lat"], f"{int(r['n'])}",
+                ha="center", va="center", fontsize=8, color="0.1")
+    fig.colorbar(im, ax=ax, label=r"sampling weight $\bar w_j=K\pi_j$")
+    ax.set_xlabel("longitude"); ax.set_ylabel("latitude")
+    ax.set_title(f"Argo profile occupancy on the operating grid  ({DEPTH_LABEL[str(depth)]})\n"
+                 "cell counts $n_j$; $\\bar w_j=1$ is uniform sampling")
+    fig.tight_layout()
+    return fig
+
+
+def plot_within_between_compare(argo_df, full_df, depth, figsize=(11, 4.4)):
+    """Argo-sample vs GLORYS-truth field factors (sqrt, GJ) and L, across K_t."""
+    import matplotlib.pyplot as plt
+
+    a = argo_df[argo_df["depth"] == str(depth)].sort_values("K_t")
+    g = full_df[(full_df["depth"] == str(depth)) & (full_df["field"] == "raw")].sort_values("K_t")
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+    for factor, colr in (("sigmaYstar2", "firebrick"), ("sigmaYperp2", "steelblue")):
+        lab = r"$\sigma_{Y^\star}$" if "star" in factor else r"$\sigma_{Y^\perp}$"
+        ax1.plot(g["K_t"], np.sqrt(g[factor]), "-", color=colr, label=f"{lab} GLORYS")
+        ax1.plot(a["K_t"], np.sqrt(a[factor]), "o--", color=colr, mfc="white",
+                 label=f"{lab} Argo")
+    _log_x(ax1, g["K_t"].unique())
+    ax1.set_xlabel(r"$K_t$"); ax1.set_ylabel(r"field factor (GJ m$^{-2}$)")
+    ax1.set_ylim(0, None); ax1.grid(True, which="both", alpha=0.25)
+    ax1.set_title("Between/within-cell OHC variation")
+    ax1.legend(frameon=False, fontsize=8, ncol=2)
+
+    ax2.plot(g["K_t"], g["L"], "-", color="0.3", label="GLORYS truth")
+    ax2.plot(a["K_t"], a["L"], "o--", color="darkorange", mfc="white", label="Argo sample")
+    _log_x(ax2, g["K_t"].unique())
+    ax2.set_ylim(0, None); ax2.set_xlabel(r"$K_t$")
+    ax2.set_ylabel(r"$\sigma_{Y^\perp}^2/\sigma_Y^2$")
+    ax2.grid(True, which="both", alpha=0.25)
+    ax2.set_title("Within-cell variance fraction")
+    ax2.legend(frameon=False)
+    fig.suptitle(f"Observed Argo vs GLORYS truth  ({DEPTH_LABEL[str(depth)]})")
+    fig.tight_layout()
+    return fig
+
+
+def plot_argo_sweep(sweep_df, depth, figsize=(7, 4.6)):
+    """Spatial sampling floor: fraction of cells with >=2 profiles vs cell size."""
+    import matplotlib.pyplot as plt
+
+    s = sweep_df[sweep_df["depth"] == str(depth)].sort_values("cell_km")
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.plot(s["cell_km"], s["frac_ge2"], "o-", color="seagreen")
+    ax.axvline(SAMPLING_SCALE_KM, ls="--", color="0.4", lw=1,
+               label=rf"float floor $s_F\approx{SAMPLING_SCALE_KM:.0f}$ km")
+    ax.set_xscale("log")
+    ax.set_xlabel(r"cell size $\sqrt{\Delta x\,\Delta y}$ (km)")
+    ax.set_ylabel(r"fraction of cells with $\geq 2$ profiles")
+    ax.set_ylim(0, 1.03)
+    ax.set_title("Argo spatial sampling floor (pooled over 2020-2022)")
+    ax.grid(True, which="both", alpha=0.25)
+    ax.legend(frameon=False)
+    fig.tight_layout()
+    return fig
+
+
+def argo_bias_summary(argo_df, full_df, depth, K_t):
+    """Scalar comparison at one (depth, K_t): realized bias, sigma_w*, between-cell bound."""
+    a = argo_df[(argo_df["depth"] == str(depth)) & (argo_df["K_t"] == K_t)].iloc[0]
+    g = full_df[(full_df["depth"] == str(depth)) & (full_df["field"] == "raw")
+                & (full_df["K_t"] == K_t)].iloc[0]
+    sig_Ystar = float(np.sqrt(g["sigmaYstar2"]))
+    return {"mu_truth": float(a["mu_truth"]), "mu_naive": float(a["mu_naive"]),
+            "mu_grid": float(a["mu_grid"]), "bias_naive": float(a["bias_naive"]),
+            "bias_grid": float(a["bias_grid"]),
+            "sigma_wstar": float(a["sigma_wstar"]),
+            "sigma_Ystar_glorys": sig_Ystar,
+            "bound_between": float(a["sigma_wstar"]) * sig_Ystar,
+            "L_argo": float(a["L"]), "L_glorys": float(g["L"])}
 
 
 # ---- checks --------------------------------------------------------------
