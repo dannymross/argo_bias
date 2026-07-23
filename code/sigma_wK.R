@@ -456,7 +456,8 @@ if (RUN_SELFTEST) {
 ## =====================================================================
 ## USER PIPELINE (runs only in your environment: needs data.table + data)
 ## =====================================================================
-if (file.exists("data/argo_ohc.csv") && requireNamespace("data.table", quietly = TRUE)) {
+if (RUN_SELFTEST && file.exists("data/argo_ohc.csv") &&
+    requireNamespace("data.table", quietly = TRUE)) {
   library(data.table)
   sec_to_day <- function(d) d / (60 * 60 * 24)
   prep_argo_data <- function(file_path, lat_bounds, lon_bounds, years, dt_range = NULL) {

@@ -439,16 +439,20 @@ write_argo_tables <- function(out_argo, out_occ, out_sweep,
 ## depths is a comma-separated subset of {700,2000} (default both). Skips the
 ## interactive self-test / RUN_GLORYS blocks below.
 LEAKAGE_CLI_ARGS <- commandArgs(trailingOnly = TRUE)
-if (length(LEAKAGE_CLI_ARGS) >= 4 && LEAKAGE_CLI_ARGS[1] == "argo") {
-  depths <- if (length(LEAKAGE_CLI_ARGS) >= 5)
-    strsplit(LEAKAGE_CLI_ARGS[5], ",")[[1]] else c("700", "2000")
-  write_argo_tables(LEAKAGE_CLI_ARGS[2], LEAKAGE_CLI_ARGS[3],
-                    LEAKAGE_CLI_ARGS[4], depths)
-} else if (length(LEAKAGE_CLI_ARGS) >= 3) {
-  depths <- if (length(LEAKAGE_CLI_ARGS) >= 4)
-    strsplit(LEAKAGE_CLI_ARGS[4], ",")[[1]] else c("700", "2000")
-  write_leakage_tables(LEAKAGE_CLI_ARGS[1], LEAKAGE_CLI_ARGS[2],
-                       LEAKAGE_CLI_ARGS[3], depths)
+## SOURCED_AS_LIB lets another script (e.g. field_diagnostics.R) reuse these
+## functions without this CLI dispatch firing on its own trailing args.
+if (!exists("SOURCED_AS_LIB")) {
+  if (length(LEAKAGE_CLI_ARGS) >= 4 && LEAKAGE_CLI_ARGS[1] == "argo") {
+    depths <- if (length(LEAKAGE_CLI_ARGS) >= 5)
+      strsplit(LEAKAGE_CLI_ARGS[5], ",")[[1]] else c("700", "2000")
+    write_argo_tables(LEAKAGE_CLI_ARGS[2], LEAKAGE_CLI_ARGS[3],
+                      LEAKAGE_CLI_ARGS[4], depths)
+  } else if (length(LEAKAGE_CLI_ARGS) >= 3) {
+    depths <- if (length(LEAKAGE_CLI_ARGS) >= 4)
+      strsplit(LEAKAGE_CLI_ARGS[4], ",")[[1]] else c("700", "2000")
+    write_leakage_tables(LEAKAGE_CLI_ARGS[1], LEAKAGE_CLI_ARGS[2],
+                         LEAKAGE_CLI_ARGS[3], depths)
+  }
 }
 
 ## ===================== REAL GLORYS DRIVER ===========================
