@@ -1,0 +1,367 @@
+\section{A kernel-discrepancy bound}
+\label{sec:rkhs}
+
+The scale-decomposed bound of Proposition~\ref{prop:scale-decomp} pairs the
+estimable between-cell factors with a residual
+$\sigma_{w^{\perp}}\sigma_{Y^{\perp}}$ that resists estimation from two
+directions at once. The weight factor $\sigma_{w^{\perp}}$ is the sub-cell
+sampling variability, which cannot be recovered from a sparse point pattern
+without a within-cell intensity model (\S\ref{sec:sigmawK}); the field factor
+$\sigma_{Y^{\perp}}$ is the sub-cell OHC variability, which is large wherever a
+front crosses a cell and cannot be driven to zero by refinement without
+emptying the cells of profiles. In the case-study region the front moreover
+\emph{migrates} over the analysis window, so no \emph{fixed} partition---equal
+measure or field-adaptive---keeps $\sigma_{Y^{\perp}}$ uniformly small while
+leaving the cells coarse enough to estimate $\sigma_{w^{\star}}$. The residual
+is thus an unestimable factor times an irreducible one.
+
+The obstruction is a property of the geometry, not of the bias. Both factors
+arise from bounding the covariance identity
+$B_{\mathrm{samp}}(y)=\Cov_\nu(w,y)$ (Proposition~\ref{prop:cov-identity}) by
+Cauchy--Schwarz in $L^2(\nu)$, and from the partition used to make that bound
+computable. This section bounds the same covariance by Cauchy--Schwarz in a
+\emph{reproducing-kernel Hilbert space}. No partition is introduced, so no
+$\sigma_{w^{\perp}}$ appears; the sampling factor becomes a single kernel
+discrepancy of the observed profile locations against the reference measure,
+estimated directly and stably from those locations at every scale at once. The
+price is a smoothness assumption on the field, carried by the choice of kernel,
+in place of the distribution-free finite-variance assumption of
+Proposition~\ref{prop:l2-bound}.
+
+\subsection{A smoothness class for the field}
+\label{sec:rkhs-class}
+
+\begin{assumption}[Field smoothness]
+\label{ass:rkhs}
+Let $k:\X\times\X\to\R$ be a symmetric, positive-definite kernel that is
+$\F$-measurable and bounded, $\sup_{x\in\X}k(x,x)=:\kappa_k<\infty$, and let
+$\Hk$ be its reproducing-kernel Hilbert space, with inner product
+$\inner{\cdot}{\cdot}$ and norm $\normH{\cdot}$
+\citep{berlinet2004}. The realized field lies in $\Hk$ with bounded norm,
+\[
+  y\in\Hk,\qquad \normH{y}\le R ,
+\]
+for a radius $R>0$.
+\end{assumption}
+
+Boundedness gives the continuous embedding $\Hk\hookrightarrow L^2(\nu)$
+(indeed $\|f\|_{L^2(\nu)}\le\sqrt{\kappa_k}\,\normH{f}$, as $\nu$ is a
+probability measure), so a field in $\Hk$ is in particular an admissible field
+in the sense of Definition~\ref{def:Y}, and the estimand $\mu$ and the design
+mean $\mu_w$ are unchanged. Assumption~\ref{ass:rkhs} restricts the field to be
+smooth at the scale encoded by $k$; unlike the finite-variance hypothesis of
+Proposition~\ref{prop:l2-bound} this is a genuine modelling assumption, and its
+conservative, product-free calibration is the subject of
+\S\ref{sec:rkhs-radius}.
+
+\subsection{The sampling-bias representer}
+\label{sec:rkhs-representer}
+
+\begin{definition}[Kernel mean embeddings]
+\label{def:embedding}
+For a probability measure $\rho$ on $(\X,\F)$ the \emph{kernel mean embedding}
+is the Bochner integral
+\[
+  \xi_\rho \;:=\; \int_\X k(\cdot,x)\dd\rho(x)\ \in\ \Hk ,
+\]
+well defined under Assumption~\ref{ass:rkhs} because
+$\int_\X\normH{k(\cdot,x)}\dd\rho(x)=\int_\X\sqrt{k(x,x)}\dd\rho\le\sqrt{\kappa_k}<\infty$
+\citep{smola2007,muandet2017}. Write $\xipi$ and $\xinu$ for the embeddings of
+the sampling and reference measures, and
+\[
+  \psi \;:=\; \xipi-\xinu
+\]
+for the \emph{sampling-bias representer}.
+\end{definition}
+
+\begin{proposition}[RKHS representation of the sampling bias]
+\label{prop:representer}
+Under Assumption~\ref{ass:rkhs} and conditional on $\{Y=y\}$ and the design,
+\[
+  B_{\mathrm{samp}}(y)\;=\;\inner{y}{\psi},
+  \qquad
+  \normH{\psi}\;=\;\MMD_k(\pi,\nu),
+\]
+where $\MMD_k(\pi,\nu):=\normH{\xipi-\xinu}$ is the maximum mean discrepancy
+between $\pi$ and $\nu$.
+\end{proposition}
+\deferproof{representer}{%
+\begin{proof}[Proof of Proposition~\ref{prop:representer}]
+By Definitions~\ref{def:mu} and~\ref{def:mu-w},
+$B_{\mathrm{samp}}(y)=\mu_w-\mu=\int_\X y\dd\pi-\int_\X y\dd\nu$. The
+reproducing property $y(x)=\inner{y}{k(\cdot,x)}$ holds for every $x$, and the
+map $x\mapsto\inner{y}{k(\cdot,x)}$ is $\rho$-integrable for $\rho\in\{\pi,\nu\}$
+since $|\inner{y}{k(\cdot,x)}|\le\normH{y}\sqrt{k(x,x)}\le R\sqrt{\kappa_k}$.
+Interchanging the inner product with the Bochner integral
+(justified by the same bound),
+\[
+  \int_\X y\dd\rho=\int_\X\inner{y}{k(\cdot,x)}\dd\rho(x)
+  =\Big\langle y,\ \int_\X k(\cdot,x)\dd\rho(x)\Big\rangle_{\Hk}
+  =\inner{y}{\xi_\rho}.
+\]
+Subtracting the two cases gives
+$B_{\mathrm{samp}}(y)=\inner{y}{\xipi-\xinu}=\inner{y}{\psi}$. The identity
+$\normH{\psi}=\MMD_k(\pi,\nu)$ is Definition~\ref{def:embedding}.
+\end{proof}%
+}
+
+\subsection{The worst-case design-bias bound}
+\label{sec:rkhs-bound}
+
+\begin{theorem}[Kernel-discrepancy bound]
+\label{thm:rkhs}
+Under Assumption~\ref{ass:rkhs} and conditional on the design, the
+preferential-sampling bias satisfies
+\[
+  \big|B_{\mathrm{samp}}(y)\big|\;\le\; R\,\normH{\psi}\;=\;R\,\MMD_k(\pi,\nu),
+\]
+and the bound is sharp over the smoothness ball:
+\[
+  \sup_{\normH{y}\le R}\big|B_{\mathrm{samp}}(y)\big|\;=\;R\,\normH{\psi},
+\]
+attained, when $\psi\ne0$, at the worst-case field
+$y^{\star}=R\,\psi/\normH{\psi}$.
+\end{theorem}
+\deferproof{rkhs}{%
+\begin{proof}[Proof of Theorem~\ref{thm:rkhs}]
+By Proposition~\ref{prop:representer} and Cauchy--Schwarz in $\Hk$,
+$|B_{\mathrm{samp}}(y)|=|\inner{y}{\psi}|\le\normH{y}\normH{\psi}\le R\normH{\psi}$.
+Equality in Cauchy--Schwarz holds iff $y\parallel\psi$; the constraint
+$\normH{y}\le R$ is then binding at $y^{\star}=R\psi/\normH{\psi}$, for which
+$\inner{y^{\star}}{\psi}=R\normH{\psi}$, giving the supremum.
+\end{proof}%
+}
+
+\begin{remark}[Non-preferential sampling]
+\label{rem:rkhs-zero}
+The bound vanishes exactly when $\xipi=\xinu$, i.e. $\normH{\psi}=0$. If $k$ is
+characteristic \citep{muandet2017} this occurs iff $\pi=\nu$, recovering the
+no-bias case of Remark~\ref{rem:zero-bias}: the kernel discrepancy is zero
+precisely for non-preferential sampling.
+\end{remark}
+
+\begin{remark}[Relation to the distribution-free bound]
+\label{rem:rkhs-vs-l2}
+Theorem~\ref{thm:rkhs} and Proposition~\ref{prop:l2-bound} are Cauchy--Schwarz
+applied to the \emph{same} covariance $B_{\mathrm{samp}}=\Cov_\nu(w,y)$ in two
+inner-product spaces. In $L^2(\nu)$ the worst-case field is $y-\mu\propto w-1$
+and the cap is $\sigma_w\sigma_Y$, distribution-free but ranging over all of
+$L^2(\nu)$; in $\Hk$ the worst-case field is $y^{\star}\propto\psi$ and the cap
+is $R\normH{\psi}$, ranging only over the smoothness ball. When
+Assumption~\ref{ass:rkhs} holds both are valid, so
+\[
+  \big|B_{\mathrm{samp}}\big|\ \le\ \min\big\{\sigma_w\sigma_Y,\ R\normH{\psi}\big\},
+\]
+and the gap between them is what the smoothness assumption buys. Decisively, the
+right-hand cap carries \emph{no partition}: the residual
+$\sigma_{w^{\perp}}\sigma_{Y^{\perp}}$ of Proposition~\ref{prop:scale-decomp}
+has no analogue here, so the obstruction of \S\ref{sec:sigmawK} does not arise.
+\end{remark}
+
+\subsection{Estimating the discrepancy from profile locations}
+\label{sec:rkhs-estimation}
+
+The cap of Theorem~\ref{thm:rkhs} factors into a field radius $R$
+(\S\ref{sec:rkhs-radius}) and a design factor $\normH{\psi}$ that depends only
+on the sampling measure and the kernel. Unlike $\sigma_{w^{\perp}}$, this factor
+is estimable directly from the observed profile locations, with no intensity
+model and no bandwidth.
+
+\begin{proposition}[Closed form of the discrepancy]
+\label{prop:mmd-closed}
+Under Assumption~\ref{ass:rkhs},
+\begin{align}
+  \normH{\psi}^2
+  &=\E_{\pi\otimes\pi}\big[k(Z,Z')\big]
+    -2\,\E_{\pi\otimes\nu}\big[k(Z,x)\big]
+    +\E_{\nu\otimes\nu}\big[k(x,x')\big]
+  \label{eq:mmd-uv}\\
+  &=\iint_{\X\times\X} k(x,x')\,\big(w(x)-1\big)\big(w(x')-1\big)\dd\nu(x)\dd\nu(x'),
+  \label{eq:mmd-w}
+\end{align}
+where in \eqref{eq:mmd-uv} $Z,Z'\sim\pi$ and $x,x'\sim\nu$ are independent.
+\end{proposition}
+\deferproof{mmd-closed}{%
+\begin{proof}[Proof of Proposition~\ref{prop:mmd-closed}]
+Expanding the norm and using
+$\inner{\xi_\rho}{\xi_{\rho'}}=\iint k(x,x')\dd\rho(x)\dd\rho'(x')$ (two
+applications of the reproducing property, as in
+Proposition~\ref{prop:representer}),
+\[
+  \normH{\psi}^2=\inner{\xipi-\xinu}{\xipi-\xinu}
+  =\inner{\xipi}{\xipi}-2\inner{\xipi}{\xinu}+\inner{\xinu}{\xinu},
+\]
+which is \eqref{eq:mmd-uv}. For \eqref{eq:mmd-w}, the change of measure
+$\dd\pi=w\dd\nu$ (Definition~\ref{def:w}) turns each expectation into an
+integral against $\nu$: $\E_{\pi\otimes\pi}[k]=\iint k\,w(x)w(x')\dd\nu\dd\nu$,
+$\E_{\pi\otimes\nu}[k]=\iint k\,w(x)\dd\nu\dd\nu$, and
+$\E_{\nu\otimes\nu}[k]=\iint k\dd\nu\dd\nu$; combining and factoring gives the
+integrand $k(x,x')(w(x)-1)(w(x')-1)$.
+\end{proof}%
+}
+
+The reference terms are known functions of $\nu$ and $k$ alone. Writing
+\[
+  \bar k(z):=\int_\X k(z,x)\dd\nu(x)=\inner{k(\cdot,z)}{\xinu},
+  \qquad
+  \bar{\bar k}:=\iint_{\X\times\X} k\dd\nu\dd\nu=\normH{\xinu}^2 ,
+\]
+both are available in closed form, or by Monte Carlo over $\nu$, without any
+field product: in the equal-measure coordinates
+$(\lambda,u,t)=(\text{lon},\sin\phi,\text{time})$, in which $\nu$ is uniform
+because the surface measure is uniform in $(\lambda,u)$ (Remark~\ref{rem:buildK}),
+a stationary or separable $k$ makes $\bar k$ a
+product of one-dimensional integrals, and $\bar{\bar k}$ a constant. Only the
+first term of \eqref{eq:mmd-uv} involves the unknown $\pi$, and it is estimated
+from the profiles.
+
+\begin{definition}[Between-float discrepancy estimator]
+\label{def:mmd-hat}
+With the profiles indexed by float as in Lemma~\ref{lem:bf-unbiased}, let
+$\mathcal B$ be the ordered pairs of profiles from \emph{distinct} floats and
+$P_{\mathrm{bf}}=|\mathcal B|=N(N-1)-\sum_\ell d_\ell(d_\ell-1)$. The
+\emph{between-float} estimator of \eqref{eq:mmd-uv} is
+\begin{equation}
+  \normpsihatsq
+  \;=\;\frac{1}{P_{\mathrm{bf}}}\sum_{(i,i')\in\mathcal B}k(Z_i,Z_{i'})
+      \;-\;\frac{2}{N}\sum_{i=1}^{N}\bar k(Z_i)
+      \;+\;\bar{\bar k}.
+  \label{eq:mmd-hat}
+\end{equation}
+\end{definition}
+
+\begin{lemma}[Unbiasedness]
+\label{lem:mmd-unbiased}
+If profiles from distinct floats are independent draws with marginal $\pi$
+(hypotheses \textup{(A1)}, \textup{(A2)} of Lemma~\ref{lem:bf-unbiased}), then
+$\E\big[\normpsihatsq\big]=\normH{\psi}^2$, with no assumption on the joint law
+of a single float's profiles.
+\end{lemma}
+\deferproof{mmd-unbiased}{%
+\begin{proof}[Proof of Lemma~\ref{lem:mmd-unbiased}]
+Each ordered pair in $\mathcal B$ consists of two profiles from distinct floats,
+independent with marginal $\pi$ by (A2), (A1), so
+$\E[k(Z_i,Z_{i'})]=\E_{\pi\otimes\pi}[k]$ for every $(i,i')\in\mathcal B$;
+averaging over the $P_{\mathrm{bf}}$ pairs gives an unbiased estimate of the
+first term of \eqref{eq:mmd-uv}, exactly as in Lemma~\ref{lem:bf-unbiased} with
+$k$ in place of the same-cell indicator. Each $Z_i$ has marginal $\pi$, so
+$\E[\bar k(Z_i)]=\int_\X\bar k\dd\pi=\iint k\dd\pi\dd\nu=\E_{\pi\otimes\nu}[k]$,
+and the second term is unbiased for it. The third term is constant. Summing the
+three matches \eqref{eq:mmd-uv}.
+\end{proof}%
+}
+
+\begin{remark}[The count estimator is the same statistic]
+\label{rem:mmd-reduction}
+Estimator~\eqref{eq:mmd-hat} is the smooth generalization of the count estimator
+\eqref{eq:sigmawK-hat}: take the piecewise-constant kernel
+$k_K(x,x')=K\,\1\{x,x'\text{ lie in a common cell of }\mathcal P_K\}$. Then
+$\bar k_K(z)=K\,\nu(C_{j(z)})=1$ and $\bar{\bar k}_K=K\sum_j\nu(C_j)^2=1$, so
+\eqref{eq:mmd-uv} gives $\normH{\psi}^2=K\sum_j\pi_j^2-2+1=\sigma_{w^{\star}}^2$
+(Lemma~\ref{lem:sigmawcell}), and the all-pairs form of \eqref{eq:mmd-hat}
+reduces to the count statistic $\sigwhatsq$ of \eqref{eq:sigmawK-hat}. The count estimator is
+thus the special case in which the kernel resolves the design only at the cell
+scale; a smooth $k$ resolves it at all scales simultaneously, which is what
+removes the between/within partition split---and with it the unestimable
+$\sigma_{w^{\perp}}$.
+\end{remark}
+
+As with $\sigwhat$, within-float profiles are positively associated (a single
+float's successive cycles are near one another), so the diagonal removed in
+\eqref{eq:mmd-hat} is the trajectory-autocorrelation term of
+Remark~\ref{rem:trajectory}; the between-float construction leaves the estimator
+unbiased under trajectory dependence. Uncertainty is propagated by the same
+delete-one-float jackknife used for $\sigwhat$, and the reported bound uses the
+upper limit of the resulting interval for $\normpsihat$.
+
+\subsection{Any profile-based estimator}
+\label{sec:rkhs-estimators}
+
+Scientists rarely use the naive profile mean; they interpolate the profiles---by
+kriging or objective analysis---and integrate the interpolant. The bound extends
+to any such estimator without modification, because every linear functional of a
+field in $\Hk$ has a representer.
+
+\begin{proposition}[Worst-case error of a linear estimator]
+\label{prop:rkhs-estimator}
+Let $\hat\mu_\omega=\sum_{i=1}^{N}\omega_i\,y(Z_i)$ be any profile-based linear
+estimator with $\sum_i\omega_i=1$. Under Assumption~\ref{ass:rkhs}, conditional
+on the design and the weights,
+\[
+  \hat\mu_\omega-\mu=\inner{y}{\eta_\omega},
+  \qquad
+  \eta_\omega:=\sum_{i=1}^{N}\omega_i\,k(\cdot,Z_i)-\xinu,
+\]
+and $\sup_{\normH{y}\le R}|\hat\mu_\omega-\mu|=R\,\normH{\eta_\omega}$. The
+weights minimizing $\normH{\eta_\omega}$ are the kernel (Bayes--Hermite)
+quadrature weights---equivalently the kriging predictor of $\mu$---and the
+minimum $\normH{\eta_\omega}$ is the associated worst-case quadrature error, or
+power function \citep{ohagan1991,micchelli1977,donoho1994}.
+\end{proposition}
+\deferproof{rkhs-estimator}{%
+\begin{proof}[Proof of Proposition~\ref{prop:rkhs-estimator}]
+By the reproducing property $y(Z_i)=\inner{y}{k(\cdot,Z_i)}$ and
+$\mu=\inner{y}{\xinu}$ (Proposition~\ref{prop:representer}), so
+$\hat\mu_\omega-\mu=\inner{y}{\sum_i\omega_i k(\cdot,Z_i)-\xinu}=\inner{y}{\eta_\omega}$;
+$\sum_i\omega_i=1$ ensures exactness on constants. Cauchy--Schwarz over the ball
+gives the supremum $R\normH{\eta_\omega}$ as in Theorem~\ref{thm:rkhs}.
+Minimizing the quadratic $\normH{\eta_\omega}^2$ in $\omega$ subject to
+$\sum_i\omega_i=1$ is the standard kernel-quadrature/kriging problem, whose
+solution is the stated weights.
+\end{proof}%
+}
+
+Equal weights $\omega_i=1/N$ make $\eta_\omega$ the empirical sampling-bias
+representer $N^{-1}\sum_i k(\cdot,Z_i)-\xinu$, whose squared norm is the
+plug-in of \eqref{eq:mmd-uv}; the design bias of the naive mean is then bounded
+by $R\normH{\psi}$ with $\normH{\psi}$ estimated by \eqref{eq:mmd-hat}
+(Lemma~\ref{lem:mmd-unbiased}). For a reweighting estimator the same $R$
+multiplies the smaller factor $\normH{\eta_\omega}\le\normH{\eta_{1/N}}$: the
+kriging weights minimize the discrepancy, so the estimator practitioners
+actually use makes the worst-case bias no larger than the naive one, and the
+guarantee covers it under the same field assumption.
+
+\subsection{The field radius}
+\label{sec:rkhs-radius}
+
+Only $R=\normH{y}$ is not determined by the profile locations. It is the field's
+complexity relative to the kernel, and it cannot be identified from finitely many
+observations: the minimum-norm interpolant $\hat y$ through the observed OHC has
+$\normH{\hat y}=(\mathbf y^\top K^{-1}\mathbf y)^{1/2}\le\normH{y}$, where
+$K=[k(Z_i,Z_{i'})]$ and $\mathbf y=(y(Z_i))_i$, and being a minimum-norm
+interpolant this is a \emph{lower} bound---the unsafe direction for a cap. We
+therefore treat $R$ as a declared budget and report the guarantee as a curve,
+\[
+  \big|B_{\mathrm{samp}}\big|\;\le\;R\,\normpsihat,
+\]
+together with the \emph{breakdown budget}
+$R^{\star}(\mathcal T):=\mathcal T/\normpsihat$, the largest field complexity for
+which the bias stays below a benchmark $\mathcal T$ (Definition~\ref{def:breakdown}).
+This is the field-side analogue of the residual-budget reporting of
+\S\ref{sec:breakdown}: an interpretable, criticizable statement about how rough
+the OHC field could be, rather than an imported amplitude.
+
+Two calibration choices are made conservatively and without a field product.
+The kernel encodes the smoothness class; its length scale is read from the OHC
+variogram of the \emph{observed} profiles, taken shorter (rougher) than the
+empirical decorrelation length, because a rougher $\Hk$ both weakens the
+validity requirement $y\in\Hk$ and enlarges $\normH{\psi}$---the conservative
+direction for the design factor. A reanalysis or a fitted Gaussian process may
+anchor $R$ in the sensitivity analysis, but as in Remark~\ref{rem:conservative-Y}
+assimilation attenuates amplitude, so such a proxy is a lower anchor and a margin
+is added; it never enters the guarantee.
+
+\begin{remark}[What enters the guarantee]
+\label{rem:rkhs-ledger}
+The bound $R\normpsihat$ uses only the profile locations, through
+$\normpsihat$ of \eqref{eq:mmd-hat}, and the declared field budget $R$. No
+external field amplitude enters; a reanalysis is consulted for the kernel scale
+and as a sensitivity anchor for $R$ only. The standing assumptions are
+$y\in\Hk$ with $\normH{y}\le R$ (Assumption~\ref{ass:rkhs}) and the
+between-float sampling model of Assumption~\ref{ass:sample-pi} for the
+unbiasedness of $\normpsihat$. Where Proposition~\ref{prop:scale-decomp} needed
+a coarse partition to estimate $\sigma_{w^{\star}}$ and a fine one to control
+$\sigma_{Y^{\perp}}$, this bound needs neither: the discrepancy is a single
+functional estimated at all scales at once, so the resolution dilemma---and the
+migrating front that made it acute---does not arise.
+\end{remark}
