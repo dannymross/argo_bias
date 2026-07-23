@@ -221,6 +221,24 @@ The bias of $\hat\mu$ decomposes as
 where $B_{\mathrm{samp}}(y)$ is the \emph{preferential-sampling bias}
 and $B_{\mathrm{pred}}(y)$ is the \emph{prediction bias}. \end{definition}
 
+\begin{remark}[Scope of the guarantee]
+\label{rem:bias-scope}
+Definition~\ref{def:bias} is an algebraic identity, obtained by adding
+and subtracting $\mu_w$, and so holds for every estimator. The bounds of
+this paper apply to $B_{\mathrm{samp}}$ alone, which is a functional of
+the design and the field and contains no estimator; everything specific
+to $\hat\mu$ is absorbed into $B_{\mathrm{pred}}$. Consequently they
+bound the \emph{total} bias of $\hat\mu$ precisely when
+$\E[\hat\mu]=\mu_w$, so that $B_{\mathrm{pred}}$ is centred at zero. This
+holds for the equal-weight sample mean over the observed profiles, and
+for the estimator of Definition~\ref{def:deseason-est} with $\mu_w$
+replaced by \eqref{eq:mu-w-prime}. For an estimator that reweights the
+profiles---a kriging or objective-analysis interpolant, say---
+$B_{\mathrm{pred}}$ is not centred and is not bounded here; the guarantee
+then covers the sampling component only, and the reconstruction error
+remains the responsibility of the interpolation method.
+\end{remark}
+
 The sampling term admits a covariance representation on the population
 space, the starting point for the bound.
 
@@ -1002,22 +1020,36 @@ the substitution.
 
 \begin{proposition}[Float-only field dispersion is contaminated]
 \label{prop:float-contam}
-The empirical dispersion of $Y$ over the float locations estimates
-$\Var_\pi(Y)$, not $\Var_\nu(Y)=\sigma_Y^2$, and
-\[
-  \Var_\pi(Y)-\Var_\nu(Y)=\Cov_\nu\!\big(w,(Y-\mu)^2\big).
-\]
+The dispersion of $Y$ over the float locations estimates a design-measure
+dispersion, not $\Var_\nu(Y)=\sigma_Y^2$. Writing $g:=(Y-\mu)^2$ for the
+squared anomaly about the \emph{target} mean,
+\begin{equation}
+  \E_\pi[g]-\Var_\nu(Y)=\Cov_\nu\!\big(w,g\big).
+  \label{eq:float-contam}
+\end{equation}
 \end{proposition}
 \deferproof{float-contam}{%
 \begin{proof}[Proof of Proposition~\ref{prop:float-contam}]
-The float locations are draws from $\pi$ (Assumption~\ref{ass:sample-pi}),
-so their empirical variance is consistent for $\Var_\pi(Y)$. Using
-$\dd\pi=w\dd\nu$ and $\E_\nu[w]=1$,
-$\Var_\pi(Y)=\int(y-\mu_\pi)^2 w\dd\nu$; expanding and comparing with
-$\int(y-\mu)^2\dd\nu$ gives the stated covariance, the sampling bias of
-the squared-anomaly field.
+The float locations are draws from $\pi$
+(Assumption~\ref{ass:sample-pi}). By the change of measure
+$\dd\pi=w\dd\nu$ (Definition~\ref{def:w}) and $\E_\nu[w]=1$,
+\[
+  \E_\pi[g]=\E_\nu[wg]=\E_\nu[g]+\E_\nu\big[(w-1)g\big]
+  =\Var_\nu(Y)+\Cov_\nu(w,g),
+\]
+using $\E_\nu[g]=\Var_\nu(Y)$ for the middle term and
+$\Cov_\nu(w,g)=\E_\nu[(w-1)(g-\E_\nu g)]=\E_\nu[(w-1)g]$ for the last.
+No centring of the design measure is involved.
 \end{proof}%
 }
+
+Identity \eqref{eq:float-contam} concerns the second moment about the
+target mean $\mu$. The empirical variance of the observed values centres
+instead at their own sample mean, and so estimates $\Var_\pi(Y)$, which
+centres at the design mean $\mu_w$; the two dispersions differ by the
+parallel-axis term $(\mu_w-\mu)^2=B_{\mathrm{samp}}^2$.
+Proposition~\ref{prop:var-contam} records the resulting exact identity,
+and it is that form which is used throughout.
 
 The discrepancy is non-zero for exactly the reason $B_{\mathrm{samp}}$
 is: it is the $w$--$Y$ coupling this paper studies, applied to
@@ -1095,14 +1127,26 @@ Combining the two displays yields the identity.
 \end{proof}%
 }
 
-\begin{remark}[Relation to Proposition~\ref{prop:float-contam}]
+\begin{remark}[Centring, and why the squared bias is retained]
 \label{rem:var-contam-order}
-Proposition~\ref{prop:float-contam} is
-Proposition~\ref{prop:var-contam} with the $-B_{\mathrm{samp}}^2$ term
-dropped. We retain it. It is $O(\sigma_w^2\sigma_Y^2)$---second order in
-the sampling unevenness---and, entering with a negative sign, it
-\emph{widens} the upper envelope derived below, so keeping it is the
-conservative choice rather than a refinement to be discarded.
+Propositions~\ref{prop:float-contam} and~\ref{prop:var-contam} are not
+two forms of one identity, and the difference between them is not a
+truncation: they concern two different dispersions. The first centres the
+squared anomaly at the target mean $\mu$, the second at the design mean
+$\mu_w$, and the two differ by exactly
+$(\mu_w-\mu)^2=B_{\mathrm{samp}}^2$. Writing $\Var_\pi(Y)$ on the left of
+\eqref{eq:float-contam} would therefore be false whenever
+$B_{\mathrm{samp}}\ne0$, which is precisely the case this paper is about.
+
+The distinction is not cosmetic, because the two forms err in opposite
+directions. Since $B_{\mathrm{samp}}^2\ge0$ enters
+Proposition~\ref{prop:var-contam} with a negative sign, it \emph{widens}
+the envelope of Proposition~\ref{prop:sigmaY-envelope}; substituting the
+$\mu$-centred identity in its place would yield
+$\sigma_Y^2\le R+|\Cov_\nu(w,g)|$, a strictly smaller and hence
+anti-conservative bound. The term is $O(\sigma_w^2\sigma_Y^2)$, second
+order in the sampling unevenness, but it is retained because it is
+required for validity and not merely for accuracy.
 \end{remark}
 
 Because $\Cov_\nu(w,g)$ is the covariance of the weight with the field
@@ -1150,16 +1194,46 @@ the cell-scale choice that already controls the mean-bound residual,
 because a field that is nearly constant on a cell has a nearly constant
 square.
 
+\begin{lemma}[Projection contracts fourth moments]
+\label{lem:l4-contraction}
+$\PK$ is the conditional expectation given the $\sigma$-algebra generated
+by $\mathcal{P}_K$, hence a contraction on $L^p(\nu)$ for every
+$p\ge1$. In particular
+\[
+  \E_\nu\big[(y^{\star})^4\big]\;\le\;\E_\nu\big[(y-\mu)^4\big]
+  =\kappa\,\sigma_Y^4,
+  \qquad\text{equivalently}\qquad
+  \big(\kappa^{\star}\big)^{1/4}\sigma_{Y^{\star}}
+  \;\le\;\kappa^{1/4}\sigma_Y ,
+\]
+where $\kappa^{\star}:=\E_\nu[(y^{\star})^4]/\sigma_{Y^{\star}}^4$.
+\end{lemma}
+\deferproof{l4-contraction}{%
+\begin{proof}[Proof of Lemma~\ref{lem:l4-contraction}]
+Cells have equal reference measure, so $\PK f$ is the $\nu$-conditional
+expectation of $f$ given cell membership. Conditional Jensen applied to
+the convex map $z\mapsto z^4$ gives
+$(\E_\nu[f\mid\mathcal{P}_K])^4\le\E_\nu[f^4\mid\mathcal{P}_K]$
+pointwise; taking $\E_\nu$ of both sides and $f=y-\mu$ yields the first
+inequality. The second is the first rewritten using
+$\E_\nu[(y^{\star})^4]=\kappa^{\star}\sigma_{Y^{\star}}^4$ and taking
+fourth roots.
+\end{proof}%
+}
+
+The practical value of Lemma~\ref{lem:l4-contraction} is that it removes
+a declared constant: the between-cell kurtosis never has to be specified,
+because it appears only in the combination the lemma bounds.
+
 \begin{lemma}[The within-cell residual is governed by within-cell field
 variation]
 \label{lem:gperp}
-Let $\kappa^{\star}:=\E_\nu[(y^{\star})^4]/\sigma_{Y^{\star}}^4$ and
-$\kappa^{\perp}:=\E_\nu[(y^{\perp})^4]/\sigma_{Y^{\perp}}^4$ be the
-kurtoses of the between- and within-cell components. Then
+Let $\kappa^{\perp}:=\E_\nu[(y^{\perp})^4]/\sigma_{Y^{\perp}}^4$ be the
+kurtosis of the within-cell component. Then
 \begin{equation}
   \sigma_{g^{\perp}}\;\le\;c_g\,\sigma_{Y^{\perp}},
   \qquad
-  c_g:=2\,\sigma_{Y^{\star}}\big(\kappa^{\star}\kappa^{\perp}\big)^{1/4}
+  c_g:=2\,\sigma_Y\big(\kappa\,\kappa^{\perp}\big)^{1/4}
        +\sigma_{Y^{\perp}}\sqrt{\kappa^{\perp}} .
   \label{eq:gperp-bound}
 \end{equation}
@@ -1188,9 +1262,11 @@ $(y^{\perp})^2$ gives
   \|y^{\star}y^{\perp}\|_{L^2(\nu)}^2
   =\E_\nu\big[(y^{\star})^2(y^{\perp})^2\big]
   \le\Big(\E_\nu[(y^{\star})^4]\,\E_\nu[(y^{\perp})^4]\Big)^{1/2}
-  =\big(\kappa^{\star}\kappa^{\perp}\big)^{1/2}
-   \sigma_{Y^{\star}}^2\sigma_{Y^{\perp}}^2 .
+  \le\big(\kappa\,\kappa^{\perp}\big)^{1/2}
+   \sigma_Y^2\sigma_{Y^{\perp}}^2 ,
 \]
+the last step by Lemma~\ref{lem:l4-contraction} together with
+$\E_\nu[(y^{\perp})^4]=\kappa^{\perp}\sigma_{Y^{\perp}}^4$.
 For the second, $\PKp$ is a contraction (Lemma~\ref{lem:projection}), so
 $\|\PKp((y^{\perp})^2)\|\le\|(y^{\perp})^2\|_{L^2(\nu)}
  =\sqrt{\kappa^{\perp}}\,\sigma_{Y^{\perp}}^2$. Adding the two gives
@@ -1201,7 +1277,7 @@ $\|\PKp((y^{\perp})^2)\|\le\|(y^{\perp})^2\|_{L^2(\nu)}
 \begin{remark}[Why moments rather than a supremum]
 \label{rem:gperp-moments}
 An earlier form of \eqref{eq:gperp-bound} used $\|y^{\star}\|_\infty$ in
-place of $\sigma_{Y^{\star}}(\kappa^{\star})^{1/4}$. The moment form is
+place of the moment factor $\kappa^{1/4}\sigma_Y$. The moment form is
 preferred because a supremum cannot be estimated safely from a finite
 sample: the maximum over $F$ floats systematically \emph{under}-estimates
 $\|y^{\star}\|_\infty$, which is the unsafe direction for an upper bound,
@@ -1231,8 +1307,11 @@ suppose $\Delta<1$. Then for the residual budget $\varepsilon$ of
     {1-\Delta},
   \label{eq:envelope-eps}
 \end{equation}
-where $b:=\sigma_{w^{\star}}+(\kappa^{\star}\kappa^{\perp})^{1/4}$ and
-$d:=\sigma_{Y^{\perp}}\sqrt{\kappa^{\perp}}$. The map
+where $b:=\sigma_{w^{\star}}+(\kappa\,\kappa^{\perp})^{1/4}$ and
+$d:=\sigma_{Y^{\perp}}\sqrt{\kappa^{\perp}}$. Only two shape constants
+enter: $\kappa$, which is declared, and $\kappa^{\perp}$, which is
+estimated from within-cell float pairs by
+\eqref{eq:kappaperp-pairs}. The map
 $\varepsilon\mapsto\overline{\sigma}_Y(\varepsilon)$ is continuous and
 strictly increasing, and
 \[
@@ -1253,9 +1332,10 @@ Lemma~\ref{lem:kurt}, and Lemma~\ref{lem:gperp} for the within-cell part:
     +c_g\,\sigma_{w^{\perp}}\sigma_{Y^{\perp}}
   =\sigma_{w^{\star}}\sqrt{\kappa-1}\,\sigma_Y^2+c_g\varepsilon .
 \]
-Since $\sigma_{Y^{\star}}\le\sigma_Y$ (Lemma~\ref{lem:coarsening}),
-$c_g\varepsilon\le2(\kappa^{\star}\kappa^{\perp})^{1/4}\varepsilon\,\sigma_Y
- +d\varepsilon$. For the squared bias,
+By \eqref{eq:gperp-bound},
+$c_g\varepsilon=2(\kappa\,\kappa^{\perp})^{1/4}\varepsilon\,\sigma_Y
+ +d\varepsilon$ exactly, with no further substitution. For the squared
+bias,
 Proposition~\ref{prop:scale-decomp} and the same inequality give
 \[
   B_{\mathrm{samp}}^2
@@ -1281,7 +1361,7 @@ available without a field product: $R$ from the observed OHC,
 $\sigma_{w^{\star}}$ from the count statistic
 $\sigwhat$~\eqref{eq:sigmawK-hat}, $\sigma_{Y^{\perp}}$ from within-cell
 float pairs \eqref{eq:sigmaYperp-pairs}, and
-$\kappa,\kappa^{\star},\kappa^{\perp}$ chosen constants
+$\kappa$ a chosen constant and $\kappa^{\perp}$ estimated
 (Remark~\ref{rem:kappa}). The residual budget $\varepsilon$ is not
 estimable---that is the standing conclusion of
 Section~\ref{sec:decomp-wy}---and so is never assumed small. It is
@@ -1405,10 +1485,12 @@ be---and is stated as a variant for readers who want a single figure.
 
 \begin{remark}[Interpreting and choosing the shape constants]
 \label{rem:kappa}
-Three dimensionless shape constants enter the envelope:
-$\kappa$ through Lemma~\ref{lem:kurt}, and $\kappa^{\star}$,
-$\kappa^{\perp}$ through Lemma~\ref{lem:gperp}. They are not
-interchangeable and are discussed in turn.
+Two dimensionless shape constants enter the envelope: $\kappa$, through
+Lemma~\ref{lem:kurt}, and $\kappa^{\perp}$, through
+Lemma~\ref{lem:gperp}. Only the first is declared; the second is
+estimated from the profiles. A third, the between-cell kurtosis
+$\kappa^{\star}$, is eliminated by Lemma~\ref{lem:l4-contraction} and
+never has to be chosen.
 
 \paragraph*{The leading constant.}
 The constant $\kappa$ is the kurtosis of the \emph{one-point value
@@ -1459,33 +1541,29 @@ is not for the \emph{amplitude} $\sigma_Y$; the one caveat is that
 assimilation may damp extremes more than the bulk, understating $\kappa$,
 so a margin is added rather than taking a reanalysis value at face value.
 
-\paragraph*{The two residual constants.}
-The constants $\kappa^{\star}$ and $\kappa^{\perp}$ are the kurtoses of
-the between- and within-cell components $y^{\star}=\PK(y-\mu)$ and
-$y^{\perp}=\PKp(y-\mu)$ of the same field, evaluated on the operating
-partition. Their role is strictly subordinate. They enter
-\eqref{eq:envelope-eps} only through
-$b=\sigma_{w^{\star}}+(\kappa^{\star}\kappa^{\perp})^{1/4}$ and
+\paragraph*{The residual constant.}
+The constant $\kappa^{\perp}$ is the kurtosis of the within-cell
+component $y^{\perp}=\PKp(y-\mu)$, evaluated on the operating partition.
+Its role is strictly subordinate. It enters \eqref{eq:envelope-eps} only
+through $b=\sigma_{w^{\star}}+(\kappa\,\kappa^{\perp})^{1/4}$ and
 $d=\sigma_{Y^{\perp}}\sqrt{\kappa^{\perp}}$, both of which multiply the
-residual budget $\varepsilon$; at $\varepsilon=0$ they leave the bound
-entirely. In particular they do \emph{not} enter $\Delta$, so they do not
+residual budget $\varepsilon$; at $\varepsilon=0$ it leaves the bound
+entirely. In particular it does \emph{not} enter $\Delta$, so it does not
 affect the refinement ceiling of Lemma~\ref{lem:refinement-ceiling}, and
 the resolution trade-off of Remark~\ref{rem:kappa-resolution} is governed
-by $\kappa$ alone. They also enter weakly: the fourth root means that
-doubling either constant inflates $(\kappa^{\star}\kappa^{\perp})^{1/4}$
-by only $2^{1/4}\approx1.19$, and less than that in $b$, which also
-carries $\sigma_{w^{\star}}$.
+by $\kappa$ alone. It also enters weakly: the fourth root means that
+doubling it inflates $(\kappa\,\kappa^{\perp})^{1/4}$ by only
+$2^{1/4}\approx1.19$, and less than that in $b$, which also carries
+$\sigma_{w^{\star}}$.
 
-No ordering may be assumed. Kurtosis is not monotone under orthogonal
-projection, so neither $\kappa^{\star}\le\kappa$ nor
-$\kappa^{\perp}\le\kappa$ holds in general---cell means that split into
-two water masses are platykurtic while the field they came from need not
-be---and the three constants must therefore be chosen jointly rather than
-deduced from one another. Physically, $\kappa^{\star}$ is the kurtosis of
-a smoothed field, and cell averaging pulls it toward the Gaussian value;
-but at the operating resolution each cell holds roughly one decorrelation
-volume, so little averaging has occurred and $\kappa^{\star}\approx\kappa$
-is the natural default. The constant $\kappa^{\perp}$ is
+No ordering with $\kappa$ may be assumed. Kurtosis is not monotone under
+orthogonal projection, so $\kappa^{\perp}\le\kappa$ fails in general, and
+the two constants must be fixed independently rather than deduced from
+one another. (The corresponding between-cell quantity is exempt: it is
+not a free constant but is dominated through
+Lemma~\ref{lem:l4-contraction}, which is available because $\PK$ is a
+conditional expectation and $\PKp$ is not.) The constant $\kappa^{\perp}$
+is
 resolution-dependent at both ends: in the coarse limit
 $y^{\perp}\to y-\mu$ and $\kappa^{\perp}\to\kappa$, while below the
 decorrelation length $y^{\perp}$ is approximately a local gradient times
@@ -1520,16 +1598,48 @@ value. Its variance is high---fourth moments of pair differences on a
 thin sample---so it is used to check the plausibility of a chosen value
 rather than to supply one.
 
-Given the insensitivity noted above, we recommend collapsing the two to a
-single conservative constant. Since
-$(\kappa^{\star}\kappa^{\perp})^{1/4}\le\max(\kappa^{\star},\kappa^{\perp})^{1/2}$,
-setting $\kappa^{\star}=\kappa^{\perp}=\kappa_{\mathrm{res}}$ with
-$\kappa_{\mathrm{res}}$ a padded upper value---for instance the same
-constant used for $\kappa$---is valid, costs little in the width of
-$\mathcal{B}(\varepsilon)$, and keeps the number of declared constants at
-two rather than three. The reported sensitivity analysis varies $\kappa$
-and $\kappa_{\mathrm{res}}$ separately, since only the former interacts
-with the choice of resolution.
+Given the insensitivity noted above, a single declared value may be used
+for both, setting $\kappa^{\perp}=\kappa$ and reporting
+$\hat\kappa^{\perp}$ from \eqref{eq:kappaperp-pairs} only as a check.
+This is the configuration we adopt: one constant is chosen, everything
+else in \eqref{eq:envelope-eps} is measured. The sensitivity analysis
+nevertheless varies $\kappa$ and $\kappa^{\perp}$ separately, since only
+the former interacts with the choice of resolution.
+\end{remark}
+
+\begin{remark}[A one-constant variant]
+\label{rem:one-constant}
+The within-cell kurtosis can be dispensed with altogether, at a price
+worth stating. Since $\PKp$ is a contraction
+(Lemma~\ref{lem:projection}), $\sigma_{g^{\perp}}\le\sigma_g$ directly,
+without Lemma~\ref{lem:gperp}. Writing $\delta:=\sigma_{w^{\perp}}$ and
+$\varepsilon=\delta\,\sigma_{Y^{\perp}}$ as before,
+\eqref{eq:var-scale-decomp} and Lemma~\ref{lem:kurt} give
+$|\Cov_\nu(w,g)|\le(\sigma_{w^{\star}}+\delta)\sqrt{\kappa-1}\,\sigma_Y^2$,
+and the argument of Proposition~\ref{prop:sigmaY-envelope} goes through
+unchanged with $b$ replaced by $\sigma_{w^{\star}}$, $d$ by $0$, and
+\[
+  \Delta\;\longmapsto\;
+  \Delta_\delta:=(\sigma_{w^{\star}}+\delta)\sqrt{\kappa-1}
+    +\sigma_{w^{\star}}^2 .
+\]
+Only $\kappa$ appears. The cost is structural rather than numerical: the
+residual has moved from the numerator of \eqref{eq:envelope-eps}, where
+it was damped by the estimable ratio
+$\sigma_{Y^{\perp}}/\sigma_Y$, into the denominator, where it is
+undamped and erodes the refinement ceiling of
+Lemma~\ref{lem:refinement-ceiling}: since
+$\Delta_\delta\le\Delta(\sigma_{w^{\star}}+\delta)$, the condition
+$\sigma_{w^{\star}}<\sigma_{\max}(\kappa)-\delta$ suffices, so the
+admissible band narrows by at least $\delta$. More seriously, the two versions lean on
+different mechanisms for the residual to be small: the two-constant bound
+requires $\sigma_{Y^{\perp}}\to0$ under refinement, which
+\eqref{eq:sigmaYperp-pairs} verifies, whereas the one-constant bound
+requires $\sigma_{w^{\perp}}\to0$, which by the standing argument of
+Section~\ref{sec:decomp-wy} cannot be checked. Trading a measurable
+damping factor for an unmeasurable one is unattractive in a bound whose
+premise is that $w$ is not modelled, so we report the one-constant form
+as a cross-check rather than as the primary result.
 \end{remark}
 
 \paragraph{Estimation and uncertainty.} The design variance is estimated
@@ -1612,10 +1722,20 @@ number whereas $\E_\nu[y]=\mu$ is the estimand itself
 require the answer. The offset is therefore not merely measured but
 removed by construction.
 
-\begin{definition}[Deseasonalized estimator]
+\begin{definition}[Offset-adjusted design mean; deseasonalized
+estimators]
 \label{def:deseason-est}
-Given an admissible offset $m$ and observed profiles $Z_1,\dots,Z_N$
-(Definition~\ref{def:Zi}) with field values $y(Z_i)$, set
+Given an admissible offset $m$, define the \emph{offset-adjusted design
+mean}
+\begin{equation}
+  \mu_w' \;:=\; \E_\pi[y']+\E_\nu[m].
+  \label{eq:mu-w-prime}
+\end{equation}
+An estimator is \emph{deseasonalized} if it is computed from the residual
+values $\{y'(Z_i)\}$ at the observed profiles
+(Definition~\ref{def:Zi}) and restores $\E_\nu[m]$---not $\E_\pi[m]$
+(Remark~\ref{rem:cv-asymmetry}). The canonical instance, and the one used
+throughout, is the residual sample mean
 \begin{equation}
   \hat\mu_m
   \;:=\;\frac1N\sum_{i=1}^{N}\big(y(Z_i)-m(Z_i)\big)\;+\;\E_\nu[m].
@@ -1625,20 +1745,35 @@ Given an admissible offset $m$ and observed profiles $Z_1,\dots,Z_N$
 
 \begin{proposition}[Exact cancellation of the offset aliasing]
 \label{prop:cv-cancel}
-Write $\hat\mu_{\mathrm{naive}}:=N^{-1}\sum_i y(Z_i)$ and
-$\hat D:=N^{-1}\sum_i m(Z_i)-\E_\nu[m]$. Then, pathwise,
-\begin{equation}
-  \hat\mu_m=\hat\mu_{\mathrm{naive}}-\hat D ,
-  \label{eq:cv-pathwise}
-\end{equation}
-and under Assumption~\ref{ass:sample-pi}, $\E[\hat D]=D$ and
-\[
-  \E\big[\hat\mu_m\big]-\mu \;=\; \Cov_\nu\big(w,y'\big).
-\]
+Let $m$ be an admissible offset.
+\begin{enumerate}
+\item \emph{(Design level, no estimator.)}
+  $\mu_w'-\mu=\Cov_\nu(w,y')$. Hence every deseasonalized estimator
+  obeys the decomposition of Definition~\ref{def:bias} with $\mu_w$
+  replaced by $\mu_w'$ and sampling term $\Cov_\nu(w,y')$, whatever its
+  functional form.
+\item \emph{(Pathwise.)} With
+  $\hat\mu_{\mathrm{naive}}:=N^{-1}\sum_i y(Z_i)$ and
+  $\hat D:=N^{-1}\sum_i m(Z_i)-\E_\nu[m]$,
+  \begin{equation}
+    \hat\mu_m=\hat\mu_{\mathrm{naive}}-\hat D .
+    \label{eq:cv-pathwise}
+  \end{equation}
+\item \emph{(In expectation.)} Under Assumption~\ref{ass:sample-pi},
+  $\E[\hat D]=D$ and $\E[\hat\mu_m]=\mu_w'$, so that
+  $B_{\mathrm{pred}}$ is centred and
+  \[
+    \E\big[\hat\mu_m\big]-\mu \;=\; \Cov_\nu\big(w,y'\big).
+  \]
+\end{enumerate}
 \end{proposition}
 \deferproof{cv-cancel}{%
 \begin{proof}[Proof of Proposition~\ref{prop:cv-cancel}]
-Splitting the sum in \eqref{eq:deseason-est} gives
+For (i), $\mu=\E_\nu[y]=\E_\nu[y']+\E_\nu[m]$, so by
+\eqref{eq:mu-w-prime}
+$\mu_w'-\mu=\E_\pi[y']-\E_\nu[y']=\E_\nu[(w-1)y']=\Cov_\nu(w,y')$,
+the last step because $\E_\nu[w-1]=0$. No property of any estimator is
+used. For (ii), splitting the sum in \eqref{eq:deseason-est} gives
 $\hat\mu_m=N^{-1}\sum_iy(Z_i)-\big[N^{-1}\sum_im(Z_i)-\E_\nu[m]\big]$,
 which is \eqref{eq:cv-pathwise}; this is an algebraic identity in the
 realized sample, the same numbers $m(Z_i)$ appearing in both
@@ -1646,11 +1781,13 @@ expressions. Under Assumption~\ref{ass:sample-pi} each $Z_i\sim\pi$ and
 $m$ is a fixed function, so $\E[N^{-1}\sum_im(Z_i)]=\E_\pi[m]$ and
 $\E[\hat D]=\E_\pi[m]-\E_\nu[m]=D$; likewise
 $\E[\hat\mu_{\mathrm{naive}}]=\E_\pi[y]=\mu_w$
-(Definition~\ref{def:mu-w}). Therefore
+(Definition~\ref{def:mu-w}). For (iii), therefore
+$\E[\hat\mu_m]=\mu_w-D=\E_\pi[y']+\E_\nu[m]=\mu_w'$, and
 \[
   \E[\hat\mu_m]-\mu=(\mu_w-\mu)-D=B_{\mathrm{samp}}-D=\Cov_\nu(w,y')
 \]
-by Definition~\ref{def:bias} and Proposition~\ref{prop:cv-decomp}.
+by Definition~\ref{def:bias} and Proposition~\ref{prop:cv-decomp},
+consistently with (i).
 \end{proof}%
 }
 
@@ -1685,7 +1822,10 @@ variance---estimable from the data---rather than bias.
 \label{cor:deseason-bound}
 Let $\sigma_{Y'}^2:=\Var_\nu(y')$ with scale components
 $\sigma_{Y'^{\star}},\sigma_{Y'^{\perp}}$ defined through
-\eqref{eq:y-split} applied to $y'$. Then
+\eqref{eq:y-split} applied to $y'$. The bounds below apply to the
+sampling component $\mu_w'-\mu$ of any deseasonalized estimator
+(Proposition~\ref{prop:cv-cancel}(i)), and hence to the whole bias of
+$\hat\mu_m$, for which $B_{\mathrm{pred}}$ is centred. Then
 \[
   \big|\E[\hat\mu_m]-\mu\big|
   \;\le\;\sigma_{w^{\star}}\sigma_{Y'^{\star}}
