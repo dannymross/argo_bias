@@ -28,3 +28,4 @@ __pycache__/
 **/*.quarto_ipynb*
 
 **/*.quarto_ipynb
+/output
