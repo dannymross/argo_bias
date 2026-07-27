@@ -44,3 +44,16 @@
 \newcommand{\psihat}{\hat\psi}
 \newcommand{\normpsihat}{\widehat{\normH{\psi}}}
 \newcommand{\normpsihatsq}{\widehat{\normH{\psi}^{2}}}
+
+% ---- Kernel-mean-embedding section (Muandet et al. 2017 notation) ----
+\newcommand{\Hcal}{\mathcal{H}}
+\newcommand{\Pb}{\mathbb{P}}          % sampling measure (floats)
+\newcommand{\Qb}{\mathbb{Q}}          % reference / target measure
+\newcommand{\mP}{\mu_{\Pb}}           % kernel mean embedding of P
+\newcommand{\mQ}{\mu_{\Qb}}           % kernel mean embedding of Q
+\newcommand{\innerHc}[2]{\langle #1,\,#2\rangle_{\Hcal}}
+\newcommand{\normHc}[1]{\lVert #1\rVert_{\Hcal}}
+\newcommand{\MMDpq}{\MMD[\Hcal,\Pb,\Qb]}
+\newcommand{\MMDhat}{\widehat{\MMD}}
+\newcommand{\kbarQ}{\bar k_{\Qb}}
+\newcommand{\kbbarQ}{\bar{\bar k}_{\Qb}}
