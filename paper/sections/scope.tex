@@ -1,0 +1,407 @@
+\section{How large could sampling bias be?}
+\label{sec:scope}
+
+Before developing machinery, we establish the scale of the problem. This section derives a
+worst-case bound on sampling bias in a regional ocean heat content (OHC) average that depends
+on a single interpretable quantity---how unevenly floats sample the region---and requires no
+model for the ocean beyond quantities computable from the profiles themselves. The bound is
+deliberately crude. Its purpose is to determine whether the question is live, and to identify
+what must be measured for the remainder of the paper to have content.
+
+\subsection{Two kinds of bias}
+\label{sec:two-kinds}
+
+It is useful to separate two mechanisms that are often treated together.
+
+\emph{Coverage bias} arises because floats are unevenly distributed in space and time: more
+profiles in summer than winter, more in the subtropics than at high latitudes, more in 2019
+than in 2004. Since the ocean's mean state varies with position and season, weighting
+positions incorrectly biases the average. Crucially, coverage bias is visible in the sampling
+geometry alone. Given a map of profile locations and a climatology, it can be computed and
+removed.
+
+\emph{Preferential sampling bias} arises when the positions themselves depend on the field
+being measured \citep{diggle2010}. It persists even when the distribution of positions is
+perfectly uniform. Consider a region sampled at uniform density in which one float is
+entrained into a warm-core anticyclone and remains for four months, returning twelve profiles,
+while a neighbouring float in a cold cyclone is advected out of the region within three weeks,
+returning two. Profile density is uniform; the profiles nonetheless over-represent warm water.
+No amount of reweighting by position corrects this, because the imbalance is invisible in the
+positions.
+
+The distinction matters for Argo specifically because floats are advected by ocean currents,
+and currents are geostrophically related, through thermal wind, to the density structure that
+determines heat content. The instrument is transported by the field it measures. Whether this
+coupling produces a material bias is an empirical question; this section establishes how
+material it could be.
+
+\subsection{Setup}
+\label{sec:setup}
+
+Let $\mathcal{R} = D \times \mathcal{T}$ denote a spatio-temporal analysis region, with $D$ a
+horizontal domain restricted to bathymetry deeper than $2000$\,m and $\mathcal{T}$ an
+averaging window. Let $P$ be the normalised uniform (area $\times$ time) measure on
+$\mathcal{R}$, and let $Y : \mathcal{R} \to \mathbb{R}$ denote $0$--$2000$\,m OHC in
+J\,m$^{-2}$. The target is
+\begin{equation}
+  \bar{Y} \;=\; \int_{\mathcal{R}} Y \, dP .
+\end{equation}
+Argo delivers profiles at locations $z_1, \dots, z_n \in \mathcal{R}$, with empirical sampling
+measure $Q_n = n^{-1}\sum_{j=1}^{n} \delta_{z_j}$ and estimator
+$\hat{Y} = \int Y \, dQ_n = n^{-1}\sum_j Y(z_j)$. The error is
+\begin{equation}
+  \hat{Y} - \bar{Y} \;=\; \int_{\mathcal{R}} Y \, d(Q_n - P).
+\end{equation}
+
+Following standard practice \citep{roemmich2009, cressie2011}, decompose
+\begin{equation}
+  \label{eq:decomp}
+  Y \;=\; m \;+\; A \;+\; \varepsilon ,
+\end{equation}
+where $m$ is a climatological mean field taken as known from an independent long record, $A$
+is a resolved-scale transient anomaly lying in a finite-dimensional space
+$V_L \subset L^2(P)$ containing the constants, and $\varepsilon$ is the unresolved remainder.
+We take the split to be a definition rather than an approximation: with $\Pi_L$ the
+$L^2(P)$-orthogonal projection onto $V_L$,
+\begin{equation}
+  A := \Pi_L (Y - m), \qquad \varepsilon := (I - \Pi_L)(Y-m),
+\end{equation}
+so that \eqref{eq:decomp} holds exactly. Because $\mathbf{1} \in V_L$,
+\begin{equation}
+  \label{eq:zeromean}
+  \int_{\mathcal{R}} \varepsilon \, dP \;=\; \langle \varepsilon, \mathbf{1}\rangle_{L^2(P)} \;=\; 0 .
+\end{equation}
+
+The error then separates as
+\begin{equation}
+  \label{eq:split}
+  \hat{Y} - \bar{Y}
+  \;=\; \underbrace{\int (m + A)\, d(Q_n - P)}_{\text{coverage}}
+  \;+\; \underbrace{\int \varepsilon \, dQ_n}_{\text{preferential}},
+\end{equation}
+where the second term has been simplified using \eqref{eq:zeromean}. The coverage term
+involves only structure that is either known ($m$) or estimable at resolved scales ($A$), and
+is computable from the profile positions; it is addressed in Section~\ref{sec:coverage-later}.
+The preferential term is the subject of this section.
+
+\begin{remark}
+\label{rem:sigma-definition}
+Throughout, $\varepsilon$ denotes the residual field after removal of \emph{both} the
+climatology and the resolved-scale anomaly, and $\sigma$ denotes its standard deviation under
+$P$. This is substantially smaller than the standard deviation of raw OHC, and smaller than
+that of the raw anomaly $Y - m$. Substituting either of the latter would inflate every bound
+below and would conflate the two bias mechanisms.
+\end{remark}
+
+\subsection{Why the preferential term cannot be estimated from the profiles}
+\label{sec:not-estimable}
+
+The preferential term $\int \varepsilon\, dQ_n = n^{-1}\sum_j \varepsilon(z_j)$ is the mean of
+the residual field \emph{at the sampled locations}. It would be zero if the sampled locations
+were a fair draw with respect to $\varepsilon$, and is nonzero exactly to the extent that they
+are not.
+
+It cannot be estimated directly. The residuals available to us, $\hat\varepsilon_j$, are
+obtained by fitting $m + A$ to the observed profiles; when $\mathbf{1}$ is in the fitted span,
+the fitted residuals satisfy $\sum_j \hat\varepsilon_j = 0$ identically, by construction. More
+fundamentally, $\varepsilon$ is observed only where floats went. If floats systematically
+avoided cold water, no feature of the sample would reveal the temperature of the water they
+avoided.
+
+The preferential term must therefore be \emph{bounded under an assumption}, not estimated. The
+remainder of this section makes that assumption explicit, derives the sharpest bound it
+supports, and shows how the assumption itself can be checked against independent observations.
+
+\subsection{The sampling-ratio assumption}
+\label{sec:lambda}
+
+Let $Q$ denote the limiting sampling measure on $\mathcal{R}$ (the intensity of the profile
+point process, normalised to unit mass), so that $Q_n \to Q$ as the array is sampled more
+densely. We assume that no part of the region is grossly over- or under-sampled relative to
+its area-time share.
+
+\begin{assumption}[Bounded sampling ratio]
+\label{ass:lambda}
+There exists $\Lambda \ge 1$ such that $Q$ is absolutely continuous with respect to $P$ with
+\begin{equation}
+  \Lambda^{-1} \;\le\; \frac{dQ}{dP}(z) \;\le\; \Lambda
+  \qquad \text{for $P$-almost every } z \in \mathcal{R}.
+\end{equation}
+\end{assumption}
+
+Two features deserve emphasis.
+
+First, the assumption is \emph{two-sided}, and the lower bound is what makes the problem
+tractable. A one-sided assumption permits floats to miss some water types entirely, in which
+case nothing about those water types is recoverable and no finite bound exists. The lower
+bound asserts that every water type is present in the sample---floats do enter cold cyclones,
+they simply leave sooner---so that the truth is a \emph{reweighting} of the observed sample
+rather than a superset of it. This is the substantive content of the assumption and the point
+at which it is most vulnerable (Section~\ref{sec:limitations}).
+
+Second, Assumption~\ref{ass:lambda} is stated over the region \emph{after} the coverage term
+has been accounted for; that is, $\Lambda$ quantifies residual non-uniformity not already
+explained by the resolved structure. In practice this is enforced by measuring $\Lambda$ over
+a partition constructed from mesoscale features (Section~\ref{sec:measuring}) rather than from
+large-scale geography.
+
+\subsection{Worst-case bias}
+\label{sec:bound}
+
+Let $F$ denote the distribution of the value $\varepsilon(z)$ when $z \sim P$, and $G$ the
+corresponding distribution when $z \sim Q$. Assumption~\ref{ass:lambda} transfers to these
+push-forward laws: for any Borel set $B$, $Q(\varepsilon^{-1}B) \in [\Lambda^{-1}P(\varepsilon^{-1}B),\,
+\Lambda P(\varepsilon^{-1}B)]$, hence $dG/dF \in [\Lambda^{-1}, \Lambda]$. By
+\eqref{eq:zeromean}, $\mathbb{E}_F[\varepsilon] = 0$, and the preferential bias is
+$\mathbb{E}_G[\varepsilon]$.
+
+Define the \emph{upper partial expectation} of $F$ at level $p \in (0,1)$,
+\begin{equation}
+  \Psi(p) \;:=\; \int_{\{e \,>\, F^{-1}(1-p)\}} e \; dF(e)
+  \;=\; p \cdot \mathbb{E}_F\!\left[\varepsilon \,\middle|\, \varepsilon > F^{-1}(1-p)\right],
+\end{equation}
+the contribution to the mean made by the largest $p$ fraction of the field.
+
+\begin{proposition}[Sharp worst-case preferential bias]
+\label{prop:bound}
+Under Assumption~\ref{ass:lambda},
+\begin{equation}
+  \label{eq:bound}
+  \left| \int \varepsilon \, dQ \right|
+  \;\le\; B(\Lambda) \;:=\; \left(\Lambda - \Lambda^{-1}\right)\,
+  \Psi\!\left(\frac{1}{\Lambda + 1}\right),
+\end{equation}
+and the bound is attained.
+\end{proposition}
+
+\begin{proof}
+Write $r = dG/dF$. The problem is
+\[
+  \max_{r} \int e \, r(e) \, dF(e)
+  \quad \text{s.t.} \quad \int r \, dF = 1, \quad \Lambda^{-1} \le r \le \Lambda,
+\]
+a linear program in $r$. The objective is increasing in $r(e)$ where $e > 0$ and decreasing
+where $e < 0$, and the single equality constraint is a total-mass budget; by the bathtub
+principle the optimum is bang-bang, $r = \Lambda$ on $\{e > q\}$ and $r = \Lambda^{-1}$ on
+$\{e < q\}$ for a threshold $q$. Writing $p = F(\{e > q\})$, the mass constraint gives
+\[
+  \Lambda p + \Lambda^{-1}(1 - p) = 1
+  \quad \Longrightarrow \quad
+  p = \frac{1 - \Lambda^{-1}}{\Lambda - \Lambda^{-1}} = \frac{1}{\Lambda + 1}.
+\]
+Since $\mathbb{E}_F[\varepsilon] = 0$ we have $\int_{\{e < q\}} e \, dF = -\Psi(p)$, so the
+optimal value is $\Lambda \Psi(p) - \Lambda^{-1}\Psi(p) = (\Lambda - \Lambda^{-1})\Psi(p)$.
+The lower bound follows by symmetry (interchanging the roles of the two levels), giving
+$|\mathbb{E}_G[\varepsilon]| \le B(\Lambda)$.
+\end{proof}
+
+Note $B(1) = 0$, as required: if sampling is exactly proportional to area-time, there is no
+preferential bias.
+
+\subsection{A distribution-free first-order form}
+\label{sec:first-order}
+
+Expression \eqref{eq:bound} requires the tail structure of $F$. For $\Lambda$ near unity it
+simplifies considerably. As $\Lambda \to 1$ we have $\Lambda - \Lambda^{-1} = 2(\Lambda - 1) +
+O((\Lambda-1)^2)$ and $p \to 1/2$, and for any distribution symmetric about zero,
+$\Psi(1/2) = \tfrac12 \mathbb{E}_F|\varepsilon|$. Hence:
+
+\begin{corollary}
+\label{cor:firstorder}
+To first order in $\Lambda - 1$, and for $\varepsilon$ symmetric under $P$,
+\begin{equation}
+  \label{eq:firstorder}
+  \boxed{\;\left| \int \varepsilon \, dQ \right| \;\lesssim\; (\Lambda - 1)\;
+  \mathbb{E}_P\left|\varepsilon\right| \;}
+\end{equation}
+\end{corollary}
+
+This is the interpretable form of the result: \emph{the worst-case preferential bias is
+approximately the fractional sampling imbalance times the mean absolute residual}. Both
+factors are concrete. The second is computed directly from the profiles by averaging
+$|\hat\varepsilon_j|$; it requires no distributional assumption and is robust to the skewness
+and heavy tails typical of mesoscale variability. The first is the quantity to be measured in
+Section~\ref{sec:measuring}.
+
+For a Gaussian residual field, $\mathbb{E}|\varepsilon| = \sigma\sqrt{2/\pi} \approx
+0.798\,\sigma$, so \eqref{eq:firstorder} reads $B \approx 0.8\,(\Lambda-1)\,\sigma$.
+
+\subsection{Magnitudes}
+\label{sec:magnitudes}
+
+Table~\ref{tab:lambda} evaluates \eqref{eq:bound} exactly for a Gaussian residual field. The
+Gaussian case is used only for orientation; in application, $\Psi$ is evaluated empirically
+from the sorted residuals.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{lccc}
+\toprule
+$\Lambda$ & $B(\Lambda)/\sigma$ & \multicolumn{2}{c}{$B(\Lambda)$, J\,m$^{-2}$} \\
+\cmidrule(lr){3-4}
+ & & $\sigma = 10^{9}$ & $\sigma = 3\times10^{8}$ \\
+\midrule
+$1.02$ & $0.016$ & $1.6\times10^{7}$ & $4.7\times10^{6}$ \\
+$1.05$ & $0.039$ & $3.9\times10^{7}$ & $1.2\times10^{7}$ \\
+$1.10$ & $0.076$ & $7.6\times10^{7}$ & $2.3\times10^{7}$ \\
+$1.15$ & $0.111$ & $1.1\times10^{8}$ & $3.3\times10^{7}$ \\
+$1.20$ & $0.145$ & $1.5\times10^{8}$ & $4.4\times10^{7}$ \\
+$1.25$ & $0.178$ & $1.8\times10^{8}$ & $5.3\times10^{7}$ \\
+$1.50$ & $0.322$ & $3.2\times10^{8}$ & $9.7\times10^{7}$ \\
+$2.00$ & $0.545$ & $5.5\times10^{8}$ & $1.6\times10^{8}$ \\
+\bottomrule
+\end{tabular}
+\caption{Worst-case preferential sampling bias from Proposition~\ref{prop:bound}, evaluated
+for a Gaussian residual field. The two right-hand columns correspond to a mesoscale-energetic
+region and a quiescent region respectively. For reference, a $0.01\,^\circ$C mean anomaly over
+$2000$\,m is $\approx 8.2\times10^{7}$\,J\,m$^{-2}$ (taking $\rho c_p = 4.1\times10^{6}$
+J\,m$^{-3}$K$^{-1}$), and multi-year regional OHC anomaly signals in the North Atlantic are of
+order $10^{8}$\,J\,m$^{-2}$.}
+\label{tab:lambda}
+\end{table}
+
+Two conclusions follow, and they set the agenda for the paper.
+
+\emph{The question is live.} In a mesoscale-energetic region, a sampling imbalance of $15\%$
+suffices to generate a bias comparable to the signal. Inverting \eqref{eq:bound}, the critical
+value at which the bound equals a $10^{8}$\,J\,m$^{-2}$ signal is $\Lambda^\dagger \approx
+1.13$ for $\sigma = 10^{9}$\,J\,m$^{-2}$. Imbalances of this size are not obviously
+implausible: the Lagrangian coherence of mesoscale eddies is well documented, and anticyclones
+are both warm-core and comparatively effective at retaining floats.
+
+\emph{The answer is regionally specific.} For $\sigma = 3\times10^{8}$\,J\,m$^{-2}$, the
+critical value is $\Lambda^\dagger \approx 1.5$, a far weaker requirement. Because $B$ scales
+linearly in $\sigma$ while $\sigma$ varies by a factor of several between quiescent and
+frontal regions, the same sampling behaviour is benign in one setting and disqualifying in
+another. This motivates the paired-region design adopted in
+Section~\ref{sec:design-later}.
+
+\begin{remark}[Averaging does not remove this term]
+\label{rem:no-averaging}
+It is tempting to argue that a multi-year average washes out eddy-scale sampling effects. It
+would, if the imbalance changed sign at random: bias from $N$ independently signed encounters
+would decline as $N^{-1/2}$. The concern here is that the leading mechanism is
+\emph{sign-definite}---warm anticyclones preferentially retain floats, in the same direction,
+in every season. A systematic component of $\Lambda$ does not decline with the length of the
+averaging window or with the size of the array. This is the essential difference between the
+preferential term and the noise term of Section~\ref{sec:noise-later}, which does average
+down.
+\end{remark}
+
+\subsection{Measuring $\Lambda$}
+\label{sec:measuring}
+
+Assumption~\ref{ass:lambda} is only useful if $\Lambda$ can be constrained observationally.
+Satellite altimetry provides the required independent view: mesoscale eddy identification and
+tracking atlases derived from sea surface height \citep{chelton2011} give, for each day, the
+polarity and boundary of every detected eddy, using measurements entirely independent of the
+Argo profiles.
+
+Partition $\mathcal{R}$ into classes $\kappa \in \{\text{anticyclone interior},\
+\text{cyclone interior},\ \text{exterior}\}$ and compute
+\begin{equation}
+  f_\kappa \;=\; P(\text{class }\kappa),
+  \qquad
+  \hat{f}_\kappa \;=\; Q_n(\text{class }\kappa),
+\end{equation}
+the areal--temporal fraction occupied by each class and the fraction of profiles falling
+within it. Under exogenous sampling these agree up to sampling error. The estimator
+\begin{equation}
+  \label{eq:lambdahat}
+  \hat{\Lambda} \;=\; \max_{\kappa} \; \max\!\left\{ \frac{\hat{f}_\kappa}{f_\kappa},\;
+  \frac{f_\kappa}{\hat{f}_\kappa} \right\}
+\end{equation}
+then measures the sampling imbalance at the resolution of the partition. If, for example,
+anticyclone interiors occupy $20\%$ of the region and contain $22\%$ of profiles,
+$\hat\Lambda = 1.10$.
+
+Two qualifications are essential.
+
+\emph{$\hat\Lambda$ is a lower bound on $\Lambda$.} Preferential structure operating within
+classes---selection by eddy amplitude, by position relative to the eddy core, or at
+submesoscale---is invisible to a coarse partition. The remedy is to refine the partition
+(stratifying additionally by eddy amplitude quantile and by normalised radius) and report
+$\hat\Lambda$ as a function of refinement. Saturation indicates that the relevant structure
+has been captured; continued growth indicates that it has not.
+
+\emph{$\hat\Lambda$ carries substantial sampling error.} Because consecutive profiles from one
+float are separated by $30$--$80$\,km---well inside a mesoscale feature---they are close to
+replicates, and the effective sample size is far below the profile count. With $n_{\text{eff}}
+\sim 300$ and $f_\kappa \approx 0.2$, the standard error on $\hat f_\kappa$ is
+$\approx 0.023$, giving a standard error on the ratio of roughly $0.12$. This is comparable to
+$\Lambda^\dagger - 1$ itself. Constraining $\Lambda$ tightly enough to be decisive therefore
+requires pooling across the full record and the cleanest available partition, and the
+resulting uncertainty must be propagated into \eqref{eq:bound} rather than reported alongside
+it.
+
+\subsection{A tighter bound under class-restricted preferentiality}
+\label{sec:refinement}
+
+Proposition~\ref{prop:bound} is deliberately agnostic: it permits the sampler to concentrate
+on whatever part of the field is warmest, which is why the worst case involves a tail mean. If
+one is willing to assume that preferential sampling operates \emph{only} through the observed
+partition---that is, that sampling is exogenous conditional on eddy class---the same linear
+program over the three-cell partition yields
+\begin{equation}
+  \label{eq:stratified}
+  \left| \int \varepsilon \, dQ \right| \;\le\; \sum_{\kappa}
+  \left| \hat{f}_\kappa - f_\kappa \right| \cdot \left| \bar\varepsilon_\kappa \right| ,
+\end{equation}
+where $\bar\varepsilon_\kappa$ is the mean residual within class $\kappa$, estimable from the
+profiles falling in that class. Because \eqref{eq:stratified} involves class \emph{means}
+rather than tail means, it is typically a factor of three to five tighter than
+\eqref{eq:bound}.
+
+The two bounds are complementary and should both be reported: \eqref{eq:bound} is
+assumption-light and pessimistic, \eqref{eq:stratified} is sharper but conditional on the
+partition capturing the mechanism. Their ratio is itself informative about how much is being
+bought by the additional assumption. Expression \eqref{eq:stratified} also suggests an
+immediate remedy---post-stratifying the profiles so that $\hat f_\kappa = f_\kappa$ removes
+the class-driven component of the bias by construction.
+
+\subsection{Limitations}
+\label{sec:limitations}
+
+\emph{Regions of zero coverage.} If some part of $\mathcal{R}$ is never sampled---beneath
+permanent or seasonal ice, or at depths shallower than $2000$\,m where the target is
+undefined---then $dQ/dP = 0$ there, Assumption~\ref{ass:lambda} fails, and no finite bound is
+available. Such regions must be excised from $\mathcal{R}$ and discussed separately rather
+than folded into an average. This is the assumption's principal failure mode, and it is severe
+in the seasonally ice-covered Southern Ocean.
+
+\emph{The empirical distribution is $G$, not $F$.} Evaluating $\Psi$ from the observed
+residuals estimates the tail structure of the sampled distribution rather than the true one.
+Since the two differ by a density ratio in $[\Lambda^{-1},\Lambda]$, the induced error in
+\eqref{eq:bound} is $O((\Lambda-1)^2)$ and is negligible in the regime of interest; a fully
+conservative treatment substitutes $\sqrt{\Lambda}\,\hat\sigma$ for $\sigma$, inflating the
+bound by $\sqrt{\Lambda}$ (approximately $5\%$ at $\Lambda = 1.1$).
+
+\emph{Dependence on the resolved/unresolved split.} The magnitude of $\sigma$, and hence of
+the bound, depends on the choice of $V_L$. A larger resolved space transfers variance from
+$\varepsilon$ into $A$, shrinking the preferential bound while enlarging the coverage term. The
+split must therefore be fixed by an independent criterion and its sensitivity reported;
+Section~\ref{sec:truncation-later} does this by requiring that the residual field have
+collapsed to short-range correlation.
+
+\emph{The bound is worst-case, not an estimate.} Proposition~\ref{prop:bound} states what
+sampling imbalance \emph{could} do, not what it does. A small bound is therefore informative
+(it rules the mechanism out) while a large one is not (it establishes only that the mechanism
+is not ruled out). Establishing the actual magnitude requires the further work of
+Sections~\ref{sec:osse-later} and \ref{sec:budget-later}.
+
+\subsection{Implications for what follows}
+\label{sec:roadmap}
+
+Table~\ref{tab:lambda} and the critical values $\Lambda^\dagger \approx 1.13$ and $1.5$ define
+the target precision for the rest of the paper. Three requirements follow.
+
+First, $\sigma$---the standard deviation of the residual after removal of climatology and
+resolved anomaly---must be estimated, which requires specifying $V_L$. Second, $\Lambda$ must
+be constrained to a precision finer than $\Lambda^\dagger - 1$, which given the effective
+sample size is demanding and motivates careful treatment of the Lagrangian replication
+structure of the profile record. Third, because the bound is worst-case, an independent
+estimate of the actual bias is needed, which we obtain by advecting synthetic floats through
+an eddy-resolving circulation model and comparing against the model's known heat content.
+
+We take these in turn, and report throughout the pair of contrasting regions motivated by the
+$\sigma$-dependence of Table~\ref{tab:lambda}.
