@@ -1,0 +1,961 @@
+% ============================================================
+%  The Lagrangian OSSE --- design document
+%  Standalone: compile with pdflatex.
+%  Packages used: amsmath, amssymb, amsthm, booktabs, geometry,
+%                 hyperref, enumitem, longtable
+% ============================================================
+
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{longtable}
+\usepackage[hidelinks]{hyperref}
+
+\newtheorem{remark}{Remark}
+\newtheorem{assumption}{Assumption}
+
+\title{The Lagrangian OSSE\\[2mm]
+\large Measuring preferential sampling bias in regional ocean heat content\\
+by simulating floats inside a model ocean}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+% Long CMEMS dataset identifiers in \texttt do not hyphenate; relax line breaking.
+\sloppy
+
+%=============================================================
+\section{Why this experiment exists}
+%=============================================================
+
+Preferential sampling bias is, in the real ocean, unobservable by construction: it is the
+difference between what floats measured and what they would have measured had they gone
+somewhere else. It cannot be estimated from the profiles themselves
+(Section~\ref{sec:notestimable}), so every observational approach to it is indirect.
+
+The Observing System Simulation Experiment (OSSE) removes that obstruction by replacing the
+ocean with a model in which the field is known everywhere. Synthetic floats are advected
+through the model's own velocity field, sample the model's own heat content, and the bias is
+computed by subtraction rather than inferred. Three things follow that are unavailable
+otherwise:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Magnitude.} A number for the bias, with an ensemble error bar.
+  \item \textbf{Validation.} The observational estimator---eddy-occupancy
+        post-stratification---can be applied to the synthetic floats and checked against the
+        known answer. Without this, that estimator is untested.
+  \item \textbf{Mechanism.} Direct association between float behaviour (residence time,
+        looping) and the anomaly encountered, measurable per float.
+\end{enumerate}
+
+The cost is that the answer is a statement about the model. Section~\ref{sec:transfer}
+addresses what transfers and what does not.
+
+%=============================================================
+\section{Theoretical background}
+%=============================================================
+
+\subsection{Target, estimator, error}
+
+Let $\mathcal{R} = D \times \mathcal{T}$ be the analysis region: $D$ a horizontal domain masked
+to bathymetry deeper than $2000$\,m, $\mathcal{T}$ an averaging window. Let $P$ be normalised
+uniform (area $\times$ time) measure and $Y : \mathcal{R} \to \mathbb{R}$ the $0$--$2000$\,m
+ocean heat content (OHC) in J\,m$^{-2}$. Profiles arrive at $z_1,\dots,z_n$, with empirical
+sampling measure $Q_n = n^{-1}\sum_j \delta_{z_j}$. Then
+\begin{equation}
+  \bar{Y} = \int_{\mathcal{R}} Y \, dP,
+  \qquad
+  \hat{Y} = \int_{\mathcal{R}} Y \, dQ_n,
+  \qquad
+  \hat{Y} - \bar{Y} = \int_{\mathcal{R}} Y \, d(Q_n - P).
+\end{equation}
+
+\subsection{The modelling lineage}
+\label{sec:lineage}
+
+The decomposition adopted below is not new. It is the standard on which the current generation
+of Argo-based OHC products rests, and setting out the lineage matters because it fixes the
+scope of the present work: the assumption under examination is common to all of these products
+and is not an idiosyncrasy of any one of them.
+
+\begin{description}[leftmargin=*,style=nextline]
+  \item[Roemmich \& Gilson (2009).] Objective mapping of Argo temperature and salinity onto a
+    regular grid, producing the widely used RG climatology and anomaly product. Establishes the
+    working practice of a climatological mean field plus an interpolated anomaly.
+  \item[Kuusela \& Stein (2018).] Replaces global stationarity with a locally stationary
+    spatio-temporal Gaussian process, with covariance parameters estimated in moving windows.
+    This is the mapping foundation on which the subsequent OHC work explicitly builds.
+  \item[Park, Kuusela, Giglio \& Gray (2023).] Applies a local latent Gaussian process
+    framework to ocean heat \emph{transport}, introduces an approximate EM algorithm estimating
+    the mean field and covariance parameters jointly, and adds a debiasing step for the mean
+    field. A sibling application rather than a direct antecedent for heat \emph{content}, but it
+    is where joint mean/covariance estimation enters the lineage.
+  \item[Sukianto et al.\ (2026).] An end-to-end mapping and uncertainty quantification framework
+    for OHC built on the Kuusela--Stein foundation, with data-driven decorrelation scales and
+    variances and uncertainty quantification by local conditional simulation ensembles.
+    Underlies the LocalGP data product, which has contributed to climate assessments and OHC
+    intercomparison efforts.
+  \item[Bivariate extension (2026).] Joint modelling of two pressure layers, allowing the more
+    sparsely sampled midocean layer to borrow predictive strength from the upper ocean.
+\end{description}
+
+Three remarks about this lineage bear directly on the design of the present experiment.
+
+\begin{remark}[``Debiased'' in Park et al.\ refers to mean-field misspecification]
+\label{rem:debias}
+The debiasing procedure of Park et al.\ refines a potentially under-specified parametric mean
+field, correcting leakage of mean structure into the estimated anomaly. In the terminology of
+Section~\ref{sec:coverage-pref} this is a refinement on the \emph{coverage} side: it improves
+the description of structure that is a deterministic function of position. It does not address
+dependence between the sampling design and the field, and the two should not be conflated.
+\end{remark}
+
+\begin{remark}[The mean field is Argo-derived]
+\label{rem:circular}
+Both the EM procedure of Park et al.\ and the plug-in estimates of Sukianto et al.\ estimate
+$\mu$ from the same profiles being mapped. If the array preferentially samples warm water,
+$\hat\mu$ inherits that bias. Preferential sampling is therefore not confined to the nugget at
+sample points: it propagates into the reference field against which anomalies are defined. In
+the real analysis this argues for an Argo-independent climatology; inside the OSSE, where the
+model supplies its own truth, the issue is handled by internal closure
+(Section~\ref{sec:consistency}).
+\end{remark}
+
+\begin{remark}[What is actually at risk]
+\label{rem:trend}
+A preferential offset that is roughly constant in time affects the estimated mean state but
+largely cancels in anomalies and trends---the quantities used in Earth energy imbalance work.
+The threat to trends is \emph{time-varying} preferentiality. The array roughly tripled between
+2004 and 2007; parking depths were standardised; float models and mission parameters changed;
+and Southern Ocean coverage expanded substantially. If trapping propensity or eddy-class
+occupancy imbalance drifted over the record, the consequence is a spurious OHC trend. This
+motivates a direct diagnostic---compute the occupancy imbalance year by year and test for
+trend---which is inexpensive once the eddy census exists and which we include among the
+deliverables (Section~\ref{sec:deliverables}).
+\end{remark}
+
+\subsection{The standard statistical model}
+\label{sec:model}
+
+We adopt without modification the decomposition used in that literature:
+\begin{equation}
+  \label{eq:model}
+  Y(x,y,t) \;=\; \mu(x,y,t) \;+\; a(x,y,t) \;+\; \varepsilon(x,y,t),
+\end{equation}
+where
+\begin{itemize}[leftmargin=*]
+  \item $\mu$ is a climatological mean field, estimated by local polynomial regression on a
+        regular grid;
+  \item $a$ is a zero-mean transient anomaly field, modelled as a locally stationary
+        spatio-temporal Gaussian process;
+  \item $\varepsilon$ is a zero-mean nugget describing unresolved fine-scale variation,
+        principally mesoscale, taken as uncorrelated in space and time within the local window.
+\end{itemize}
+
+Nothing below changes these definitions, the estimation of $\mu$, or the locally stationary
+Gaussian process for $a$. The mapped products built on \eqref{eq:model} are taken as given.
+
+\subsection{Preferential sampling is compatible with this model}
+\label{sec:compatible}
+
+It is worth being explicit about why, since \eqref{eq:model} is often read as excluding the
+phenomenon.
+
+\paragraph{``Zero-mean'' is a marginal statement at a fixed location.}
+$\mathbb{E}[\varepsilon(z)] = 0$ says nothing about $\mathbb{E}[\varepsilon(z_j) \mid
+\mathcal{Z}]$, a conditional expectation at a \emph{random, field-dependent} location. Toy
+case: let $\varepsilon$ be i.i.d.\ $N(0,\sigma^2)$ on a grid and let the sampler select the
+largest value. The marginal mean is zero at every grid point; the mean at the sampled point is
+positive. No assumption in \eqref{eq:model} is violated.
+
+\paragraph{``Uncorrelated'' is likewise a statement about pairs at fixed locations.}
+$\operatorname{Cov}(\varepsilon(z),\varepsilon(z')) = 0$ constrains the joint law of the field
+at prescribed points and places no constraint on which points get sampled.
+
+\paragraph{What is added is one conditional distribution.}
+The standard framework implicitly factorises the joint law as
+\[
+  [\,a,\varepsilon\,] \;\times\; [\,\mathcal{Z}\,] \;\times\;
+  [\,\text{data} \mid \mathcal{Z}, a, \varepsilon\,],
+\]
+with the design $\mathcal{Z}$ free-standing. We replace $[\mathcal{Z}]$ by
+$[\mathcal{Z} \mid a, \varepsilon]$. That is the entire modification.
+
+\paragraph{Why the modification matters.}
+The target and the estimator treat $\varepsilon$ asymmetrically. In the target
+$\int (\mu + a)\,dP$, the nugget integrates away over a region spanning many correlation
+lengths. In the estimator $n^{-1}\sum_j [\mu(z_j) + a(z_j) + \varepsilon(z_j)]$ it does
+\emph{not} average out, if the $z_j$ were selected on it. So $\varepsilon$ contributes nothing
+to what is wanted and something to what is computed. Write
+\begin{equation}
+  \label{eq:b}
+  b_j \;:=\; \mathbb{E}\!\left[\varepsilon(z_j) \mid \mathcal{Z}\right]
+\end{equation}
+for the conditional mean nugget at the realised design. The standard framework assumes
+$b \equiv 0$; this experiment measures it.
+
+\paragraph{A physical tension, and its resolution.}
+Formally, white noise and preferential sampling coexist without difficulty. Physically they are
+in tension: a float follows a continuous trajectory and cannot steer toward a
+delta-correlated field, since there is nothing coherent to be trapped by. The mechanism
+requires $\varepsilon$ to have genuine spatial structure.
+
+The resolution is that ``uncorrelated'' in \eqref{eq:model} means uncorrelated \emph{at the
+resolution of the mapping}, not literally zero correlation length. Unresolved mesoscale
+variability has $\ell_\varepsilon \sim 50$--$100$\,km and a few weeks---negligible against the
+data-driven decorrelation scales used for $a$, but far from zero, and precisely the scale at
+which eddy trapping operates. We therefore treat $\varepsilon$ as white for mapping purposes
+and as short-range correlated with $\ell_\varepsilon > 0$ for the sampling analysis. The same
+fact drives the effective-sample-size problem in Section~\ref{sec:control}.
+
+\paragraph{Dependence is restricted to $\varepsilon$, not $a$.}
+We assume the design may depend on the unresolved field but not on the resolved anomaly. This
+is physically defensible---trapping is a mesoscale phenomenon, mesoscale variability is in
+$\varepsilon$ by construction, and large-scale anomalies do not trap floats---and it is
+analytically valuable, because it leaves the mapped $a$ usable as given. Were the design to
+depend on $a$, a Gaussian process predictor for $a$ would itself be biased, since it conditions
+on the data as though locations were exogenous (Diggle et al.\ 2010; Gelfand et al.\ 2012). The
+second-order caveat is that a warm large-scale state may coincide with a stronger jet and
+faster flushing; we note it and do not model it.
+
+\subsection{Coverage versus preferential}
+\label{sec:coverage-pref}
+
+Since the region spans many correlation lengths of $\varepsilon$, we have
+$\int_{\mathcal{R}} \varepsilon \, dP \approx 0$, and
+\begin{equation}
+  \label{eq:split}
+  \hat{Y} - \bar{Y}
+  \;=\; \underbrace{\int_{\mathcal{R}} (\mu + a)\, d(Q_n - P)}_{\textbf{coverage}}
+  \;+\; \underbrace{\frac{1}{n}\sum_{j=1}^{n} \varepsilon(z_j)}_{\textbf{preferential}} .
+\end{equation}
+
+\emph{Coverage bias} follows from floats being unevenly distributed in space and time. It
+depends on the field only through structure that is a known or estimable function of position,
+so given the position list it is computable. It would be present even if float positions were
+fixed in advance, independently of the ocean.
+
+\emph{Preferential bias} is the mean of the nugget at the sampled points. It is nonzero only
+when the positions are stochastically dependent on the field---floats lingering where water is
+anomalously warm, or being flushed from regions where it is anomalously cold. It survives even
+under perfectly uniform sampling density.
+
+The mechanism making this plausible for Argo: floats drift with ocean currents, and currents
+are geostrophically tied through thermal wind to the density structure that sets heat content.
+The instrument is transported by the field it measures.
+
+\subsection{A note on exactness}
+\label{sec:exactness}
+
+Equation \eqref{eq:split} is exact if the split between $a$ and $\varepsilon$ is made a
+definition---that is, if $a := \Pi_L(Y - \mu)$ and $\varepsilon := (I - \Pi_L)(Y - \mu)$ for
+$\Pi_L$ the $L^2(P)$-orthogonal projection onto a resolved space $V_L$ containing the
+constants, in which case $\int \varepsilon \, dP = 0$ identically. In the OSSE we adopt this
+construction, since the model field is available everywhere and the projection is computable.
+In the operational setting the split is instead induced by the fitted Gaussian process, and
+\eqref{eq:split} holds approximately, with $\int \varepsilon \, dP$ small but not exactly zero.
+Reporting the OSSE's projection residual quantifies that approximation.
+
+\subsection{Why the preferential term is not estimable from profiles}
+\label{sec:notestimable}
+
+Two obstructions:
+
+\begin{itemize}[leftmargin=*]
+  \item The residuals available in practice, $\hat\varepsilon_j$, come from fitting $\mu + a$
+        to the observed profiles. When the constant lies in the fitted span,
+        $\sum_j \hat\varepsilon_j = 0$ identically.
+  \item More fundamentally, $\varepsilon$ is observed only where floats went. If floats
+        systematically avoided cold water, no feature of the sample reveals the temperature of
+        the water avoided.
+\end{itemize}
+
+Note also that \textbf{cross-validation cannot detect this}. Holding out observed profiles and
+predicting them from other observed profiles validates against a sample carrying the same
+selection as the training set. A map can pass cross-validation cleanly and remain biased.
+
+Hence the OSSE: measure $b$ where $\varepsilon$ is known everywhere.
+
+\subsection{Why the OSSE targets $\varepsilon$, not raw $Y$}
+\label{sec:whyresidual}
+
+\paragraph{Recoverability.} $\mu$ is a known function of position, so its contribution to
+\eqref{eq:split} is computable from the position list alone, and $a$ is estimable from the
+data. Only $\varepsilon$ leaves a residue that nothing recovers. Raw OHC bundles all three and
+measures something largely already correctable.
+
+\paragraph{Signal-to-noise.} Across an energetic box, $\mu$ varies by $O(10^{9}$--$10^{10})$
+J\,m$^{-2}$ while the preferential target is $O(10^{8})$. A statistic built on raw OHC is
+dominated by mean-field sampling and demands far more ensemble members to resolve the term of
+interest.
+
+\paragraph{Nonetheless, report the total too.} In the OSSE the truth is known, so the full
+error $\hat{Y} - \bar{Y}$ is free. Its value: the total is invariant to where the
+resolved/unresolved split is drawn, whereas the coverage/preferential split is not. Enlarging
+the resolved space moves variance from $\varepsilon$ into $a$ and shrinks the preferential
+term. Reporting both makes that dependence visible rather than hidden.
+
+\paragraph{What the nugget contains.} Argo temperature accuracy of $\sim 0.002\,^\circ$C
+integrated over $2000$\,m corresponds to $\sim 1.6\times 10^{7}$ J\,m$^{-2}$, against mesoscale
+OHC variability of order $10^{9}$. Instrument error is thus a percent or two of the nugget, and
+it is genuinely design-independent---a CTD's accuracy does not depend on which eddy it sits in.
+The remaining $\sim\!98\%$ is geophysical, and it is exactly the component for which the
+independence assumption is least secure.
+
+%=============================================================
+\section{Design}
+%=============================================================
+
+\subsection{Core principle}
+
+Inside the OSSE, \textbf{the model is the ocean}. Every quantity in
+Section~\ref{sec:model} is computed from model fields, with no reference to the real ocean or
+to real observations. This closure is what makes the experiment interpretable; violations of it
+(Section~\ref{sec:consistency}) are the main way it goes wrong.
+\begin{align}
+  \bar{Y}^{\text{sim}} &= \int_{\mathcal{R}} Y^{\text{model}} \, dP
+    &&\text{(exact, by quadrature over the model grid)} \\
+  \hat{Y}^{\text{sim}} &= \frac{1}{n}\sum_j Y^{\text{model}}(z_j^{\text{sim}}) && \\
+  b^{\text{sim}} &= \frac{1}{n}\sum_j \varepsilon^{\text{model}}(z_j^{\text{sim}}) &&
+\end{align}
+with $\varepsilon^{\text{model}} = (I - \Pi_L)\big(Y^{\text{model}} - \mu^{\text{model}}\big)$.
+
+\subsection{Model choice}
+\label{sec:modelchoice}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+ & GLORYS12 & LLC4320 \\
+\midrule
+Resolution & $1/12^\circ$ ($\sim$6 km at $40^\circ$N) & $1/48^\circ$ ($\sim$1.5 km) \\
+Period & 1993--present & Sep 2011 -- Nov 2012 \\
+Assimilation & Yes (incl.\ Argo) & Free-running \\
+Lagrangian realism & \emph{damped} & honest \\
+Period matching & can match 2015--2019 & cannot \\
+\bottomrule
+\end{tabular}
+\caption{Candidate models. Assimilation increments disrupt eddy coherence and shorten
+Lagrangian trapping times, so the reanalysis is expected to understate the effect.}
+\end{table}
+
+\textbf{Use both, for different purposes.} The free-running model gives trustworthy Lagrangian
+statistics and is the primary estimate of the mechanism. The assimilating reanalysis gives a
+period-matched sensitivity run. Expect GLORYS to \emph{understate} $b^{\text{sim}}$; report the
+pair and treat the gap as part of the uncertainty.
+
+\textbf{A separate use to avoid.} A reanalysis that assimilates Argo must not be used for a
+resampling test on \emph{real} float positions: at those positions the field is partly the
+float's own measurement propagated by the assimilation covariance, so shifting the trajectory
+removes a constraint and produces a difference with no oceanographic content. That confound
+does not arise here, because the OSSE uses only synthetic floats and the model's own truth.
+
+\subsection{Float simulation}
+\label{sec:simulation}
+
+Integrate parcel trajectories through the model's three-dimensional velocity, reproducing the
+Argo park-and-profile cycle.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llll}
+\toprule
+Phase & Duration & Depth & Advecting velocity \\
+\midrule
+Park & $\sim$9 days & 1000 m & $\mathbf{u}(1000\,\mathrm{m})$ \\
+Descend & $\sim$6 h & 1000 $\to$ 2000 m & interpolated through the column \\
+Profile ascent & $\sim$6 h & 2000 m $\to$ surface & sheared flow through the column \\
+Surface drift & 6--24 h & 0 m & surface current (plus optional windage) \\
+Descend & $\sim$6 h & 0 $\to$ 1000 m & interpolated \\
+\bottomrule
+\end{tabular}
+\caption{Simulated float cycle.}
+\end{table}
+
+Three details matter:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Do not treat the profile as instantaneous.} Ascent from $2000$\,m at
+        $\sim$10\,cm\,s$^{-1}$ takes $\sim$6\,h; in a strong current the float moves tens of km
+        through vertically sheared flow. The profile's nominal position is not the parking
+        position.
+  \item \textbf{Surface drift is not negligible.} Surface velocities typically exceed
+        $1000$\,m velocities substantially, and the surface interval is where wind enters.
+  \item \textbf{The box is not closed.} Floats advect in and out. Seed over a wider domain and
+        count profiles falling inside $D$.
+\end{itemize}
+
+\paragraph{Implementation.} Use an established Lagrangian framework rather than writing an
+integrator: OceanParcels (Python; handles NEMO-family output, which includes GLORYS, natively),
+Ariane, or TRACMASS. Fourth-order Runge--Kutta with sub-daily timestep, trilinear spatial and
+linear temporal interpolation of velocity.
+
+\paragraph{Seeding and mortality.} For each real float present in the box during the period,
+seed a synthetic float at the corresponding deployment position and date. Impose a per-cycle
+failure probability tuned so that simulated profile counts match the real record. Target
+$n \approx 8500$ profiles over five years in a $4.3\times10^{6}$\,km$^2$ box, from $\sim$45--50
+resident floats.
+
+\paragraph{Ensemble.} Generate members by perturbing seed positions (a few km) and dates (a few
+days), and by varying the mortality seed. Sizing: with per-realisation noise
+$\sigma/\sqrt{n_{\text{eff}}} \approx 6\times10^{7}$ J\,m$^{-2}$ (taking $\sigma \sim 10^{9}$,
+$n_{\text{eff}} \sim 300$), resolving $b \sim 5\times10^{7}$ at three standard errors needs
+roughly 12 members; \textbf{use 30--50}, pooling across years where the model period permits.
+
+\subsection{The decoupled control}
+\label{sec:control}
+
+$b^{\text{sim}}$ as computed contains both terms of \eqref{eq:split}. To isolate the
+preferential component, build a control in which trajectories are kinematically realistic but
+carry \textbf{no alignment with the field being sampled}.
+
+\paragraph{Cheap construction (recommended).} Reuse the same trajectories, but evaluate
+$\varepsilon^{\text{model}}$ from a \emph{different year} of the model at the same day-of-year
+and position:
+\begin{equation}
+  b^{\text{ctrl}} = \frac{1}{n}\sum_j \varepsilon^{\text{model}}_{(\text{year } y')}(z_j^{\text{sim}}),
+  \qquad y' \neq y .
+\end{equation}
+Float positions were determined by year $y$'s eddies, so with respect to year $y'$'s field they
+are exogenous. This costs nothing extra---no re-integration---and averaging over several $y'$
+gives the control's own sampling distribution directly. Then
+\begin{equation}
+  \widehat{\mathcal{P}}^{\text{sim}} = b^{\text{sim}} - \overline{b^{\text{ctrl}}},
+  \qquad
+  \widehat{\mathcal{C}}^{\text{sim}} = \overline{b^{\text{ctrl}}},
+\end{equation}
+and the spread of $b^{\text{ctrl}}$ across $y'$ is the null distribution against which
+$b^{\text{sim}}$ is tested.
+
+\paragraph{Why trajectories are preserved rather than resampled.} The null distribution must
+answer: \emph{if sampling were exogenous, how much would the statistic vary?} Its width is set
+by the number of genuinely independent looks at the field. Because a float moves only
+$30$--$80$\,km per 10-day cycle---well inside a mesoscale feature---consecutive profiles are
+near-replicates and $n_{\text{eff}}$ is far below $n$. Drawing i.i.d.\ points from an estimated
+intensity would give a null several times too narrow and would reject on a perfectly exogenous
+array. Reusing the actual trajectories reproduces the correct width automatically, so
+$n_{\text{eff}}$ never has to be estimated. It also delivers the correct non-Gaussian shape of
+the null, which matters at a few hundred effective looks.
+
+This preserves \emph{kinematic} persistence (bounded float speed, smooth tracks) while breaking
+\emph{field alignment} (loops sitting on warm eddies). Only the second is the mechanism under
+test. Conditioning on trajectory shape does cost power, since shape is partly caused by the
+field---but it can only make the test conservative, not produce a false positive.
+
+\paragraph{Alternative.} Advect a second ensemble using year $y'$ velocity while sampling year
+$y$ field. More expensive, and preferable only if the control's trajectory geometry must also
+be independent.
+
+\subsection{Day-of-year alignment}
+
+Use year-shifts rather than circular time-shifts within a single window. Seasonality is matched
+automatically, replicates are genuinely independent rather than wrap-around artifacts, and a
+long model record yields many more of them.
+
+%=============================================================
+\section{Analysis domain and data}
+\label{sec:data}
+%=============================================================
+
+\subsection{Period: 2015--2019}
+\label{sec:period}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{p{0.28\textwidth}p{0.62\textwidth}}
+\toprule
+Criterion & Rationale \\
+\midrule
+Mature array & Deployment reached $\sim$3800 floats by 2007; count and spatial coverage are
+stable across the window, so occupancy statistics are not confounded by array growth. \\
+Pre-disruption & Deployments were cut sharply from 2020 and recovery was uneven by basin. \\
+Delayed-mode complete & Quality-controlled profiles are fully available, unlike the most
+recent one to two years. \\
+Sufficient sampling & $\sim$1700 profiles per box per year, $\sim$8500 over five years, from
+$\sim$45--50 resident floats. \\
+Averaging helps twice & The five-year mean field is smoother than any single year, and $n$ is
+five times larger; both shrink the coverage term, so a null result on the preferential term is
+more meaningful. \\
+\bottomrule
+\end{tabular}
+\caption{Rationale for the 2015--2019 analysis window.}
+\end{table}
+
+A five-year window is preferred to a single year because the single-year case is both harder
+and more likely to be uninformative; it is the better second experiment, not the first.
+
+\paragraph{A scheduling conflict, and its resolution.} LLC4320 covers only September 2011 to
+November 2012, so the free-running arm of Section~\ref{sec:modelchoice} cannot be
+period-matched to 2015--2019. This is acceptable because the OSSE's purpose is to validate the
+eddy-occupancy estimator \eqref{eq:poststrat}, and a validated estimator transfers across
+periods. The arrangement should be stated explicitly: the free-running run sits at its own
+period, GLORYS supplies the period-matched sensitivity run, and the real-array analysis sits at
+2015--2019.
+
+\paragraph{A longer record for one diagnostic.} Remark~\ref{rem:trend} concerns
+\emph{time-varying} preferentiality, which five years cannot resolve. The occupancy census
+requires only float positions and an altimetric eddy atlas---no model, no trajectories---so it
+should be run separately over the full Argo record, 2004--2024. A trend in occupancy imbalance
+would be a stronger result than the five-year magnitude, and it does not depend on the OSSE.
+
+\subsection{Region: two paired North Atlantic boxes}
+\label{sec:region}
+
+\paragraph{Why the North Atlantic.} It is the best-sampled basin, so the array is close to its
+design density and one is not measuring a coverage pathology; altimetric coverage for the eddy
+census is excellent; the front is strong and its eddy coherence well characterised; and there
+is no sea ice. Ice creates regions of zero float coverage, where the framework degenerates
+entirely---a real failure mode, but one belonging to the global extension rather than the
+pilot.
+
+\paragraph{Why two boxes.} The achievable bias scales with the variability of the field being
+selected on, and mesoscale variance differs by roughly a factor of three between quiescent and
+frontal regions. A single number is therefore hard to interpret; the \emph{ratio} is the
+generalisable result, and it comes from running the same pipeline twice.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{p{0.14\textwidth}p{0.38\textwidth}p{0.38\textwidth}}
+\toprule
+ & Box A --- Sargasso & Box B --- Gulf Stream extension \\
+\midrule
+Nominal extent & 22--34$^\circ$N, 40--60$^\circ$W & 35--45$^\circ$N, 40--60$^\circ$W \\
+Character & abyssal plain, quiescent, uniformly deeper than 2000\,m & strong front, high eddy
+kinetic energy, rapid advection \\
+Mechanism & floats meander quasi-diffusively & floats trapped in rings or flushed downstream
+within weeks \\
+Expected role & small effect; establishes that the method works & large effect; the substantive
+finding \\
+\bottomrule
+\end{tabular}
+\caption{Paired analysis regions, each $\approx 4.3\times10^{6}$\,km$^2$.}
+\end{table}
+
+Box A functions as a control: if the pipeline reports a large effect there, something is wrong.
+
+\paragraph{Bathymetry sets the edges---inspect the mask before committing.} These longitudes
+lie west of the Mid-Atlantic Ridge (crest near $29$--$30^\circ$W at these latitudes), which is
+why they were chosen: the ridge runs $2500$--$3000$\,m with shallower peaks and would punch
+holes in the $>2000$\,m mask. However, the New England Seamounts extend southeast to roughly
+$35^\circ$N, $57^\circ$W with summits well above $2000$\,m, so the southwestern corner of Box B
+may clip them. Either trim the western boundary to $\sim55^\circ$W or mask and report the
+excluded area fraction. Equal box areas matter more than the exact coordinates.
+
+\paragraph{Scale.} Each box is large enough to span many correlation lengths of $\varepsilon$,
+so that $\int_{\mathcal{R}} \varepsilon \, dP \approx 0$ holds as assumed in
+\eqref{eq:split}, and small enough that every quantity can be cross-checked by brute force.
+
+\subsection{GLORYS12 datasets and variables}
+\label{sec:glorys}
+
+The reanalysis arm draws on GLOBAL\_MULTIYEAR\_PHY\_001\_030 (GLORYS12V1), a $1/12^\circ$,
+50-level global product covering 1993 to the present, distributed as four datasets. Different
+parts of the protocol require different ones.
+
+\paragraph{Static fields --- download once, first.}
+\texttt{cmems\_mod\_glo\_phy\_my\_0.083deg\_static}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+Variable & Purpose \\
+\midrule
+\texttt{deptho} & bathymetry; defines the $>2000$\,m mask \\
+\texttt{e3t} & cell thickness; \textbf{essential} for $\int \rho c_p T\,dz$ \\
+\texttt{e1t}, \texttt{e2t} & cell dimensions for the area-weighted quadrature of $\int Y\,dP$ \\
+\texttt{mask} & land--sea mask \\
+\texttt{deptho\_lev} & model level at sea floor; partial cells \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Do not reconstruct layer thicknesses from the depth coordinate; use \texttt{e3t}. (The Product
+User Manual lists its units as m\,s$^{-1}$, which is a typographical error---the standard name
+is \texttt{cell\_thickness}, in metres.)
+
+\paragraph{Monthly means --- the source for $\mu$.}
+\texttt{cmems\_mod\_glo\_phy\_my\_0.083deg\_P1M-m}, variables \texttt{thetao} (levels spanning
+$0$--$2000$\,m) and \texttt{zos}, from 1993 through the end of the analysis window, subset to
+the two boxes plus a halo.
+
+This, rather than the packaged climatology, is the right source. The climatology product
+supplies a seasonal cycle and long-term mean but \emph{no trend}, and per
+Remark~\ref{rem:trend} the trend is precisely what is at risk. Fitting $\mu$ as mean plus trend
+plus annual and semiannual harmonics per cell, from monthly means, is also what
+Section~\ref{sec:consistency} requires---that $\mu$ be computed the way the operational one is.
+At roughly 324 monthly time steps over two boxes this is inexpensive.
+
+The halo need only be a couple of regression bandwidths wide, since $\mu$ is evaluated only at
+profiles inside $D$ and over $D$ for the quadrature. It is not the trajectory buffer.
+
+\texttt{zos} at monthly resolution over the same span is two-dimensional and nearly free, and
+supplies a long-baseline sea surface height mean for the eddy census---preferable to a mean
+computed from the five years of daily fields alone.
+
+\paragraph{Daily means --- the workhorse.}
+\texttt{cmems\_mod\_glo\_phy\_my\_0.083deg\_P1D-m}, over the analysis window and a buffered
+region.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+Variable & Levels & Purpose \\
+\midrule
+\texttt{thetao} & $0$--$2000$\,m & the OHC field \\
+\texttt{uo}, \texttt{vo} & restricted; see below & trajectory integration \\
+\texttt{zos} & 2D & eddy census \\
+\texttt{mlotst} & 2D & optional context \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Omit \texttt{bottomT}, \texttt{siconc}, \texttt{sithick}, \texttt{usi}, \texttt{vsi}: there is
+no ice in either box and sea floor temperature is not used.
+
+\paragraph{Velocity subsetting is the dominant cost decision.} Full-column daily
+\texttt{uo}/\texttt{vo} exceeds everything else combined. For a first pass, retain only the
+levels bracketing the $1000$\,m parking depth together with the top two or three for the
+surface drift---roughly a $90\%$ reduction. The nine-day park dominates displacement; ascent
+and descent shear is a refinement. Extend to the full column only if the association in
+Figure~5 indicates the mechanism is live.
+
+\paragraph{Salinity.} Omit \texttt{so} initially and use constant $\rho c_p$, as most
+operational OHC products do; including it doubles the three-dimensional volume. Download a
+single year to quantify the in-situ density effect (of order $1\%$) and then decide.
+
+\paragraph{Depth levels.} The $2000$\,m horizon falls between approximately the fortieth and
+forty-first of the fifty levels, so roughly the top forty are required. Verify against the
+actual \texttt{depth} coordinate and \texttt{e3t} rather than assuming, and partial-weight the
+cell straddling $2000$\,m---at these depths that cell is $\sim275$\,m thick, so mishandling it
+is a material error.
+
+\paragraph{Climatology product.} \texttt{cmems\_mod\_glo\_phy\_my\_0.083deg-climatology\_P1M-m}
+provides the 1993--2016 monthly mean fields. Useful as a first-pass shortcut and cross-check
+only. Its baseline differs from the fitted $\mu$, so expect a constant offset: compare
+structure, not absolute values.
+
+\paragraph{Volume.} Global daily files are $3.4$\,GB each, so five years of unsubset data is of
+order $6$\,TB. A buffered region of $15$--$50^\circ$N, $30$--$70^\circ$W covers both boxes with
+room for floats advecting in and out and is roughly $0.3\%$ of global area. For scale, one box
+at $20^\circ\times12^\circ$ with forty levels and $\sim$324 monthly \texttt{thetao} steps is
+about $1$\,GB stored as \texttt{short}; both boxes with halo is a few GB, trivial beside the
+daily velocity.
+
+\subsection{Practical notes}
+\label{sec:practical}
+
+\begin{description}[leftmargin=*,style=nextline]
+  \item[The distributed product is not a C-grid.] Fields are interpolated from the native
+    Arakawa C-grid onto a collocated regular $1/12^\circ$ grid, with all variables at the same
+    points. Trajectory integration must therefore use A-grid interpolation. Applying C-grid
+    interpolation to collocated data is a silent error that manifests as spurious divergence in
+    the trajectories.
+  \item[Packed integers.] All fields are stored as \texttt{short} with \texttt{scale\_factor}
+    and \texttt{add\_offset}, and \texttt{\_FillValue} $=-32767$ over land. Standard NetCDF
+    readers decode automatically; anything reading raw must apply
+    $\text{real} = \text{stored} \times \text{scale} + \text{offset}$.
+  \item[Reanalysis spin-up.] GLORYS12 is initialised in January 1993 from temperature and
+    salinity regressed on EN4.2.0, and reanalyses commonly drift in deep heat content while the
+    assimilation settles. That drift enters the fitted trend coefficient directly. Plot box-mean
+    $0$--$2000$\,m OHC against time before fitting, and consider beginning the fit in 1995;
+    nonlinearity in the earliest years is a spin-up artifact rather than ocean signal.
+  \item[Linearity of the vertical integral.] With constant $\rho c_p$, OHC is linear in
+    temperature, so monthly-mean OHC equals OHC computed from monthly-mean temperature. Fitting
+    $\mu$ from monthly files therefore introduces no error relative to fitting from dailies.
+    This breaks if in-situ density is used---a further small argument for constant $\rho c_p$.
+  \item[Baseline choice moves the split, not the total.] Fitting $\mu$ over a window that
+    includes the analysis period is not circular here, since $\mu$ derives from the complete
+    model field rather than from sampled profiles, so no preferential bias can enter (contrast
+    Remark~\ref{rem:circular}). But where the trend is absorbed shifts the $\mu$/$a$ boundary
+    and hence the coverage/preferential split; only the total is invariant. Match whatever the
+    operational pipeline does and record the choice.
+  \item[Access.] Use the \texttt{copernicusmarine} Python toolbox; \texttt{motuclient} is
+    retired. A single \texttt{copernicusmarine subset} call accepts variable list, depth range,
+    bounding box, and time range. Lazy Zarr access via \texttt{open\_dataset} is worth using for
+    the monthly $\mu$ fit even where the trajectory code requires local files.
+\end{description}
+
+%=============================================================
+\section{Estimands}
+%=============================================================
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+Symbol & Definition & Read from \\
+\midrule
+$b^{\text{sim}}$ & mean nugget at synthetic profile positions & main ensemble \\
+$\widehat{\mathcal{C}}^{\text{sim}}$ & coverage component & control mean \\
+$\widehat{\mathcal{P}}^{\text{sim}}$ & preferential component & main minus control \\
+$\hat{Y} - \bar{Y}$ & total error, all components & main ensemble, raw OHC \\
+$\hat{f}_\kappa$ vs $f_\kappa$ & eddy-class occupancy vs areal fraction & Section~\ref{sec:validation} \\
+$n_{\text{eff}}$ & effective sample size & $\sigma^2/n$ over control variance \\
+$\ell_\varepsilon$ & nugget correlation range & residual variograms \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Budget closure.} Equation \eqref{eq:split} is an identity under the projection
+construction of Section~\ref{sec:exactness}, so
+\[
+  (\hat{Y} - \bar{Y}) - \big[\widehat{\mathcal{C}}^{\text{sim}} + \widehat{\mathcal{P}}^{\text{sim}}\big] = 0
+\]
+up to quadrature and interpolation error. A material gap indicates an inconsistency in how
+$\Pi_L$ was applied, or a resolved space too small for the coverage term to be captured. Report
+the closure residual as a numerical check.
+
+%=============================================================
+\section{The validation payoff}
+\label{sec:validation}
+%=============================================================
+
+This is the reason the OSSE justifies its cost.
+
+The observational estimate of preferential bias post-stratifies by eddy class using altimetry:
+with $f_\kappa$ the areal--temporal fraction of class $\kappa$ and $\hat{f}_\kappa$ the
+fraction of profiles falling in it,
+\begin{equation}
+  \label{eq:poststrat}
+  \widehat{\mathcal{P}} = \sum_{\kappa} \big(\hat{f}_\kappa - f_\kappa\big)\,\bar\varepsilon_\kappa,
+  \qquad \kappa \in \{\text{anticyclone},\ \text{cyclone},\ \text{exterior}\}.
+\end{equation}
+Applied to the real array, this estimator has never been checked against a known answer.
+
+\paragraph{Run it on the synthetic floats.} The model supplies its own sea surface height field,
+so the same eddy detection and tracking algorithm can be applied to model output, producing the
+model's analogue of an altimetric eddy atlas. Compute \eqref{eq:poststrat} for the synthetic
+profiles and compare against $\widehat{\mathcal{P}}^{\text{sim}}$, which is known. Three
+outcomes, all informative:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Recovery.} \eqref{eq:poststrat} reproduces the known bias within its error bar
+        $\Rightarrow$ the observational estimator is validated and can be applied to real floats
+        with a defensible uncertainty.
+  \item \textbf{Underestimation.} \eqref{eq:poststrat} is systematically too small
+        $\Rightarrow$ preferential structure operates below the resolution of the eddy partition
+        (selection by amplitude, by radius, or at submesoscale). The ratio is a correction
+        factor; refine the partition and repeat.
+  \item \textbf{Failure.} No relationship $\Rightarrow$ the class partition does not capture the
+        mechanism, and the observational route must be rethought.
+\end{itemize}
+
+\paragraph{Refinement diagnostic.} Recompute \eqref{eq:poststrat} under progressively finer
+partitions---adding strata for eddy amplitude quantile and normalised radius from the core.
+Saturation indicates the relevant structure has been captured; continued growth bounds how much
+\eqref{eq:poststrat} is missing.
+
+\paragraph{Occupancy imbalance as descriptive evidence.} Independently of
+\eqref{eq:poststrat}, the comparison of $\hat{f}_\kappa$ against $f_\kappa$ is the most direct
+demonstration that preferential sampling occurred at all: under exogenous sampling the two agree
+up to sampling error. Report the comparison with confidence intervals, and---per
+Remark~\ref{rem:trend}---also year by year, testing the imbalance for trend.
+
+%=============================================================
+\section{Internal consistency}
+\label{sec:consistency}
+%=============================================================
+
+\paragraph{Use the model's own climatology for $\mu$.} Inside the OSSE, $\mu^{\text{model}}$
+must be computed from the model's long record. Substituting an external climatology would place
+the model-minus-observation offset---a large, static field structured along fronts and
+bathymetry, precisely where float behaviour is non-random---into $\varepsilon$, inflating its
+variance and correlating it with sampling. That manufactures a preferential signal out of a
+model bias.
+
+\paragraph{Compute it the way the real one is computed.} Long-record, per grid cell, by the same
+local polynomial regression and with the same resolved/unresolved split---not a shortcut mean
+over the analysis window. The OSSE is worth more if it exercises the actual pipeline.
+
+\paragraph{No inconsistency with the real analysis,} where $\mu$ must come from an
+Argo-independent long record, per Remark~\ref{rem:circular}. Each experiment is internally
+closed: the model's truth is the model, the ocean's truth is the ocean.
+
+\paragraph{Climatology-error sensitivity.} Run the OSSE a second time with a deliberately
+imperfect $\mu$---the model's mean from a different period, or an external climatology---to
+quantify how much climatology error leaks into the bias estimate. Cheap once the machinery
+exists, and a question that will be asked.
+
+%=============================================================
+\section{Protocol}
+%=============================================================
+
+\begin{description}[leftmargin=*,style=nextline]
+  \item[Stage 0 --- Field preparation.] Compute $Y^{\text{model}}$ ($0$--$2000$\,m OHC by
+    vertical integration of $\rho c_p T$ over model levels, masked to bathymetry $>2000$\,m) for
+    the full period. Compute $\mu^{\text{model}}$ per cell from the long record. Fix the
+    resolved space and compute $\varepsilon^{\text{model}}$. Record
+    $\sigma = \mathrm{sd}_P(\varepsilon^{\text{model}})$.
+  \item[Stage 1 --- Truth.] $\bar{Y}^{\text{sim}} = \int Y^{\text{model}} dP$ by quadrature over
+    the masked grid. Note the quadrature error.
+  \item[Stage 2 --- Trajectories.] Seed and integrate the ensemble
+    (Section~\ref{sec:simulation}). Record every profile's position, time, float ID, and cycle
+    number---the last two are required for the effective sample size diagnostic.
+  \item[Stage 3 --- Sampling.] Evaluate $Y^{\text{model}}$ and $\varepsilon^{\text{model}}$ at
+    synthetic profile positions. Compute $\hat{Y}^{\text{sim}}$ and $b^{\text{sim}}$ per member.
+  \item[Stage 4 --- Control.] Evaluate $\varepsilon$ at the same positions from other years
+    (Section~\ref{sec:control}). Compute $b^{\text{ctrl}}$ for each $y'$; form
+    $\widehat{\mathcal{C}}$, $\widehat{\mathcal{P}}$, and the null distribution.
+  \item[Stage 5 --- Nugget structure.] Variograms of $\varepsilon^{\text{model}}$ at synthetic
+    profile positions, binned separately for same-float and cross-float pairs. Report
+    $\ell_\varepsilon$ and $n_{\text{eff}}$. This also checks the Section~\ref{sec:compatible}
+    claim that the nugget has enough spatial structure for trapping to be possible.
+  \item[Stage 6 --- Eddy census.] Run the eddy detection algorithm on model sea surface height.
+    Compute $f_\kappa$, $\hat{f}_\kappa$, and the post-stratified estimate
+    \eqref{eq:poststrat}, both pooled and year by year.
+  \item[Stage 7 --- Validation.] Compare \eqref{eq:poststrat} against
+    $\widehat{\mathcal{P}}^{\text{sim}}$. Repeat under partition refinement.
+  \item[Stage 8 --- Closure and sensitivities.] Budget closure; climatology-error run;
+    resolved-space sensitivity; assimilating versus free-running comparison.
+\end{description}
+
+%=============================================================
+\section{Deliverables}
+\label{sec:deliverables}
+%=============================================================
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcc}
+\toprule
+Quantity & Free-running & Reanalysis \\
+\midrule
+$n$, $n_{\text{eff}}$ & & \\
+$\sigma$ (J\,m$^{-2}$) & & \\
+$\ell_\varepsilon$, same-float vs cross-float & & \\
+$\hat{Y} - \bar{Y}$ (total) & & \\
+$\widehat{\mathcal{C}}^{\text{sim}}$ & & \\
+$\widehat{\mathcal{P}}^{\text{sim}}$ $\pm$ ensemble s.e. & & \\
+Control null spread & & \\
+$\hat{f}_\kappa$ vs $f_\kappa$ by class & & \\
+Occupancy imbalance trend (per year) & & \\
+\eqref{eq:poststrat} vs $\widehat{\mathcal{P}}^{\text{sim}}$ & & \\
+Budget closure residual & & \\
+\bottomrule
+\end{tabular}
+\caption{Headline table. Run in full for both a quiescent and an energetic box; the contrast is
+the generalisable result.}
+\end{table}
+
+\paragraph{Figures.}
+\begin{enumerate}[leftmargin=*]
+  \item Sample synthetic trajectories over model sea surface height---the mechanism, visually.
+        Highlight a trapped float and a flushed one.
+  \item Distribution of $b^{\text{ctrl}}$ across control years with $b^{\text{sim}}$ marked---the
+        test.
+  \item Occupancy $\hat{f}_\kappa$ against areal fraction $f_\kappa$ by class, with confidence
+        intervals.
+  \item \eqref{eq:poststrat} against $\widehat{\mathcal{P}}^{\text{sim}}$ across partition
+        refinements---the validation curve.
+  \item Residence time in the box against mean $\varepsilon$ encountered, per float---the
+        mechanism as a direct association, independent of any null construction.
+  \item Occupancy imbalance by year, with trend---the diagnostic of Remark~\ref{rem:trend}.
+\end{enumerate}
+
+Figure 5 is worth producing early: it requires no null and no eddy census, and if the
+association is absent in the model, that is known before the rest is built.
+
+%=============================================================
+\section{Transfer to the real ocean}
+\label{sec:transfer}
+%=============================================================
+
+What transfers is not $b^{\text{sim}}$ itself but the \emph{relationships}: the validated
+estimator \eqref{eq:poststrat} and its correction factor under partition refinement. For those
+to carry over, two model properties must be checked against observations.
+
+\paragraph{Nugget variance $\sigma$.} The achievable magnitude of $b$ scales with the
+variability of the field being selected on, so a model that understates $\sigma$ understates the
+bias. At $1/12^\circ$ with assimilation, GLORYS will. Compare the model's $\varepsilon$ variance
+against along-track altimetric variance and against real Argo residuals in the same boxes, and
+scale the transfer explicitly.
+
+\paragraph{Lagrangian statistics.} Compare simulated and real distributions of residence time in
+the box, per-float profile counts, displacement per cycle, and looping frequency. If synthetic
+floats are flushed faster than real ones, trapping---and hence $b$---is understated.
+
+%=============================================================
+\section{Limitations}
+%=============================================================
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Resolution.} $1/12^\circ$ resolves mesoscale but not submesoscale; trapping in
+        submesoscale coherent structures is absent entirely. LLC4320 at $1/48^\circ$ partially
+        addresses this over a short window.
+  \item \textbf{Assimilation damping.} Increments disrupt eddy coherence in the reanalysis,
+        shortening Lagrangian trapping times and biasing $b^{\text{sim}}$ toward zero. This is
+        the main argument for the free-running run.
+  \item \textbf{Float behaviour idealised.} Real floats ground on topography, fail under ice,
+        and use varied park-and-profile schedules and parking depths. Not material in North
+        Atlantic boxes; material for a global extension, where under-ice failure in the Southern
+        Ocean is a strong candidate for the largest preferential bias in the array.
+  \item \textbf{Model eddy statistics are not the ocean's.} Eddy amplitude, coherence, and
+        polarity asymmetry are model properties, so the simulated occupancy imbalance is
+        indicative rather than a measurement of the real array---for which the altimetry route on
+        real float positions remains the primary estimate.
+  \item \textbf{Split dependence.} $\widehat{\mathcal{C}}$ and $\widehat{\mathcal{P}}$ depend on
+        where the resolved/unresolved boundary is drawn; only their sum is invariant. Report
+        both, and the sensitivity.
+  \item \textbf{Dependence restricted to $\varepsilon$.} Per Section~\ref{sec:compatible} we
+        assume the design does not depend on the resolved anomaly $a$. If large-scale warm states
+        systematically alter flushing rates, this is violated and the mapped $a$ would itself
+        require scrutiny.
+\end{enumerate}
+
+%=============================================================
+\begin{thebibliography}{99}
+
+\bibitem{chelton2011} Chelton, D.~B., Schlax, M.~G., Samelson, R.~M. (2011).
+Global observations of nonlinear mesoscale eddies. \emph{Progress in Oceanography} 91, 167--216.
+
+\bibitem{delandmeter2019} Delandmeter, P., van Sebille, E. (2019).
+The Parcels v2.0 Lagrangian framework: new field interpolation schemes.
+\emph{Geoscientific Model Development} 12, 3571--3584.
+
+\bibitem{diggle2010} Diggle, P.~J., Menezes, R., Su, T.-L. (2010).
+Geostatistical inference under preferential sampling.
+\emph{Journal of the Royal Statistical Society C} 59, 191--232.
+
+\bibitem{gelfand2012} Gelfand, A.~E., Sahu, S.~K., Holland, D.~M. (2012).
+On the effect of preferential sampling in spatial prediction.
+\emph{Environmetrics} 23, 565--578.
+
+\bibitem{kuusela2018} Kuusela, M., Stein, M.~L. (2018).
+Locally stationary spatio-temporal interpolation of Argo profiling float data.
+\emph{Proceedings of the Royal Society A} 474, 20180400.
+
+\bibitem{lellouche2021} Lellouche, J.-M., et al. (2021).
+The Copernicus global $1/12^\circ$ oceanic and sea ice GLORYS12 reanalysis.
+\emph{Frontiers in Earth Science} 9, 698876.
+
+\bibitem{park2023} Park, B., Kuusela, M., Giglio, D., Gray, A. (2023).
+Spatiotemporal local interpolation of global ocean heat transport using Argo floats:
+a debiased latent Gaussian process approach.
+\emph{The Annals of Applied Statistics} 17(2), 1491--1520. DOI 10.1214/22-AOAS1679.
+
+\bibitem{rocha2016} Rocha, C.~B., Chereskin, T.~K., Gille, S.~T., Menemenlis, D. (2016).
+Mesoscale to submesoscale wavenumber spectra in Drake Passage.
+\emph{Journal of Physical Oceanography} 46, 601--620.
+
+\bibitem{rg2009} Roemmich, D., Gilson, J. (2009).
+The 2004--2008 mean and annual cycle of temperature, salinity, and steric height in the global
+ocean from the Argo Program. \emph{Progress in Oceanography} 82, 81--100.
+
+\bibitem{sukianto2026} Sukianto, T., et al. (2026).
+Locally stationary Argo ocean heat content estimates: modeling, validation and uncertainty
+quantification. arXiv:2606.31957.
+
+\bibitem{vansebille2018} van Sebille, E., et al. (2018).
+Lagrangian ocean analysis: fundamentals and practices. \emph{Ocean Modelling} 121, 49--75.
+
+\end{thebibliography}
+
+\end{document}
