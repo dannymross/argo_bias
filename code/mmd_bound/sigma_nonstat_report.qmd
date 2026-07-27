@@ -1,0 +1,181 @@
+---
+title: "Non-stationary anisotropy Sigma(x) from Argo, and its effect on the MMD bound"
+subtitle: "Argo-only directional variograms; GLORYS reserved as a sensitivity check"
+format:
+  html:
+    toc: true
+    code-fold: show
+    df-print: kable
+engine: knitr
+---
+
+```{r}
+#| label: setup
+#| include: false
+knitr::opts_knit$set(root.dir = normalizePath(".."))
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, fig.align = "center")
+```
+
+```{r}
+#| label: source
+suppressMessages(library(data.table))
+source("mmd_bound/mmd_bound.R")
+source("mmd_bound/sigma_nonstat.R")
+cfg <- mmd_config(); cfg$data_path <- "../data/argo_ohc.csv"
+stopifnot(file.exists(cfg$data_path))
+box_all <- load_argo_box(cfg$data_path, cfg$box, cfg$ohc_col)
+
+## draw an anisotropy ellipse (axes = correlation ranges, km) at (cx,cy) in km
+draw_ellipse <- function(cx, cy, Sigma, scale = 1, ...) {
+  th <- seq(0, 2*pi, length.out = 60); e <- eigen(Sigma, symmetric = TRUE)
+  P <- (e$vectors %*% diag(sqrt(pmax(e$values, 0)))) %*% rbind(cos(th), sin(th))
+  lines(cx + scale*P[1, ], cy + scale*P[2, ], ...)
+}
+km <- function(lon, lat) proj_km(lon, lat, mean(cfg$box$lon), mean(cfg$box$lat))
+```
+
+The kernel needs a smoothness class for OHC. Ocean heat content across the North
+Atlantic Current is non-stationary and anisotropic, so we estimate a spatially
+varying anisotropy $\Sigma(x)$ from the **full-record Argo** field (2001-2026),
+via local directional variograms, and feed it to the Paciorek-Schervish kernel.
+$\Sigma$ shapes only the kernel geometry (design factor); $\nu$ is fixed and the
+amplitude stays separate. GLORYS is reserved as a sensitivity check.
+
+## Step 1 --- Full-record anomaly
+
+The variogram must see the correlation *structure*, not the mean front gradient or
+the seasonal cycle, so we deseasonalize (remove the monthly climatology) and
+detrend (remove a spatial plane). This is calibration only; it never enters the
+bound.
+
+```{r}
+#| label: anomaly
+an <- load_argo_anomaly(cfg$data_path, cfg$box, cfg$ohc_col)
+cat(sprintf("full record: %d profiles, %s-%s;  raw OHC sd = %.1f, anomaly sd = %.1f GJ/m2\n",
+            nrow(an), format(min(an$date),"%Y"), format(max(an$date),"%Y"),
+            sd(an$ohc), sd(an$anom)))
+```
+
+## Step 2 --- Global directional variogram and anisotropy
+
+```{r}
+#| label: global-vario
+#| fig-width: 9
+#| fig-height: 4
+xy <- km(an$lon, an$lat); day <- as.numeric(an$date)/86400
+dv <- directional_variogram(xy[,1], xy[,2], an$anom, day = day, dmax = 400, n_abin = 4)
+fit <- fit_anisotropy(dv)
+op <- par(mfrow = c(1, 2), mar = c(4,4,2,1))
+## semivariance by direction
+ab <- sort(unique(dv$abin)); pal <- rainbow(length(ab))
+plot(NA, xlim = c(0,400), ylim = c(0, max(dv$gamma)), xlab = "separation (km)",
+     ylab = "semivariance", main = "directional variogram")
+for (i in seq_along(ab)) { d <- dv[abin==ab[i]][order(hbar)]; lines(d$hbar, d$gamma, col=pal[i], type="b", pch=19) }
+abline(h = fit$sill, lty = 3)
+legend("bottomright", legend = sprintf("%.0f deg", tapply(dv$angc,dv$abin,mean)[as.character(ab)]*180/pi),
+       col = pal, lwd = 2, cex = 0.7)
+## fitted ellipse
+plot(0,0, type="n", xlim=c(-1,1)*fit$r_maj*1.2, ylim=c(-1,1)*fit$r_maj*1.2, asp=1,
+     xlab="east (km)", ylab="north (km)", main="fitted anisotropy ellipse")
+draw_ellipse(0,0, fit$Sigma, lwd=2, col="steelblue"); abline(h=0,v=0,col="grey")
+par(op)
+cat(sprintf("global: ranges %.0f / %.0f km (ratio %.1f), orientation %.0f deg from east; sill %.0f\n",
+            fit$r_maj, fit$r_min, fit$r_maj/fit$r_min, fit$phi*180/pi, fit$sill))
+```
+
+The fitted ranges (tens of km) are *shorter* than a naive 150 km isotropic scale:
+Argo resolves that OHC decorrelates faster than the float spacing.
+
+## Step 3 --- Local fits: the anisotropy varies across the box
+
+We fit a local anisotropy at each of a grid of anchors, from Argo pairs within a
+radius. Ellipses drawn at their anchors show the non-stationarity.
+
+```{r}
+#| label: anchors
+gl <- expand.grid(lon = seq(-67, -63, length.out = 3), lat = seq(37, 39, length.out = 3))
+anchors <- estimate_sigma_anchors(an, cfg$box, as.matrix(gl), radius_km = 175, min_pts = 60)
+tab <- rbindlist(lapply(anchors, function(a) data.table(
+  lon = a$anchor_lonlat[1], lat = a$anchor_lonlat[2], n = a$n,
+  r_maj = round(a$fit$r_maj), r_min = round(a$fit$r_min),
+  phi_deg = round(a$fit$phi*180/pi))))
+tab
+```
+
+```{r}
+#| label: anchor-map
+#| fig-width: 6
+#| fig-height: 5
+bk <- rbind(km(cfg$box$lon[1],cfg$box$lat[1]), km(cfg$box$lon[2],cfg$box$lat[2]))
+plot(NA, xlim=range(bk[,1])+c(-60,60), ylim=range(bk[,2])+c(-60,60), asp=1,
+     xlab="east (km)", ylab="north (km)", main="local anisotropy Sigma at anchors")
+rect(bk[1,1],bk[1,2],bk[2,1],bk[2,2], border="grey")
+for (a in anchors) draw_ellipse(a$anchor_km[1], a$anchor_km[2], a$fit$Sigma, scale=0.4, lwd=2, col="firebrick")
+points(km(an$lon,an$lat), pch=".", col="grey70")
+```
+
+## Step 4 --- The interpolated Sigma(x) field
+
+Smooth, positive-definite, conservatively  and
+bounded, by log-Euclidean interpolation of the anchor matrices. Ellipses on a fine
+grid show the smooth field the kernel actually uses.
+
+```{r}
+#| label: sigma-field
+#| fig-width: 6
+#| fig-height: 5
+sig_fun <- build_sigma_fun(anchors, bw_km = 150,  r_bounds = c(20, 200))
+plot(NA, xlim=range(bk[,1])+c(-40,40), ylim=range(bk[,2])+c(-40,40), asp=1,
+     xlab="east (km)", ylab="north (km)", main="interpolated Sigma(x)")
+rect(bk[1,1],bk[1,2],bk[2,1],bk[2,2], border="grey")
+gx <- seq(bk[1,1], bk[2,1], length.out=5); gy <- seq(bk[1,2], bk[2,2], length.out=4)
+for (xx in gx) for (yy in gy) draw_ellipse(xx, yy, sig_fun(xx,yy), scale=0.5, lwd=1.5, col="darkgreen")
+```
+
+## Step 5 --- Effect on the MMD bound
+
+We recompute the design factor under three kernels: isotropic (150 km), global
+anisotropic (fitted), and non-stationary $\Sigma(x)$.
+
+```{r}
+#| label: compare
+Sig_g <- fit$Sigma * 0.7^2
+cfg_iso <- cfg
+cfg_ga  <- cfg; cfg_ga$kfun <- make_ps_kfun(make_sigma_constant(Sig_g), cfg$ell_t, cfg$nu)
+cfg_ns  <- cfg; cfg_ns$kfun <- make_ps_kfun(sig_fun, cfg$ell_t, cfg$nu)
+ri <- run_all_windows(box_all, cfg_iso)[, .(window, iso = round(mmd_upper,3))]
+rg <- run_all_windows(box_all, cfg_ga )[, .(window, aniso_global = round(mmd_upper,3))]
+rn <- run_all_windows(box_all, cfg_ns )[, .(window, mmd2_ns = round(mmd2,4), nonstat = round(mmd_upper,3))]
+cmp <- Reduce(function(a,b) merge(a,b,by="window",sort=FALSE), list(ri, rg, rn))
+cmp
+```
+
+```{r}
+#| label: compare-plot
+#| fig-width: 8
+#| fig-height: 4.2
+M <- t(as.matrix(cmp[, .(iso, aniso_global, nonstat)]))
+barplot(M, beside = TRUE, names.arg = cmp$window, las = 2,
+        col = c("steelblue","orange","darkgreen"),
+        ylab = "MMD (95% upper)", main = "Design factor by kernel")
+legend("topright", c("isotropic 150km","anisotropic global","non-stationary"),
+       fill = c("steelblue","orange","darkgreen"), cex = 0.8)
+```
+
+## Summary
+
+The Argo-only directional variograms give an OHC correlation structure that is
+anisotropic (ranges ~`r round(fit$r_min)`-`r round(fit$r_maj)` km, ratio
+~`r round(fit$r_maj/fit$r_min,1)`) and genuinely non-stationary (more elongated and
+longer-range in the south-west, rounder and shorter in the north-east). Feeding the
+resulting $\Sigma(x)$ to the Paciorek-Schervish kernel, the design factor stays
+**small and near zero in every window** --- if anything smaller than the isotropic
+150 km kernel, because OHC decorrelates faster than the float spacing, so the
+sampling looks even more uniform at OHC's true scale. The near-uniform,
+small-bias conclusion is therefore **robust to a front-aware, non-stationary
+kernel**. Two caveats: the design factor depends non-monotonically on the kernel
+scale (so the conservative summary is the scale sweep, not a single 
+kernel), and this is the Argo-only estimate --- a GLORYS cross-check on the
+cross-front range and orientation is the reserved sensitivity step.
+```
+

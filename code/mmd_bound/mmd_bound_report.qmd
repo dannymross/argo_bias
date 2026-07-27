@@ -1,0 +1,262 @@
+---
+title: "Preferential-sampling bound for annual and 5-year OHC (North Atlantic box)"
+subtitle: "Kernel mean embedding / MMD estimate, per year 2020-2025 and a five-year average"
+format:
+  html:
+    toc: true
+    code-fold: show
+    df-print: kable
+engine: knitr
+---
+
+```{r}
+#| label: setup
+#| include: false
+knitr::opts_knit$set(root.dir = normalizePath(".."))   # run from code/ ; data at ../data
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, fig.align = "center")
+```
+
+```{r}
+#| label: source
+suppressMessages(library(data.table))
+source("mmd_bound/mmd_bound.R")
+
+cfg <- mmd_config()
+cfg$data_path <- "../data/argo_ohc.csv"
+stopifnot(file.exists(cfg$data_path))
+box <- load_argo_box(cfg$data_path, cfg$box, cfg$ohc_col)
+cat(sprintf("Loaded %d profiles in the box (all years).\n", nrow(box)))
+```
+
+We bound the preferential-sampling bias of the area-time-average OHC over the box
+(lat `r cfg$box$lat[1]`--`r cfg$box$lat[2]`, lon `r cfg$box$lon[1]`--`r cfg$box$lon[2]`)
+for several **time windows**: each year `r min(cfg$years)`--`r max(cfg$years)` and a
+five-year average (`r min(cfg$avg_years)`--`r max(cfg$avg_years)`). A window fixes
+the estimand $\theta=\int Y\,d\mathbb Q$ with $\mathbb Q$ uniform over box $\times$
+window; the bound is $|B|\le R\cdot\mathrm{MMD}[\mathcal H,\mathbb P,\mathbb Q]$. The
+design factor $\mathrm{MMD}$ is estimated from **float positions only**; OHC values
+enter only the amplitude $R$.
+
+Kernel: anisotropic Matern, $\nu=$ `r cfg$nu`, spatial scale `r cfg$ell_s` km,
+temporal scale `r cfg$ell_t` days (the constant-$\Sigma$ Paciorek--Schervish case;
+$\nu$ and the scales are declared conservatively).
+
+## How one window is estimated (illustrated on the five-year average)
+
+```{r}
+#| label: illus-data
+w_ill <- year_window(cfg$avg_years)
+argo <- window_subset(box, w_ill)
+argo[, yr := as.integer(format(date, "%Y"))]
+set.seed(cfg$seed)
+mc <- sample_Q(cfg$M_mc, cfg$box, w_ill)
+cat(sprintf("Window %s: N = %d profiles from L = %d floats.\n",
+            w_ill$label, nrow(argo), uniqueN(argo$float_id)))
+```
+
+Profiles (coloured by year) against the uniform reference cloud, and their timing.
+The MMD measures the contrast between this point pattern and uniform coverage.
+
+```{r}
+#| label: illus-map
+#| fig-width: 9
+#| fig-height: 4
+op <- par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
+yrs <- sort(unique(argo$yr)); ycol <- rainbow(length(yrs))[match(argo$yr, yrs)]
+plot(mc$lon, mc$lat, col = "grey85", pch = 20, cex = 0.4,
+     xlab = "lon", ylab = "lat", main = sprintf("Profiles (colour=year) vs reference, %s", w_ill$label))
+points(argo$lon, argo$lat, col = ycol, pch = 19, cex = 0.7)
+rect(cfg$box$lon[1], cfg$box$lat[1], cfg$box$lon[2], cfg$box$lat[2])
+legend("topright", legend = yrs, col = rainbow(length(yrs)), pch = 19, cex = 0.7, bg = "white")
+plot(argo$day, argo$lat, col = ycol, pch = 19, cex = 0.6,
+     xlab = "day since window start", ylab = "lat", main = "Sampling in time")
+par(op)
+```
+
+```{r}
+#| label: illus-estimate
+est <- estimate_mmd(argo, mc, cfg)
+jk  <- jackknife_mmd(argo, mc, cfg)
+data.table(
+  quantity = c("E_PP[k] (between-float)", "2 E_PQ[k]", "E_QQ[k]",
+               "MMD^2 (point)", "MMD^2 95% upper", "MMD 95% upper"),
+  value = round(c(est$term1, est$term2, est$term3, jk$mmd2, jk$mmd2_upper, jk$upper), 5)
+)
+```
+
+When the three terms order $\hat{\mathbb E}_{\mathbb P\mathbb P}>\hat{\mathbb E}_{\mathbb P\mathbb Q}>\mathbb E_{\mathbb Q\mathbb Q}$
+the design is preferential; here they are close, so $\widehat{\mathrm{MMD}}^2$ is
+near zero. Near the null we jackknife $\mathrm{MMD}^2$ and report its upper limit.
+
+## Results: every year and the five-year average
+
+```{r}
+#| label: run-all
+res <- run_all_windows(box, cfg)
+res_disp <- copy(res)
+num <- c("mmd_upper","tau","sd_bias","prob95")
+res_disp[, (num) := lapply(.SD, round, 3), .SDcols = num]
+res_disp[, mmd2 := round(mmd2, 5)]
+res_disp
+```
+
+Columns: `mmd2` = point estimate of $\mathrm{MMD}^2$ (signed; near-zero means
+near-uniform sampling); `mmd_upper` = 95% upper limit on $\mathrm{MMD}$ --- the
+rigorous, positions-only design factor; `tau` = observed OHC standard deviation
+(GJ/m$^2$; a diagnostic amplitude anchor, inflated by the front); `sd_bias` =
+$\tau\cdot$`mmd_upper` = $\mathrm{sd}(B)$ under the probabilistic model; `prob95` =
+$1.96\cdot$`sd_bias`, a 95% Gaussian magnitude bound on $|B|$ (GJ/m$^2$).
+
+### From MMD to a bias magnitude
+
+The MMD is dimensionless; converting to GJ/m$^2$ needs the field amplitude, and the
+correct amplitude differs by bound:
+
+- **Probabilistic (reported above).** Model the field as random with covariance
+  $\tau^2 k$; then $\mathrm{Var}(B)=\tau^2\,\mathrm{MMD}^2$, so
+  $\mathrm{sd}(B)=\tau\cdot\mathrm{MMD}$. Here $\tau$ is a *standard deviation*, so
+  Popoviciu's inequality applies, $\tau\le M/2$. A magnitude follows from Chebyshev,
+  $\Pr(|B|\ge\lambda\tau\,\mathrm{MMD})\le\lambda^{-2}$ (distribution-free), or the
+  sharper $1.96\,\tau\,\mathrm{MMD}$ at 95% under Gaussianity.
+- **Deterministic worst case.** $|B|\le R\,\mathrm{MMD}$ with $R=\lVert Y\rVert_{\mathcal H}$
+  the *RKHS norm*. Popoviciu does **not** give $R$: it bounds a variance/SD, and
+  $R\ge\sigma_Y$, so $\tfrac{M}{2}\cdot\mathrm{MMD}$ is not a deterministic bound.
+  We therefore report the **breakdown budget** --- the RKHS norm at which the bias
+  would reach a tolerance $T$ --- instead of forming $R\cdot\mathrm{MMD}$.
+
+```{r}
+#| label: breakdown
+avg_row <- res[grepl("-", window)]            # the five-year average
+breakdown_budget(avg_row$mmd_upper)
+```
+
+```{r}
+#| label: result-plots
+#| fig-width: 10
+#| fig-height: 4
+op <- par(mfrow = c(1, 3), mar = c(5, 4, 2, 1))
+is_avg <- grepl("-", res$window)
+bcol <- ifelse(is_avg, "firebrick", "steelblue")
+barplot(res$mmd_upper, names.arg = res$window, col = bcol, las = 2,
+        ylab = "MMD (95% upper)", main = "Design factor (rigorous)")
+barplot(res$sd_bias, names.arg = res$window, col = bcol, las = 2,
+        ylab = "sd(B) = tau * MMD (GJ/m2)", main = "Bias SD (probabilistic)")
+barplot(rbind(res$N, res$L), beside = TRUE, names.arg = res$window, las = 2,
+        col = c("grey60", "grey30"), ylab = "count", main = "Coverage (N / L)")
+legend("topright", c("N", "L"), fill = c("grey60", "grey30"), cex = 0.8)
+par(op)
+```
+
+The design factor is small and near-zero everywhere: the Argo array covers this box
+close to evenly year on year, so there is no strong preferential-sampling signature.
+The five-year average (red) pools the most profiles and gives the tightest design
+factor. The bias SD is dominated by the front-inflated amplitude $\tau$, not the
+design factor; a non-stationary $\Sigma(x)$ and an a-priori amplitude will tighten
+it.
+
+## Sensitivity to the kernel scale
+
+The MMD depends on the declared kernel; we report it across spatial scales rather
+than betting on one. (Near the null the 95% upper limit grows with the scale mainly
+because larger scales correlate more pairs, inflating the jackknife variance.)
+
+```{r}
+#| label: sweep
+#| fig-width: 7
+#| fig-height: 4.5
+sw <- sweep_windows(box, cfg, ell_s_grid = c(50, 100, 150, 300))
+wins <- unique(sw$window)
+pal <- rainbow(length(wins))
+plot(NA, xlim = range(sw$ell_s), ylim = c(0, max(sw$mmd_upper, na.rm = TRUE) * 1.05),
+     xlab = "spatial scale ell_s (km)", ylab = "MMD (95% upper)",
+     main = "MMD upper limit vs kernel scale, by window")
+for (i in seq_along(wins)) {
+  d <- sw[window == wins[i]]
+  lwd <- if (grepl("-", wins[i])) 3 else 1.5
+  lines(d$ell_s, d$mmd_upper, col = pal[i], lwd = lwd, type = "b", pch = 19)
+}
+legend("topleft", legend = wins, col = pal, lwd = 2, cex = 0.7, ncol = 2)
+```
+
+## The iid estimator, and hypothesis tests
+
+The estimator of Muandet et al. (eq. 3.32) treats every profile as an independent
+draw and averages the kernel over *all* pairs; ours averages over *between-float*
+pairs only, dropping the within-float pairs that a drifting float's successive
+cycles create. `within_frac` is the share of pair kernel-mass that is within-float.
+
+```{r}
+#| label: tests
+tests <- run_tests(box, cfg, B = 499)
+tests[, .(window, mmd2_iid = round(mmd2_iid, 5), mmd2_bf = round(mmd2_bf, 5),
+          within_frac = round(within_frac, 3),
+          ld_pvalue = round(ld_pvalue, 3), mc_pvalue = round(mc_pvalue, 3))]
+```
+
+In every window `mmd2_iid` > `mmd2_bf`: the iid estimator **overstates** preferential
+sampling because it counts trajectory autocorrelation (a float's successive cycles
+are close, hence high-kernel) as clustering. The between-float statistic removes it;
+in 2022, for instance, the iid value is positive while the corrected value is
+essentially zero.
+
+We test $H_0:\mathbb P=\mathbb Q$ (non-preferential sampling) two ways:
+
+- **Large-deviation bound (Gretton et al. 2012).** Distribution-free and one-sided,
+  via the McDiarmid deviation bound with float-level bounded differences. It is
+  conservative (low power) and here never rejects (`ld_pvalue` $\approx$ 1).
+- **Monte Carlo (calibrated).** Each float draws its cycles iid from the known
+  $\mathbb Q$; the null distribution of the between-float $\mathrm{MMD}^2$ gives
+  `mc_pvalue`.
+
+The MC test rejects ($p<0.05$) in
+**`r paste(tests[mc_pvalue < 0.05, window], collapse=", ")`** and does not reject in
+`r paste(tests[mc_pvalue >= 0.05, window], collapse=", ")`. The rejections are a
+**statistically detectable but very small** departure from uniform
+($\mathrm{MMD}^2\sim 0.01$, i.e. a bias of order 1 GJ/m$^2$): significance here
+reflects the tiny null variance (many floats), not a large effect.
+
+```{r}
+#| label: null-hist
+#| fig-width: 6.5
+#| fig-height: 4
+set.seed(cfg$seed)
+w_avg <- year_window(cfg$avg_years)
+mc_a <- sample_Q(cfg$M_mc, cfg$box, w_avg)
+mct <- mmd_mc_test(window_subset(box, w_avg), mc_a, cfg, w_avg, B = 999)
+hist(mct$null, breaks = 40, col = "grey85", border = "white",
+     xlim = range(c(mct$null, mct$stat)),
+     xlab = "MMD^2 under H0 (P = Q)",
+     main = sprintf("MC null vs observed, %s  (p = %.3f)", w_avg$label, mct$pvalue))
+abline(v = mct$stat, col = "firebrick", lwd = 2)
+legend("topright", "observed", col = "firebrick", lwd = 2, bty = "n")
+```
+
+Caveat: the MC null draws each float's cycles iid from $\mathbb Q$; a drift-aware
+null (resampling real trajectories) would be more realistic but needs a movement
+model.
+
+## Summary
+
+```{r}
+#| label: summary-tab
+res[, .(window, N, L, mmd2 = round(mmd2, 4), mmd_upper = round(mmd_upper, 3),
+        sd_bias_GJm2 = round(sd_bias, 2), prob95_GJm2 = round(prob95, 2))]
+```
+
+Across `r min(cfg$years)`--`r max(cfg$years)` and the
+`r min(cfg$avg_years)`--`r max(cfg$avg_years)` average, the point estimate of the
+design factor $\widehat{\mathrm{MMD}}^2$ is near zero in every window
+(|value| < `r round(max(abs(res$mmd2), na.rm=TRUE),3)`): the sampling is
+statistically close to uniform, so the **preferential-sampling bias of these OHC
+averages is small** at the declared kernel scale. The 95% upper limits on the
+design factor are `r round(min(res$mmd_upper, na.rm=TRUE),3)`--`r round(max(res$mmd_upper, na.rm=TRUE),3)`.
+The `sd_bias`/`prob95` columns are the probabilistic bias scale $\tau\cdot\mathrm{MMD}$
+and its 95% Gaussian magnitude; they are loose because the amplitude $\tau$ is
+inflated by the front, which the non-stationary $\Sigma(x)$ and an a-priori
+amplitude will tighten. Note $\tau$ is a variance-scale amplitude (Popoviciu-capped
+at $M/2$); the deterministic RKHS radius $R$ is a different, larger quantity that
+Popoviciu does not bound, so the deterministic bound is given as the breakdown
+budget rather than $R\cdot\mathrm{MMD}$. The positions-only design factor is the
+rigorous part. (Coverage in `r max(cfg$years)` is low ---
+`r res[window==as.character(max(cfg$years)), N]` profiles --- so treat that year
+with caution.)
