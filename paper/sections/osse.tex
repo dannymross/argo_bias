@@ -64,9 +64,9 @@ addresses what transfers and what does not.
 
 Let $\mathcal{R} = D \times \mathcal{T}$ be the analysis region: $D$ a horizontal domain masked
 to bathymetry deeper than $2000$\,m, $\mathcal{T}$ an averaging window. Let $P$ be normalised
-uniform (area $\times$ time) measure and $Y : \mathcal{R} \to \mathbb{R}$ the $0$--$2000$\,m
-ocean heat content (OHC) in J\,m$^{-2}$. Profiles arrive at $z_1,\dots,z_n$, with empirical
-sampling measure $Q_n = n^{-1}\sum_j \delta_{z_j}$. Then
+uniform (area $\times$ time) measure on $\mathcal{R}$ and let $Y : \mathcal{R} \to \mathbb{R}$
+denote $0$--$2000$\,m ocean heat content (OHC) in J\,m$^{-2}$. Profiles arrive at
+$z_1,\dots,z_n$, with empirical sampling measure $Q_n = n^{-1}\sum_j \delta_{z_j}$, and
 \begin{equation}
   \bar{Y} = \int_{\mathcal{R}} Y \, dP,
   \qquad
@@ -75,13 +75,151 @@ sampling measure $Q_n = n^{-1}\sum_j \delta_{z_j}$. Then
   \hat{Y} - \bar{Y} = \int_{\mathcal{R}} Y \, d(Q_n - P).
 \end{equation}
 
+\subsection{Preferential sampling: the canonical formulation}
+\label{sec:diggle}
+
+We take our framing from Diggle, Menezes \& Su (2010), whose development makes the phenomenon
+unusually transparent. In their notation, let $S(x)$, $x \in A \subset \mathbb{R}^2$, be a
+spatially continuous latent process on a region of interest, with $\mathbb{E}[S(x)] = 0$ for
+all $x$. Let $X = \{x_1,\dots,x_n\}$ be the set of sampling locations, and let the measured
+values be
+\begin{equation}
+  \label{eq:diggle}
+  Y_i \;=\; \mu + S(x_i) + Z_i, \qquad i = 1,\dots,n,
+\end{equation}
+where $\mu$ is the mean of the unobserved process and the $Z_i$ are mutually independent,
+zero-mean random variables with variance $\tau^2$.
+
+If $X$ is a random point process on $A$ that is \emph{not} independent of $S$, the design is
+said to be \textbf{preferential}. The joint law then factorises as
+\begin{equation}
+  \label{eq:diggle-fact}
+  [S, X, Y] \;=\; [S]\,[X \mid S]\,[Y \mid X, S] \;=\; [S]\,[X \mid S]\,[Y \mid S(X)],
+\end{equation}
+the final equality expressing that, given the latent process at the sampled locations, the
+measurements carry no further dependence on the design. Non-preferential sampling is the
+special case $[X \mid S] = [X]$, under which \eqref{eq:diggle-fact} reduces to
+$[S]\,[X]\,[Y \mid S(X)]$ and the design may be conditioned upon as though fixed.
+
+The essential structural feature of \eqref{eq:diggle-fact} is the placement of terms in the
+hierarchy. $S$ is a \emph{field}: it exists everywhere on $A$ whether or not it is sampled, and
+$X$ can therefore be informed by it. The $Z_i$ are \emph{not} a field: they are generated at
+the moment of measurement, conditionally independently of everything else given $S(X)$, and no
+sampling design can select on them. Which layer a term occupies determines whether it is
+exposed to preferential sampling. This distinction, innocuous in Diggle's setting, does the
+principal work below.
+
+\subsection{Generalisation to the spatiotemporal setting}
+\label{sec:model}
+
+Four modifications adapt \eqref{eq:diggle}--\eqref{eq:diggle-fact} to regional OHC from Argo.
+
+\paragraph{(i) The domain is space--time.} $A \subset \mathbb{R}^2$ becomes
+$\mathcal{R} = D \times \mathcal{T} \subset \mathbb{R}^2 \times \mathbb{R}$, with points
+$z = (x,t)$. Nothing in the formalism resists this; the practical consequence is that the
+sampling design is a point process in three dimensions and that ``coverage'' has a temporal as
+well as a spatial component.
+
+\paragraph{(ii) The mean is a field, not a scalar.} Diggle's $\mu$ is a constant. Here the
+climatological mean $\mu(z)$ is spatially and seasonally structured, varying by
+$O(10^{9}\text{--}10^{10})$ J\,m$^{-2}$ across a single region. This is not a cosmetic change.
+With constant $\mu$ and $X \perp\!\!\!\perp S$, the sample mean is unbiased for $\mu$
+\emph{however non-uniform} the design; Diggle's setting therefore has no analogue of coverage
+bias. With $\mu(z)$ structured, uneven sampling biases the average even under exogenous
+sampling. The separation of coverage from preferential bias (Section~\ref{sec:coverage-pref})
+is thus a feature of the generalisation, not of the original.
+
+\paragraph{(iii) The latent process has two scales.} Diggle's single $S$ becomes
+\begin{equation}
+  \label{eq:model}
+  Y(z) \;=\; \mu(z) \;+\; a(z) \;+\; \varepsilon(z),
+\end{equation}
+where $a$ is a resolved-scale transient anomaly---modelled in the operational literature as a
+locally stationary spatio-temporal Gaussian process---and $\varepsilon$ is unresolved
+fine-scale variation, principally mesoscale, with correlation range
+$\ell_\varepsilon \sim 50$--$100$\,km and a few weeks. Both are zero-mean latent fields; both
+occupy the $S$ layer of \eqref{eq:diggle-fact}. Observations additionally carry instrument
+error,
+\begin{equation}
+  \label{eq:obs}
+  Y_i \;=\; \mu(z_i) + a(z_i) + \varepsilon(z_i) + \eta_i,
+  \qquad \eta_i \ \text{i.i.d.}\ (0, \tau_\eta^2),
+\end{equation}
+and it is $\eta_i$, not $\varepsilon$, that plays the role of Diggle's $Z_i$.
+
+\paragraph{(iv) The target is a functional, not a point.} Diggle's inferential targets are
+$\mu$ and the point predictions $S(x_0)$. Ours is the regional average
+\begin{equation}
+  \label{eq:target}
+  \bar{Y} \;=\; \int_{\mathcal{R}} \big(\mu + a\big) \, dP ,
+\end{equation}
+in which $\varepsilon$ does not appear: over a region spanning many correlation lengths,
+$\int_{\mathcal{R}} \varepsilon\,dP \approx 0$. This asymmetry---$\varepsilon$ absent from the
+target but present in every observation---is the mechanism by which preferential sampling
+converts into bias in the quantity of interest.
+
+\paragraph{The factorisation.} With these substitutions,
+\begin{equation}
+  \label{eq:ourfact}
+  [\,a,\varepsilon,\,X,\,Y\,] \;=\;
+  [\,a,\varepsilon\,]\;[\,X \mid a,\varepsilon\,]\;[\,Y \mid a(X), \varepsilon(X)\,] ,
+\end{equation}
+and the design is preferential precisely when $[X \mid a, \varepsilon] \neq [X]$.
+
+\paragraph{A restriction we adopt.} Throughout we assume
+\begin{equation}
+  \label{eq:restriction}
+  [\,X \mid a, \varepsilon\,] \;=\; [\,X \mid \varepsilon\,],
+\end{equation}
+that is, the design may depend on the unresolved field but not on the resolved anomaly. This is
+physically defensible---trapping is a mesoscale phenomenon, mesoscale variability lies in
+$\varepsilon$ by construction, and large-scale anomalies do not retain floats---and it is
+analytically valuable, because it leaves the mapped $a$ usable as given. Were
+\eqref{eq:restriction} to fail, a Gaussian process predictor for $a$ would itself be biased,
+since it conditions on the data as though locations were exogenous (Diggle et al.\ 2010;
+Gelfand et al.\ 2012). The second-order caveat is that a warm large-scale state may coincide
+with a stronger jet and faster flushing; we note it and do not model it.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{p{0.26\textwidth}p{0.30\textwidth}p{0.34\textwidth}}
+\toprule
+Diggle et al.\ (2010) & Present setting & Consequence \\
+\midrule
+$A \subset \mathbb{R}^2$ &
+$\mathcal{R} = D \times \mathcal{T}$ &
+coverage has a temporal component \\
+$\mu$ scalar &
+$\mu(z)$ structured field &
+introduces coverage bias, absent in the original \\
+$S(x)$, single scale &
+$a(z) + \varepsilon(z)$, two scales &
+only $\varepsilon$ evades the target \eqref{eq:target} \\
+$Z_i$, measurement error &
+$\eta_i$ only ($\sim2\%$ of the nugget) &
+the remaining $98\%$ moves to the $S$ layer \\
+$X$ a general point process &
+Lagrangian, trajectory-clustered &
+$n_{\text{eff}} \ll n$; mechanism is dynamical \\
+$\lambda(x) = \exp\{\alpha + \beta S(x)\}$ &
+induced by advection &
+reduced form only, not generative \\
+targets $\mu$, $S(x_0)$ &
+functional $\int (\mu + a)\,dP$ &
+bias in a regional average \\
+\bottomrule
+\end{tabular}
+\caption{Correspondence between the canonical formulation and the present setting.}
+\label{tab:correspondence}
+\end{table}
+
 \subsection{The modelling lineage}
 \label{sec:lineage}
 
-The decomposition adopted below is not new. It is the standard on which the current generation
-of Argo-based OHC products rests, and setting out the lineage matters because it fixes the
-scope of the present work: the assumption under examination is common to all of these products
-and is not an idiosyncrasy of any one of them.
+The decomposition \eqref{eq:model} is not new. It is the standard on which the current
+generation of Argo-based OHC products rests, and setting out the lineage matters because it
+fixes the scope of the present work: the assumption under examination is common to all of these
+products and is not an idiosyncrasy of any one of them.
 
 \begin{description}[leftmargin=*,style=nextline]
   \item[Roemmich \& Gilson (2009).] Objective mapping of Argo temperature and salinity onto a
@@ -111,8 +249,8 @@ Three remarks about this lineage bear directly on the design of the present expe
 The debiasing procedure of Park et al.\ refines a potentially under-specified parametric mean
 field, correcting leakage of mean structure into the estimated anomaly. In the terminology of
 Section~\ref{sec:coverage-pref} this is a refinement on the \emph{coverage} side: it improves
-the description of structure that is a deterministic function of position. It does not address
-dependence between the sampling design and the field, and the two should not be conflated.
+the description of structure that is a deterministic function of position. It does not alter
+$[X \mid a, \varepsilon]$, and the two should not be conflated.
 \end{remark}
 
 \begin{remark}[The mean field is Argo-derived]
@@ -139,116 +277,141 @@ trend---which is inexpensive once the eddy census exists and which we include am
 deliverables (Section~\ref{sec:deliverables}).
 \end{remark}
 
-\subsection{The standard statistical model}
-\label{sec:model}
-
-We adopt without modification the decomposition used in that literature:
-\begin{equation}
-  \label{eq:model}
-  Y(x,y,t) \;=\; \mu(x,y,t) \;+\; a(x,y,t) \;+\; \varepsilon(x,y,t),
-\end{equation}
-where
-\begin{itemize}[leftmargin=*]
-  \item $\mu$ is a climatological mean field, estimated by local polynomial regression on a
-        regular grid;
-  \item $a$ is a zero-mean transient anomaly field, modelled as a locally stationary
-        spatio-temporal Gaussian process;
-  \item $\varepsilon$ is a zero-mean nugget describing unresolved fine-scale variation,
-        principally mesoscale, taken as uncorrelated in space and time within the local window.
-\end{itemize}
-
-Nothing below changes these definitions, the estimation of $\mu$, or the locally stationary
-Gaussian process for $a$. The mapped products built on \eqref{eq:model} are taken as given.
-
-\subsection{Preferential sampling is compatible with this model}
+\subsection{Where the standard model sits in the factorisation}
 \label{sec:compatible}
 
-It is worth being explicit about why, since \eqref{eq:model} is often read as excluding the
-phenomenon.
+The operational literature writes the observation equation as
+\begin{equation}
+  \label{eq:standard}
+  Y_i \;=\; \mu(z_i) + a(z_i) + \varepsilon_i,
+  \qquad \varepsilon_i \ \text{zero-mean, uncorrelated in space and time},
+\end{equation}
+which is \eqref{eq:diggle} with $\varepsilon_i$ in the position of $Z_i$. That placement is the
+substantive assumption, and it is made implicitly rather than stated.
 
-\paragraph{``Zero-mean'' is a marginal statement at a fixed location.}
-$\mathbb{E}[\varepsilon(z)] = 0$ says nothing about $\mathbb{E}[\varepsilon(z_j) \mid
-\mathcal{Z}]$, a conditional expectation at a \emph{random, field-dependent} location. Toy
-case: let $\varepsilon$ be i.i.d.\ $N(0,\sigma^2)$ on a grid and let the sampler select the
-largest value. The marginal mean is zero at every grid point; the mean at the sampled point is
-positive. No assumption in \eqref{eq:model} is violated.
+\paragraph{The consequence of the placement.} A term in the measurement layer is generated
+conditionally independently of the design given the latent field. Hence
+$\mathbb{E}[\varepsilon_i \mid X] = 0$ holds \emph{by construction} under \eqref{eq:standard},
+and preferential sampling in the fine-scale field is not merely assumed away---it is
+unrepresentable. No amount of model checking within \eqref{eq:standard} can detect it, because
+the model has no parameter that could be nonzero.
 
-\paragraph{``Uncorrelated'' is likewise a statement about pairs at fixed locations.}
+\paragraph{Why the placement is wrong for Argo.} Diggle's $Z_i$ is measurement error. The Argo
+nugget is not. Separating the two as in \eqref{eq:obs}, Argo temperature accuracy of
+$\sim0.002\,^\circ$C integrated over $2000$\,m gives
+$\operatorname{sd}(\eta) \approx 1.6\times10^{7}$ J\,m$^{-2}$, against mesoscale OHC
+variability $\operatorname{sd}(\varepsilon) \sim 10^{9}$ J\,m$^{-2}$. Instrument error is a
+percent or two of the nugget and is genuinely design-independent---a CTD's accuracy does not
+depend on which eddy it sits in. The remaining $\sim\!98\%$ is a geophysical field, present
+everywhere in $\mathcal{R}$ whether sampled or not, and therefore belongs in the $S$ layer of
+\eqref{eq:diggle-fact}, where the design can select on it.
+
+\medskip
+\noindent
+\textbf{This is the contribution of the present work, stated in Diggle's terms:} the Argo
+nugget has been placed in the measurement layer, where preferential sampling cannot reach it,
+but it is predominantly a latent field, where preferential sampling can.
+
+\paragraph{No formal contradiction is involved.} It is worth being explicit that
+\eqref{eq:model} and \eqref{eq:ourfact} are compatible, since the standard model is often read
+as excluding the phenomenon. The statement $\mathbb{E}[\varepsilon(z)] = 0$ is marginal, at a
+\emph{fixed} location, and constrains nothing about
+$\mathbb{E}[\varepsilon(z_j) \mid X]$, a conditional expectation at a \emph{random,
+field-dependent} location. Let $\varepsilon$ be i.i.d.\ $N(0,\sigma^2)$ on a grid and let the
+sampler select the largest value: the marginal mean is zero at every grid point, and the mean at
+the sampled point is positive. Likewise
 $\operatorname{Cov}(\varepsilon(z),\varepsilon(z')) = 0$ constrains the joint law of the field
-at prescribed points and places no constraint on which points get sampled.
+at prescribed points and says nothing about which points are sampled. What is added in
+\eqref{eq:ourfact} is one conditional distribution, and nothing else.
 
-\paragraph{What is added is one conditional distribution.}
-The standard framework implicitly factorises the joint law as
-\[
-  [\,a,\varepsilon\,] \;\times\; [\,\mathcal{Z}\,] \;\times\;
-  [\,\text{data} \mid \mathcal{Z}, a, \varepsilon\,],
-\]
-with the design $\mathcal{Z}$ free-standing. We replace $[\mathcal{Z}]$ by
-$[\mathcal{Z} \mid a, \varepsilon]$. That is the entire modification.
-
-\paragraph{Why the modification matters.}
-The target and the estimator treat $\varepsilon$ asymmetrically. In the target
-$\int (\mu + a)\,dP$, the nugget integrates away over a region spanning many correlation
-lengths. In the estimator $n^{-1}\sum_j [\mu(z_j) + a(z_j) + \varepsilon(z_j)]$ it does
-\emph{not} average out, if the $z_j$ were selected on it. So $\varepsilon$ contributes nothing
-to what is wanted and something to what is computed. Write
+We write
 \begin{equation}
   \label{eq:b}
-  b_j \;:=\; \mathbb{E}\!\left[\varepsilon(z_j) \mid \mathcal{Z}\right]
+  b_j \;:=\; \mathbb{E}\!\left[\varepsilon(z_j) \mid X\right]
 \end{equation}
-for the conditional mean nugget at the realised design. The standard framework assumes
+for the conditional mean nugget at the realised design. The standard model asserts
 $b \equiv 0$; this experiment measures it.
 
-\paragraph{A physical tension, and its resolution.}
-Formally, white noise and preferential sampling coexist without difficulty. Physically they are
-in tension: a float follows a continuous trajectory and cannot steer toward a
-delta-correlated field, since there is nothing coherent to be trapped by. The mechanism
-requires $\varepsilon$ to have genuine spatial structure.
+\paragraph{A physical tension, and its resolution.} Formally, white noise and preferential
+sampling coexist without difficulty. Physically they are in tension: a float follows a
+continuous trajectory and cannot steer toward a delta-correlated field, since there is nothing
+coherent to be trapped by. The mechanism requires $\varepsilon$ to have genuine spatial
+structure.
 
-The resolution is that ``uncorrelated'' in \eqref{eq:model} means uncorrelated \emph{at the
-resolution of the mapping}, not literally zero correlation length. Unresolved mesoscale
-variability has $\ell_\varepsilon \sim 50$--$100$\,km and a few weeks---negligible against the
-data-driven decorrelation scales used for $a$, but far from zero, and precisely the scale at
+The resolution is that ``uncorrelated'' in \eqref{eq:standard} means uncorrelated \emph{at the
+resolution of the mapping}, not literally zero correlation length. With
+$\ell_\varepsilon \sim 50$--$100$\,km, the nugget is negligibly correlated against the
+data-driven decorrelation scales used for $a$, yet is correlated over precisely the scale at
 which eddy trapping operates. We therefore treat $\varepsilon$ as white for mapping purposes
 and as short-range correlated with $\ell_\varepsilon > 0$ for the sampling analysis. The same
-fact drives the effective-sample-size problem in Section~\ref{sec:control}.
+fact drives the effective-sample-size problem in Section~\ref{sec:control}, and Stage 5 of the
+protocol checks it empirically rather than asserting it.
 
-\paragraph{Dependence is restricted to $\varepsilon$, not $a$.}
-We assume the design may depend on the unresolved field but not on the resolved anomaly. This
-is physically defensible---trapping is a mesoscale phenomenon, mesoscale variability is in
-$\varepsilon$ by construction, and large-scale anomalies do not trap floats---and it is
-analytically valuable, because it leaves the mapped $a$ usable as given. Were the design to
-depend on $a$, a Gaussian process predictor for $a$ would itself be biased, since it conditions
-on the data as though locations were exogenous (Diggle et al.\ 2010; Gelfand et al.\ 2012). The
-second-order caveat is that a warm large-scale state may coincide with a stronger jet and
-faster flushing; we note it and do not model it.
+\subsection{The sampling mechanism is Lagrangian}
+\label{sec:lagrangian}
+
+Diggle's canonical specification of $[X \mid S]$ is a log-Gaussian Cox process,
+$\lambda(x) = \exp\{\alpha + \beta S(x)\}$, in which the sampling intensity is directly tilted
+toward high values of the latent field. For Argo the dependence is not specified but
+\emph{induced}, by the dynamics.
+
+Float $f$ follows a trajectory $\xi_f$ satisfying
+\begin{equation}
+  \frac{d\xi_f}{dt} \;=\; \mathbf{u}\big(\xi_f(t), t\big)
+\end{equation}
+at its parking depth, surfacing at intervals $\Delta \approx 10$ days, so that
+\begin{equation}
+  X \;=\; \bigcup_f \big\{ \big(\xi_f(t_{f,k}),\, t_{f,k}\big) \big\}_k .
+\end{equation}
+Dependence on the thermal field enters because $\mathbf{u}$ and the density structure that sets
+heat content are dynamically coupled through thermal wind: coherent eddies retain floats, so
+residence time---and hence the number of profiles returned from a given water parcel---depends
+on the local anomaly. The instrument is transported by the field it measures.
+
+Three consequences follow.
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{The design is strongly clustered.} A float moves only $30$--$80$\,km per cycle,
+    well inside a mesoscale feature, so consecutive profiles are near-replicates and
+    $n_{\text{eff}} \ll n$. This governs the construction of null distributions
+    (Section~\ref{sec:control}) and is a feature absent from the canonical i.i.d.-marks setting.
+  \item \textbf{The dependence is physics, not protocol.} Unlike Diggle's motivating examples,
+    where preferential sampling arises from human choice of where to measure, the coupling here
+    cannot be removed by revising sampling practice. It can only be quantified and corrected.
+  \item \textbf{A Cox-process form is a reduced summary, not the generative truth.} Writing
+    $\lambda \propto \exp\{\beta\,\varepsilon\}$ remains useful for sensitivity analysis, and
+    yields tractable expressions, but it should be presented as an approximation to the
+    Lagrangian mechanism rather than as the mechanism itself.
+\end{enumerate}
 
 \subsection{Coverage versus preferential}
 \label{sec:coverage-pref}
 
-Since the region spans many correlation lengths of $\varepsilon$, we have
-$\int_{\mathcal{R}} \varepsilon \, dP \approx 0$, and
+Combining \eqref{eq:obs} and \eqref{eq:target}, and using
+$\int_{\mathcal{R}} \varepsilon \, dP \approx 0$,
 \begin{equation}
   \label{eq:split}
   \hat{Y} - \bar{Y}
   \;=\; \underbrace{\int_{\mathcal{R}} (\mu + a)\, d(Q_n - P)}_{\textbf{coverage}}
-  \;+\; \underbrace{\frac{1}{n}\sum_{j=1}^{n} \varepsilon(z_j)}_{\textbf{preferential}} .
+  \;+\; \underbrace{\frac{1}{n}\sum_{j=1}^{n} \varepsilon(z_j)}_{\textbf{preferential}}
+  \;+\; \underbrace{\frac{1}{n}\sum_{j=1}^{n} \eta_j}_{\textbf{instrument}} .
 \end{equation}
 
 \emph{Coverage bias} follows from floats being unevenly distributed in space and time. It
 depends on the field only through structure that is a known or estimable function of position,
-so given the position list it is computable. It would be present even if float positions were
-fixed in advance, independently of the ocean.
+so given the position list it is computable. It would be present even if the design were fixed
+in advance, independently of the ocean---that is, it survives $[X \mid a,\varepsilon] = [X]$.
+It has no analogue in Diggle's constant-$\mu$ formulation.
 
-\emph{Preferential bias} is the mean of the nugget at the sampled points. It is nonzero only
-when the positions are stochastically dependent on the field---floats lingering where water is
-anomalously warm, or being flushed from regions where it is anomalously cold. It survives even
-under perfectly uniform sampling density.
+\emph{Preferential bias} is the mean of the nugget at the sampled points, with conditional
+expectation $n^{-1}\sum_j b_j$ by \eqref{eq:b}. It vanishes if and only if the design is
+exogenous with respect to $\varepsilon$. It survives even under perfectly uniform sampling
+density, and---critically---it does not diminish as the array grows, since it is an average of
+a systematically offset quantity rather than of a mean-zero one.
 
-The mechanism making this plausible for Argo: floats drift with ocean currents, and currents
-are geostrophically tied through thermal wind to the density structure that sets heat content.
-The instrument is transported by the field it measures.
-
+\emph{Instrument error} is Diggle's $Z_i$ term, is genuinely design-independent, and averages
+down as $n^{-1/2}$. At $\operatorname{sd}(\eta) \approx 1.6\times10^{7}$ J\,m$^{-2}$ over
+thousands of profiles it is negligible for present purposes and we do not track it further.
 \subsection{A note on exactness}
 \label{sec:exactness}
 
@@ -300,12 +463,10 @@ resolved/unresolved split is drawn, whereas the coverage/preferential split is n
 the resolved space moves variance from $\varepsilon$ into $a$ and shrinks the preferential
 term. Reporting both makes that dependence visible rather than hidden.
 
-\paragraph{What the nugget contains.} Argo temperature accuracy of $\sim 0.002\,^\circ$C
-integrated over $2000$\,m corresponds to $\sim 1.6\times 10^{7}$ J\,m$^{-2}$, against mesoscale
-OHC variability of order $10^{9}$. Instrument error is thus a percent or two of the nugget, and
-it is genuinely design-independent---a CTD's accuracy does not depend on which eddy it sits in.
-The remaining $\sim\!98\%$ is geophysical, and it is exactly the component for which the
-independence assumption is least secure.
+\paragraph{Consistency with the factorisation.} Targeting $\varepsilon$ is also what
+Section~\ref{sec:compatible} identifies as the term wrongly assigned to the measurement layer.
+The instrument component $\eta$ is genuinely design-independent and is not at issue; the OSSE
+is designed to measure $b$ in \eqref{eq:b}, and nothing else.
 
 %=============================================================
 \section{Design}
