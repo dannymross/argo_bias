@@ -1,0 +1,58 @@
+{
+  "experiment": "osse_glorys",
+  "model": "GLORYS12V1",
+  "python": "/storage/work/dmr6737/.conda/envs/argo_bias/bin/python",
+  "out_root": "data/glorys_osse",
+
+  "regions": {
+    "buffer":    {"lon_bounds": [-70, -30], "lat_bounds": [15, 50],
+                  "note": "trajectory advection buffer (osse.tex sec:glorys): floats advect in/out"},
+    "boxes_halo":{"lon_bounds": [-62, -38], "lat_bounds": [20, 47],
+                  "note": "boxes A (22-34N) + B (35-45N), 40-60W, plus ~2 deg halo; truth OHC + mu"}
+  },
+
+  "period": {"daily_start": "2015-01", "daily_end": "2019-12",
+             "monthly_start": "1993-01", "monthly_end": "2019-12"},
+
+  "depth_bands": {"surf": [0, 3], "park": [900, 1100],
+                  "note": "surf = top ~3 levels (0.49/1.54/2.6 m); park brackets 1000 m (902.3/1062.4 m)"},
+  "thetao_depth": [0, 2260],
+  "thetao_depth_note": "0-2000 m OHC; upper bound includes level ~2225 m straddling 2000 m for partial weighting",
+
+  "groups": [
+    {"name": "static", "cadence": "static", "region": "boxes_halo",
+     "dataset_id": "cmems_mod_glo_phy_my_0.083deg_static", "depth": "thetao_depth",
+     "parts": {"bathy": ["deptho", "deptho_lev", "mask"], "coords": ["e1t", "e2t", "e3t"]},
+     "note": "split dataset: bathy (deptho/deptho_lev/mask) + coords (e1t/e2t/e3t); e3t is cell thickness for the OHC integral"},
+
+    {"name": "thetao_daily", "cadence": "daily", "region": "boxes_halo",
+     "dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1D-m",
+     "variables": ["thetao"], "depth": "thetao_depth",
+     "note": "OHC field: thetao only, no salinity. salinity_test (logs/osse_salinity_test.txt) found in-situ TEOS-10 vs constant rho*cp differ by mean +0.06% (max 0.46%) over Box B, so constant CP*RHO*potential-temperature (code/ohc.py) is used"},
+
+    {"name": "velocity_daily", "cadence": "velocity_bands", "region": "buffer",
+     "dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1D-m",
+     "variables": ["uo", "vo"],
+     "period": {"daily_start": "2010-01", "daily_end": "2019-12"},
+     "note": "velocity spans MORE years than the analysis window: velocity years l index the permutation labels, and only l with |l - k| >= 2 enter the comparison set C_k. M=5 gave |C_k| in {2,3}; M=10 gives {7,8}. Same buffer region and depth bands as 2015-2019 so the extra years are exchangeable with them (assumption D1b)."},
+
+    {"name": "zos_daily", "cadence": "daily", "region": "buffer",
+     "dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1D-m",
+     "variables": ["zos"]},
+
+    {"name": "thetao_zos_monthly", "cadence": "monthly", "region": "boxes_halo",
+     "dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1M-m",
+     "variables": ["thetao", "zos"], "depth": "thetao_depth"}
+  ],
+
+  "salinity_test": {
+    "region": {"lon_bounds": [-60, -40], "lat_bounds": [35, 45],
+               "note": "Box B (Gulf Stream extension), the more energetic box"},
+    "start_month": "2015-01", "end_month": "2015-03",
+    "variables": ["thetao", "so"], "depth": [0, 2260]},
+
+  "budget_gb": 90,
+
+  "slurm": {"account": "statsresearch_cr_default", "partition": "standard",
+            "conda_env": "argo_bias", "mem": "8G"}
+}
