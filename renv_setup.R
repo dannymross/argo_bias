@@ -7,7 +7,8 @@ renv::init(bioconductor = FALSE)
 renv::install(c(
   "data.table",
   "fields",
-  "GpGp"
+  "GpGp",
+  "ncdf4"
 ))
 
 renv::snapshot()
