@@ -12,9 +12,7 @@ project:
     - "reports/nac.qmd"
     - "reports/nac_gp.qmd"
     - "reports/resolution.qmd"
-    # OSSE design-invariance diagnostics: enable here and add a sidebar
-    # section once a local render has committed its _freeze/ output.
-    #- "reports/design_invariance.qmd"
+    - "reports/design_invariance.qmd"
 
 execute:
   freeze: auto
@@ -43,6 +41,9 @@ website:
           - reports/nac.qmd
           - reports/nac_gp.qmd
           - reports/resolution.qmd
+      - section: "OSSE"
+        contents:
+          - reports/design_invariance.qmd
 
 
 format:
