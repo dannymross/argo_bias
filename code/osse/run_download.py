@@ -17,11 +17,26 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import download_glorys as dg  # noqa: E402
 
 
-def _download_group(g, cfg):
+def _period(g, cfg, start=None, end=None):
+    """Effective period: global, overridden per group, then by CLI.
+
+    Groups can span different windows -- the velocity record is extended back
+    beyond the analysis years to enlarge the comparison sets C_k of the
+    permutation test, while thetao/zos stay on the analysis window.
+    """
+    period = {**cfg["period"], **g.get("period", {})}
+    if start:
+        period["daily_start"] = period["monthly_start"] = start
+    if end:
+        period["daily_end"] = period["monthly_end"] = end
+    return period
+
+
+def _download_group(g, cfg, start=None, end=None):
     region = cfg["regions"][g["region"]]
     lon, lat = region["lon_bounds"], region["lat_bounds"]
     depth = cfg[g["depth"]] if "depth" in g else None
-    period = cfg["period"]
+    period = _period(g, cfg, start, end)
     out_dir = os.path.join(cfg["out_root"], g["name"])
     name = g["name"]
 
@@ -48,6 +63,8 @@ if __name__ == "__main__":
                     default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                          "configs", "osse_glorys.json"))
     ap.add_argument("--only", help="comma-separated group names to download")
+    ap.add_argument("--start", help="override period start, YYYY-MM (e.g. one array task's year)")
+    ap.add_argument("--end", help="override period end, YYYY-MM")
     args = ap.parse_args()
 
     with open(args.config) as f:
@@ -56,6 +73,7 @@ if __name__ == "__main__":
     for g in cfg["groups"]:
         if only and g["name"] not in only:
             continue
-        print(f"\n=== group: {g['name']} ===")
-        _download_group(g, cfg)
+        p = _period(g, cfg, args.start, args.end)
+        print(f"\n=== group: {g['name']} ({p['daily_start']}..{p['daily_end']}) ===")
+        _download_group(g, cfg, args.start, args.end)
     print("\ndone.")

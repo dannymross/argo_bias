@@ -32,7 +32,9 @@
 
     {"name": "velocity_daily", "cadence": "velocity_bands", "region": "buffer",
      "dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1D-m",
-     "variables": ["uo", "vo"]},
+     "variables": ["uo", "vo"],
+     "period": {"daily_start": "2010-01", "daily_end": "2019-12"},
+     "note": "velocity spans MORE years than the analysis window: velocity years l index the permutation labels, and only l with |l - k| >= 2 enter the comparison set C_k. M=5 gave |C_k| in {2,3}; M=10 gives {7,8}. Same buffer region and depth bands as 2015-2019 so the extra years are exchangeable with them (assumption D1b)."},
 
     {"name": "zos_daily", "cadence": "daily", "region": "buffer",
      "dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1D-m",
