@@ -11,8 +11,9 @@
                   "note": "boxes A (22-34N) + B (35-45N), 40-60W, plus ~2 deg halo; truth OHC + mu"}
   },
 
-  "period": {"daily_start": "2015-01", "daily_end": "2019-12",
-             "monthly_start": "1993-01", "monthly_end": "2019-12"},
+  "period": {"daily_start": "2010-01", "daily_end": "2019-12",
+             "monthly_start": "1993-01", "monthly_end": "2019-12",
+             "note": "daily thetao extended back to 2010: the residual field Z_k defines the ANALYSIS years, and m=5 of them is what makes the matched indicator collinear with lag 0 in the placebo matrix. m=10 makes lags 1-9 estimable. Monte-Carlo replication cannot substitute -- the diagonal carries one flow-year draw per k whatever D is."},
 
   "depth_bands": {"surf": [0, 3], "park": [900, 1100],
                   "note": "surf = top ~3 levels (0.49/1.54/2.6 m); park brackets 1000 m (902.3/1062.4 m)"},
@@ -33,12 +34,14 @@
     {"name": "velocity_daily", "cadence": "velocity_bands", "region": "buffer",
      "dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1D-m",
      "variables": ["uo", "vo"],
-     "period": {"daily_start": "2010-01", "daily_end": "2019-12"},
-     "note": "velocity spans MORE years than the analysis window: velocity years l index the permutation labels, and only l with |l - k| >= 2 enter the comparison set C_k. M=5 gave |C_k| in {2,3}; M=10 gives {7,8}. Same buffer region and depth bands as 2015-2019 so the extra years are exchangeable with them (assumption D1b)."},
+     "period": {"daily_start": "2008-01", "daily_end": "2019-12"},
+     "note": "velocity spans MORE years than the analysis window, for two reasons. (1) Unaligned (l != k) cells are the no-coupling counterfactual and set the null scale for the diagonal. (2) The steady arm spins up over the PRECEDING 540 d, so the earliest analysis year is bounded by the velocity start: 2008 keeps analysis years from 2010. Note extra velocity years buy little precision on a per-year contrast -- var = sigma_f^2 (1 + 1/M) and the 1 is the diagonal's own flow-year draw -- so 2008 is chosen to cover the spin-up, not to grow M. Same buffer region and depth bands throughout so the extra years are exchangeable with the rest."},
 
     {"name": "zos_daily", "cadence": "daily", "region": "buffer",
      "dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1D-m",
-     "variables": ["zos"]},
+     "variables": ["zos"],
+     "period": {"daily_start": "2015-01", "daily_end": "2019-12"},
+     "note": "pinned to the original window: this feeds the eddy census, not the sampling-bias analysis, so it is deliberately NOT extended with the global period"},
 
     {"name": "thetao_zos_monthly", "cadence": "monthly", "region": "boxes_halo",
      "dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1M-m",

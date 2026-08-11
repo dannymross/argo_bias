@@ -20,6 +20,7 @@ simulated. Values are J/m^2 throughout; J_TO_GJ converts for display.
 """
 
 import argparse
+import glob
 import os
 import sys
 
@@ -60,6 +61,31 @@ def domain_means(zf, wet, w):
     zbar = by_doy.mean(axis=1)
     return pd.DataFrame({"year": YEARS, "zbar": zbar,
                          "sd_Z": np.sqrt(m2.mean(axis=1) - zbar**2)}), by_doy
+
+
+def gather_arm(box="boxB", arm="steady", out_tag=None):
+    """Concatenate an arm's per-chunk profile CSVs and evaluate Z at each point.
+
+    Chunked array jobs write design_profiles_<box>_<arm>_y<YYYY>_c<c>.csv; the
+    rep labels are already disjoint across chunks (--rep-offset), so a plain
+    concatenation is the full design ensemble.
+    """
+    from osse import sample_residuals as sr
+    pat = os.path.join(cfg.OUT_DIR, f"design_profiles_{box}_{arm}_y*.csv")
+    files = sorted(glob.glob(pat))
+    if not files:
+        raise FileNotFoundError(pat)
+    prof = pd.concat((pd.read_csv(f) for f in files), ignore_index=True)
+    dup = prof.duplicated(["vel_year", "rep", "float_id", "cycle"]).sum()
+    if dup:
+        raise ValueError(f"{dup} duplicated (vel_year, rep, float_id, cycle) rows: "
+                         "chunk rep-offsets overlap")
+    sampled, ndropped = sr.gather(prof, sr.load_residual_field(box))
+    out = os.path.join(cfg.OUT_DIR, f"sampled_residuals_{out_tag or arm}.csv")
+    sampled.to_csv(out, index=False)
+    print(f"{len(files)} files, {len(sampled):,} profiles kept, "
+          f"{ndropped:,} dropped (masked/outside) -> {out}")
+    return sampled
 
 
 def advective_estimates(box="boxB", tag="uniform_mc", path=None):
@@ -139,16 +165,24 @@ def _hist(ax, x, **kw):
     ax.hist(np.asarray(x) * J_TO_GJ, density=True, **kw)
 
 
-def plot_reference_hists(unif, zbar, figsize=(13, 3.0)):
-    """Uniform-sampling estimates around the truth, one panel per analysis year."""
-    import matplotlib.pyplot as plt
+def bias_frame(est, zbar):
+    """Per-design bias B = Zhat - Zbar_k, one column per analysis year."""
     zb = pd.Series(zbar["zbar"].to_numpy(), index=YEARS)
-    fig, axes = plt.subplots(1, len(YEARS), figsize=figsize, sharey=True)
+    return pd.DataFrame({k: est[f"zhat_{k}"].to_numpy() - zb[k] for k in YEARS},
+                        index=est.index)
+
+
+def plot_reference_hists(unif, zbar, figsize=(13, 3.0)):
+    """Uniform-sampling bias, one panel per analysis year. Unbiased => centred on 0."""
+    import matplotlib.pyplot as plt
+    B = bias_frame(unif, zbar)
+    fig, axes = plt.subplots(1, len(YEARS), figsize=figsize, sharey=True, sharex=True)
     for ax, k in zip(axes, YEARS):
-        _hist(ax, unif[f"zhat_{k}"])
-        ax.axvline(zb[k] * J_TO_GJ, color="crimson", lw=1.6)
+        _hist(ax, B[k])
+        ax.axvline(0.0, color="crimson", lw=1.6)
+        ax.axvline(B[k].mean() * J_TO_GJ, color="k", lw=1.4, ls=":")
         ax.set_title(str(k), fontsize=10)
-        ax.set_xlabel("Zhat (GJ/m2)")
+        ax.set_xlabel("B (GJ/m2)")
     axes[0].set_ylabel("density")
     fig.tight_layout()
     return fig
@@ -170,28 +204,35 @@ def plot_sample_sizes(adv, figsize=(11, 3.4)):
 
 
 def plot_advective_grid(adv, unif, zbar, figsize=(18, 9.5)):
-    """Zhat by analysis year (rows) x velocity year (columns).
+    """Bias B by analysis year (rows) x velocity year (columns).
 
-    Aligned cells (velocity year == analysis year) are outlined in red; the
-    dashed curve is the n-matched uniform reference for the same cell.
+    Plotting B rather than Zhat puts every panel on one scale centred at zero,
+    so rows are directly comparable; the truth line is 0 everywhere. Aligned
+    cells (velocity year == analysis year) are outlined in red; the dashed curve
+    is the n-matched uniform reference for the same cell.
     """
     import matplotlib.pyplot as plt
-    zb = pd.Series(zbar["zbar"].to_numpy(), index=YEARS)
+    Ba, Bu = bias_frame(adv, zbar), bias_frame(unif, zbar)
     vy = sorted(adv["vel_year"].unique())
+    lo, hi = np.percentile(np.concatenate([Ba.to_numpy().ravel(),
+                                           Bu.to_numpy().ravel()]) * J_TO_GJ, [1.0, 99.0])
+    pad = 0.05 * (hi - lo)
+    bins = np.linspace(lo - pad, hi + pad, 32)
+
     fig, axes = plt.subplots(len(YEARS), len(vy), figsize=figsize,
-                             sharex="row", sharey="row", squeeze=False)
+                             sharex=True, sharey=True, squeeze=False)
     for i, k in enumerate(YEARS):
-        lo, hi = np.percentile(adv[f"zhat_{k}"] * J_TO_GJ, [0.2, 99.8])
-        pad = 0.1 * (hi - lo)
-        bins = np.linspace(lo - pad, hi + pad, 26)
         for j, l in enumerate(vy):
             ax = axes[i, j]
-            a = adv.loc[adv["vel_year"] == l, f"zhat_{k}"]
-            u = unif.loc[unif["vel_year"] == l, f"zhat_{k}"]
-            ax.hist(a * J_TO_GJ, bins=bins, density=True, color="0.35")
-            ax.hist(u * J_TO_GJ, bins=bins, density=True, histtype="step",
+            m = adv["vel_year"].to_numpy() == l
+            mu = unif["vel_year"].to_numpy() == l
+            ax.hist(Ba.loc[m, k] * J_TO_GJ, bins=bins, density=True, color="0.35")
+            ax.hist(Bu.loc[mu, k] * J_TO_GJ, bins=bins, density=True, histtype="step",
                     color="tab:blue", lw=1.2, ls="--")
-            ax.axvline(zb[k] * J_TO_GJ, color="crimson", lw=1.2)
+            ax.axvline(0.0, color="crimson", lw=1.2)
+            # The mean shift is ~0.1-0.3 GJ/m2 against a per-panel sd of ~0.65, so
+            # it is under two bin widths: mark it explicitly or it is invisible.
+            ax.axvline(Ba.loc[m, k].mean() * J_TO_GJ, color="k", lw=1.4, ls=":")
             ax.set_xlim(bins[0], bins[-1])
             ax.tick_params(labelsize=6)
             if k == l:
@@ -202,9 +243,9 @@ def plot_advective_grid(adv, unif, zbar, figsize=(18, 9.5)):
             if j == 0:
                 ax.set_ylabel(f"Z {k}", fontsize=9)
             if i == len(YEARS) - 1:
-                ax.set_xlabel("Zhat (GJ/m2)", fontsize=7)
-    fig.suptitle("rows: analysis year of the field   columns: velocity year of the flow",
-                 fontsize=10)
+                ax.set_xlabel("B (GJ/m2)", fontsize=7)
+    fig.suptitle("rows: analysis year of the field   columns: velocity year of the flow"
+                 "   (B = Zhat - Zbar, red line at 0)", fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.97))
     return fig
 
@@ -260,9 +301,17 @@ def plot_decomposition(grid, figsize=(13, 3.4)):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--box", default="boxB")
-    ap.add_argument("--tag", default="uniform_mc")
+    ap.add_argument("--tag", default="uniform_mc",
+                    help="sampled_residuals_<tag>.csv to read")
+    ap.add_argument("--arm", default="", help="output filename suffix, e.g. _steady")
+    ap.add_argument("--gather", metavar="ARM",
+                    help="first build sampled_residuals_<tag>.csv from this arm's "
+                         "design_profiles_<box>_<ARM>_y*.csv")
     ap.add_argument("--seed", type=int, default=11)
     a = ap.parse_args()
+
+    if a.gather:
+        gather_arm(a.box, a.gather, a.tag)
 
     zf, wet, w = load_field(a.box)
     zbar, by_doy = domain_means(zf, wet, w)
@@ -281,7 +330,8 @@ if __name__ == "__main__":
 
     grid = bias_grid(adv, unif, zbar)
     for name, df in (("advective", adv), ("uniform", unif), ("grid", grid)):
-        df.to_csv(os.path.join(cfg.OUT_DIR, f"mean_mc_{name}_{a.box}.csv"), index=False)
+        df.to_csv(os.path.join(cfg.OUT_DIR,
+                  f"mean_mc_{name}_{a.box}{a.arm}.csv"), index=False)
 
     zb = zbar["zbar"].to_numpy()
     bu = zu - zb
@@ -297,4 +347,4 @@ if __name__ == "__main__":
     for _, r in d.iterrows():
         print(f"  {int(r.analysis_year)}: {r.mean_B*J_TO_GJ:+.4f} ({r.se_B*J_TO_GJ:.4f})"
               f"   temporal {r.mean_temporal*J_TO_GJ:+.4f}")
-    print(f"\nwrote mean_mc_{{advective,uniform,grid}}_{a.box}.csv")
+    print(f"\nwrote mean_mc_{{advective,uniform,grid}}_{a.box}{a.arm}.csv")

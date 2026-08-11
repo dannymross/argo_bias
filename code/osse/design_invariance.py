@@ -55,6 +55,17 @@ N_FLOATS_UNIFORM = 160   # deployed across the year; the array ramps from empty,
                          # so this is ~N_FLOATS in mean standing stock
 JITTER_KM = 5.0          # per-replicate seed perturbation
 
+# Steady-state arm: deploy from SPIN_DAYS before the analysis year, on a release
+# schedule calibrated (calibrate_release.py) to hold the in-box standing stock
+# flat across [0, run_days). A CONSTANT rate does not work -- the empirical
+# lifespan pool has a median of 1339 d, so floats keep re-entering for years and
+# the stock is still ramping 1.4x after 900 d of spin-up. The spin-up runs on
+# the PRECEDING years' velocity; cycling the analysis year's own flow would send
+# floats through the same eddies twice and inflate exactly the aligned coupling
+# the experiment is built to measure.
+SPIN_DAYS = 540
+N_FLOATS_STEADY = 450    # over SPIN_DAYS + run_days; ~48 in-box standing stock
+
 
 def load_deployment_pool(box=None, lat_bounds=(15, 50), lon_bounds=(-70, -30),
                          years=(2010, 2019), path=None):
@@ -142,6 +153,84 @@ def deployment_plan_uniform(pool, box, n_floats=N_FLOATS_UNIFORM, reps=5, year=0
     return tuple(np.concatenate(x) for x in zip(*out))
 
 
+def deployment_plan_steady(pool, box, n_floats=N_FLOATS_STEADY, reps=5, year=0,
+                           margin=SEED_MARGIN_UNIFORM, spin_days=SPIN_DAYS,
+                           run_days=360, rep_offset=0):
+    """Uniform deployment at a constant rate, started before the analysis year.
+
+    Identical to deployment_plan_uniform in space; the difference is that
+    release day runs from -spin_days, so during [0, run_days) the standing stock
+    is a stationary renewal process rather than an array ramping up from empty.
+    That removes both the late-loaded day-of-year marginal and the collinearity
+    between float age and day of year.
+    """
+    la0, la1 = cfg.BOXES[box]["lat_bounds"]
+    lo0, lo1 = cfg.BOXES[box]["lon_bounds"]
+    s0, s1 = np.sin(np.deg2rad([la0 - margin, la1 + margin]))
+    life_pool = pool["lifespan_days"].to_numpy()
+
+    sched = release_schedule(box, spin_days, run_days)
+
+    # rep_offset lets an array job split the replicates across tasks: the RNG is
+    # keyed on (year, d), so without it every chunk would redraw the same designs.
+    out = []
+    for d in range(rep_offset, rep_offset + reps):
+        r = np.random.default_rng([4000, int(year), d])
+        out.append((np.rad2deg(np.arcsin(r.uniform(s0, s1, n_floats))),
+                    r.uniform(lo0 - margin, lo1 + margin, n_floats),
+                    sched(r, n_floats),
+                    np.full(n_floats, d + 1),
+                    r.choice(life_pool, size=n_floats, replace=True)))
+    return tuple(np.concatenate(x) for x in zip(*out))
+
+
+def release_schedule(box, spin_days, run_days, path=None):
+    """Sampler for release day, from calibrate_release.py's flat-stock schedule.
+
+    Falls back to a constant rate if no schedule has been calibrated, which
+    leaves the standing stock ramping ~1.4x across the analysis year.
+    """
+    path = path or os.path.join(cfg.OUT_DIR, f"release_schedule_{box}.csv")
+    if not os.path.exists(path):
+        warnings.warn(f"{path} missing: constant-rate release, stock will ramp")
+        return lambda r, n: r.uniform(-spin_days, run_days, n)
+
+    tab = pd.read_csv(path)
+    day, w = tab["release_day"].to_numpy(float), tab["weight"].to_numpy(float)
+    if day.min() != -spin_days:
+        raise ValueError(f"{path} spans [{day.min():.0f}, {day.max():.0f}] but "
+                         f"spin_days={spin_days}: recalibrate")
+    step = float(np.diff(day).min())
+    cdf = np.cumsum(w / w.sum())
+    return lambda r, n: (day[np.searchsorted(cdf, r.random(n)).clip(max=len(day) - 1)]
+                         + r.uniform(0.0, step, n))
+
+
+def park_files(year, spin_days=0):
+    """Park-depth velocity files covering [Jan 1 of year - spin_days, year end].
+
+    The spin-up may reach back more than one calendar year, so every intervening
+    month must be present -- a gap in the file list is a gap in the FieldSet.
+    """
+    start = np.datetime64(f"{year}-01-01") - np.timedelta64(int(max(spin_days, 0)), "D")
+    months = pd.period_range(str(start)[:7], f"{year}-12", freq="M")
+    files = [os.path.join(VEL_DIR, f"velocity_daily_park_{m.year}_{m.month:02d}.nc")
+             for m in months]
+    missing = [f for f in files if not os.path.exists(f)]
+    if missing:
+        raise FileNotFoundError(f"{year}: {len(missing)} park velocity files missing, "
+                                f"first {os.path.basename(missing[0])}")
+    return files
+
+
+def park_files_available(year, spin_days=0):
+    try:
+        park_files(year, spin_days)
+        return True
+    except FileNotFoundError:
+        return False
+
+
 def deployment_plan(box, n_floats=N_FLOATS, reps=5, independent=True):
     """Replicate deployment realisations, identical across velocity years.
 
@@ -180,7 +269,7 @@ def deployment_plan(box, n_floats=N_FLOATS, reps=5, independent=True):
 
 
 def run_year(year, box, reps, out_zarr, runtime_days=360, independent=True, pool=None,
-             source="argo", n_floats_uniform=N_FLOATS_UNIFORM):
+             source="argo", n_floats_uniform=N_FLOATS_UNIFORM, spin_days=0, rep_offset=0):
     """Advect the plan through one velocity year at the park depth.
 
     Floats leaving the velocity buffer are deleted rather than reflected: the
@@ -204,17 +293,17 @@ def run_year(year, box, reps, out_zarr, runtime_days=360, independent=True, pool
         if particle.lifespan > 0 and particle.age > particle.lifespan:
             particle.delete()
 
-    files = sorted(glob.glob(os.path.join(VEL_DIR, f"velocity_daily_park_{year}_*.nc")))
-    if len(files) != 12:
-        raise FileNotFoundError(f"{year}: found {len(files)}/12 park velocity files")
-
     fieldset = FieldSet.from_netcdf(
-        files,
+        park_files(year, spin_days),
         variables={"U": "uo", "V": "vo"},
         dimensions={"time": "time", "depth": "depth", "lat": "latitude", "lon": "longitude"},
         allow_time_extrapolation=False,
     )
-    if source == "uniform":
+    if source == "steady":
+        lat, lon, doy, rep, life = deployment_plan_steady(
+            pool, box, n_floats=n_floats_uniform, reps=reps, year=year,
+            spin_days=spin_days, run_days=runtime_days, rep_offset=rep_offset)
+    elif source == "uniform":
         lat, lon, doy, rep, life = deployment_plan_uniform(
             pool, box, n_floats=n_floats_uniform, reps=reps, year=year,
             seed_days=runtime_days)
@@ -224,10 +313,9 @@ def run_year(year, box, reps, out_zarr, runtime_days=360, independent=True, pool
     else:
         lat, lon, rep = deployment_plan(box, reps=reps, independent=independent)
         doy, life = np.zeros(len(lat)), np.zeros(len(lat))
-    # Release times stay inside the velocity year: the design must be a function
-    # of (omega, V_l) alone, so a float cannot be advected by a neighbouring
-    # year's flow. Staggering within the year is therefore the most age-mixing
-    # available without breaking that -- the array still ramps from empty.
+    # doy is measured from 1 January of the analysis year and is negative during
+    # the spin-up, so the design is a function of (omega, V_{l-1}, V_l). For the
+    # non-steady arms spin_days = 0 and releases stay inside the velocity year.
     t0 = np.datetime64(f"{year}-01-01", "s")
     pset = ParticleSet(fieldset=fieldset, pclass=ArgoFloat,
                        lon=lon, lat=lat, depth=np.full(len(lat), PARK_DEPTH),
@@ -245,29 +333,44 @@ def run_year(year, box, reps, out_zarr, runtime_days=360, independent=True, pool
     return out_zarr, rep
 
 
-def profiles_from_zarr(path, rep, year):
-    """Trajectory output -> one profile position per float per cycle."""
+def profiles_from_zarr(path, rep, year, run_days=360):
+    """Trajectory output -> one profile position per float per cycle.
+
+    Only profiles falling in [0, run_days) of the analysis year are returned;
+    spin-up profiles exist solely to bring the array to equilibrium.
+    """
     ds = xr.open_zarr(path)
     lat = ds["lat"].values
     lon = ds["lon"].values
     time = ds["time"].values
     n_traj, n_obs = lat.shape
-    doy = ((time - time[:, :1].astype("datetime64[Y]").astype("datetime64[ns]"))
-           / np.timedelta64(1, "D")).astype("float")
+
+    # Particles deleted before the first output are never written, so the zarr
+    # rows are a subset of the seeded ParticleSet. Index the design labels by
+    # particle id, not by position -- slicing rep[:n_traj] silently shifts every
+    # label past the first deletion and drops whole replicates off the end.
+    pid = np.asarray(ds["trajectory"].values)
+    pid = (pid[:, 0] if pid.ndim == 2 else pid).astype(int)
+    if pid.min() < 0 or pid.max() >= len(rep):
+        raise ValueError(f"{path}: trajectory ids outside the seeded ParticleSet")
+
+    # doy is days since 1 January of the analysis year: negative during spin-up.
+    doy = (time - np.datetime64(f"{year}-01-01", "ns")) / np.timedelta64(1, "D")
     df = pd.DataFrame({
         "vel_year": year,
-        "rep": np.repeat(rep[:n_traj], n_obs),
-        "float_id": np.repeat(np.arange(n_traj), n_obs),
+        "rep": np.repeat(rep[pid], n_obs),
+        "float_id": np.repeat(pid, n_obs),
         "cycle": np.tile(np.arange(n_obs), n_traj),
         "lat": lat.ravel(),
         "lon": lon.ravel(),
-        "doy": np.floor(doy.ravel()).astype("float"),
+        "doy": np.floor(np.asarray(doy, dtype=float).ravel()),
     })
     # Drop each float's FIRST record -- its release position, not a post-ascent
-    # surfacing. Under staggered release this is no longer globally cycle 0,
-    # since a float released mid-year has NaN records before it enters.
+    # surfacing. Done before the analysis-window filter, so a float released
+    # during spin-up contributes real profiles rather than losing one to this.
     df = df.dropna(subset=["lat", "lon", "doy"]).sort_values(["float_id", "cycle"])
-    return df[df.groupby("float_id").cumcount() > 0]
+    df = df[df.groupby("float_id").cumcount() > 0]
+    return df[df["doy"].between(0, run_days - 1)]
 
 
 def in_box(df, box):
@@ -314,6 +417,11 @@ def weights_and_summary(df, box, deg=cfg.COARSE_DEG, days=cfg.COARSE_DAYS,
             # exit or mortality, which the profile record cannot separate.
             "frac_early_stop": float((last_doy < run_days - CYCLE_DAYS).mean()),
             "frac_inside": g["inside"].mean(),
+            # Distinct floats profiling in the box per cycle window: the standing
+            # stock the deployment rate has to be calibrated against.
+            "standing_stock": float(gi.groupby(gi["doy"] // CYCLE_DAYS)["float_id"]
+                                    .nunique().reindex(range(run_days // CYCLE_DAYS),
+                                                       fill_value=0).mean()),
             "residence_days": gi.groupby("float_id").size().mean() * CYCLE_DAYS,
             "retention_end": float(last_in.eq(last_cycle).mean()),
             "rms_disp_km": float(np.sqrt((dx**2 + dy**2).mean())),
@@ -325,7 +433,7 @@ def weights_and_summary(df, box, deg=cfg.COARSE_DEG, days=cfg.COARSE_DAYS,
 
 def main(years=None, reps=10, box="boxB", runtime_days=360, keep_zarr=False,
          independent=True, source="argo", n_floats_uniform=N_FLOATS_UNIFORM,
-         tag=""):
+         tag="", spin_days=0, rep_offset=0):
     os.makedirs(cfg.OUT_DIR, exist_ok=True)
     scratch = os.path.join(cfg.OUT_DIR, "_traj")
     os.makedirs(scratch, exist_ok=True)
@@ -333,7 +441,7 @@ def main(years=None, reps=10, box="boxB", runtime_days=360, keep_zarr=False,
     # The uniform arm needs the pool too -- for lifespans only, so that the two
     # arms share a mortality model and their contrast isolates deployment design.
     pool = None
-    if source in ("argo", "uniform"):
+    if source in ("argo", "uniform", "steady"):
         pool = load_deployment_pool(box=box)
         print(f"deployment pool: {len(pool)} real Argo deployments "
               f"(pooled 2010-2019), median lifespan {pool['lifespan_days'].median():.0f} d")
@@ -343,17 +451,20 @@ def main(years=None, reps=10, box="boxB", runtime_days=360, keep_zarr=False,
                         for f in glob.glob(os.path.join(VEL_DIR, "velocity_daily_park_*.nc"))})
         years = [y for y in years
                  if len(glob.glob(os.path.join(VEL_DIR, f"velocity_daily_park_{y}_*.nc"))) == 12]
+        if spin_days > 0:  # the spin-up runs on the preceding years' velocity
+            years = [y for y in years if park_files_available(y, spin_days)]
 
-    nf = n_floats_uniform if source == "uniform" else N_FLOATS
+    nf = n_floats_uniform if source in ("uniform", "steady") else N_FLOATS
     sfx = ("" if source == "argo" else f"_{source}") + tag
 
     all_prof = []
     for y in years:
         zpath = os.path.join(scratch, f"traj_{box}{sfx}_{y}.zarr")
-        print(f"[{y}] advecting {nf} floats x {reps} reps at {PARK_DEPTH:.0f} m ...")
+        print(f"[{y}] advecting {nf} floats x {reps} reps at {PARK_DEPTH:.0f} m "
+              f"({spin_days} d spin-up) ...")
         _, rep = run_year(y, box, reps, zpath, runtime_days, independent, pool,
-                          source, n_floats_uniform)
-        all_prof.append(profiles_from_zarr(zpath, rep, y))
+                          source, n_floats_uniform, spin_days, rep_offset)
+        all_prof.append(profiles_from_zarr(zpath, rep, y, runtime_days))
         if not keep_zarr:
             import shutil
             shutil.rmtree(zpath, ignore_errors=True)
@@ -374,8 +485,9 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--years", help="comma-separated; default all complete years")
     ap.add_argument("--reps", type=int, default=10)
-    ap.add_argument("--source", default="argo", choices=("argo", "uniform"),
-                    help="argo = pooled real deployment positions; uniform = synthetic")
+    ap.add_argument("--source", default="argo", choices=("argo", "uniform", "steady"),
+                    help="argo = pooled real deployment positions; uniform = synthetic "
+                         "ramping from empty; steady = synthetic in renewal equilibrium")
     ap.add_argument("--jitter-ensemble", action="store_true",
                     help="osse.tex-style perturbed members (NOT iid; invalid for D1b)")
     ap.add_argument("--box", default="boxB")
@@ -383,7 +495,16 @@ if __name__ == "__main__":
     ap.add_argument("--keep-zarr", action="store_true")
     ap.add_argument("--n-floats-uniform", type=int, default=N_FLOATS_UNIFORM)
     ap.add_argument("--tag", default="", help="output filename suffix (array jobs)")
+    ap.add_argument("--rep-offset", type=int, default=0,
+                    help="first replicate index; array tasks must not overlap")
+    ap.add_argument("--spin-days", type=int, default=None,
+                    help="pre-analysis-year deployment window; default SPIN_DAYS "
+                         "for --source steady, 0 otherwise")
     a = ap.parse_args()
+    spin = a.spin_days if a.spin_days is not None else (SPIN_DAYS if a.source == "steady" else 0)
+    nf = a.n_floats_uniform
+    if a.source == "steady" and nf == N_FLOATS_UNIFORM:
+        nf = N_FLOATS_STEADY
     main([int(y) for y in a.years.split(",")] if a.years else None,
          a.reps, a.box, a.days, a.keep_zarr, not a.jitter_ensemble, a.source,
-         a.n_floats_uniform, a.tag)
+         nf, a.tag, spin, a.rep_offset)

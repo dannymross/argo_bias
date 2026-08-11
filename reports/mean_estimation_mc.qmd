@@ -135,7 +135,7 @@ denominator is random), and the two ensembles are matched *conditional on* $n$.
 ```{python}
 #| label: fig-ref
 #| echo: false
-#| fig-cap: "Uniform-sampling estimates of the residual-field mean, one panel per analysis year. Red line is the truth Zbar_k. 1,895 designs, each an iid sample from P matched to an advective design's sample size."
+#| fig-cap: "Bias of the uniform-sampling estimator, B = Zhat - Zbar_k, one panel per analysis year. Solid red line marks zero, i.e. the truth; dotted black line is the ensemble mean, which coincides with it. 1,895 designs, each an iid sample from P matched to an advective design's sample size."
 
 mm.plot_reference_hists(unif, zbar)
 plt.show()
@@ -154,14 +154,14 @@ for j, k in enumerate(YEARS):
         "mean B (GJ/m2)": b.mean() * GJ,
         "MC se": b.std(ddof=1) / np.sqrt(len(b)) * GJ,
         "mean B / se": b.mean() / (b.std(ddof=1) / np.sqrt(len(b))),
-        "sd of Zhat": b.std(ddof=1) * GJ,
+        "sd of B": b.std(ddof=1) * GJ,
         "iid prediction": zbar["sd_Z"][j] * np.sqrt(np.mean(1.0 / nv)) * GJ,
     })
 HTML(fmt(pd.DataFrame(rows)))
 ```
 
 : Uniform ensemble against its two analytic targets: $\mathbb{E}[B]=0$ and
-$\mathrm{sd}(\hat Z) = \sigma_k \sqrt{\overline{1/n}}$. {#tbl-ref}
+$\mathrm{sd}(B) = \sigma_k \sqrt{\overline{1/n}}$. {#tbl-ref}
 
 The ensemble is centred on the truth in every year — the largest deviation is $1.6$ Monte Carlo
 standard errors — and its width sits within $5\%$ of $\sigma_k\sqrt{\overline{1/n}}$ in every year.
@@ -182,7 +182,7 @@ plt.show()
 ```{python}
 #| label: fig-grid
 #| echo: false
-#| fig-cap: "Sampling distribution of Zhat for every (analysis year, velocity year) pairing. Rows are the analysis year of the field, columns the velocity year of the flow. Grey: advective designs. Dashed blue: the n-matched uniform reference for the same cell. Red vertical line: the truth Zbar_k. Aligned cells (flow year = field year) are outlined in red. The x axis is shared within each row."
+#| fig-cap: "Sampling distribution of the bias B = Zhat - Zbar_k for every (analysis year, velocity year) pairing. Rows are the analysis year of the field, columns the velocity year of the flow. Grey: advective designs. Dashed blue: the n-matched uniform reference for the same cell. Solid red vertical line: zero, the target. Dotted black line: that panel's ensemble mean. Aligned cells (flow year = field year) are outlined in red. One shared axis throughout, so panels are comparable across rows as well as within them."
 
 mm.plot_advective_grid(adv, unif, zbar)
 plt.show()
@@ -191,6 +191,12 @@ plt.show()
 @fig-grid is the report's main object. Read down a column to see one flow year applied to all five
 fields; read across a row to see one field sampled by all ten flows. Everything in this figure is
 one estimator applied to one field — only the point locations change.
+
+Panels show $B = \hat Z - \bar Z_k$ rather than $\hat Z$, so the target is zero in every panel and a
+single axis serves the whole grid. That is what makes the column structure visible directly: the
+2016 row sits to the right of zero and the 2019 row to the left, in *every* column. The truth values
+themselves are in @tbl-truth, and nothing is lost by the shift, since $\bar Z_k$ is a constant
+within each row.
 
 ```{python}
 #| label: fig-heat
@@ -253,7 +259,7 @@ for k in YEARS:
     ga = adv.groupby("vel_year")[f"zhat_{k}"].std(ddof=1).mean()
     gu = unif.groupby("vel_year")[f"zhat_{k}"].std(ddof=1).mean()
     w.append({"year": k, "median design effect": d[f"deff_{k}"],
-              "sd Zhat advective": ga * GJ, "sd Zhat uniform": gu * GJ,
+              "sd B advective": ga * GJ, "sd B uniform": gu * GJ,
               "ratio": ga / gu})
 HTML(fmt(pd.DataFrame(w)))
 ```
