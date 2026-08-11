@@ -1,0 +1,356 @@
+---
+title: "Monte-Carlo Sampling Distributions of the Residual-Field Mean"
+jupyter: python3
+---
+
+```{=html}
+<style>
+table.dataframe { width: auto; max-width: 90%; font-size: 0.85em; margin-left: auto; margin-right: auto; }
+</style>
+```
+
+```{python}
+#| label: setup
+#| include: false
+
+import os, sys
+sys.path.insert(0, os.path.abspath("../code"))
+
+import numpy as np, pandas as pd, matplotlib.pyplot as plt
+from IPython.display import HTML
+from osse import mean_mc as mm
+
+OSSE = os.path.join("..", "data", "osse")
+plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.alpha": 0.25})
+GJ = mm.J_TO_GJ
+
+def load(name):
+    return pd.read_csv(os.path.join(OSSE, name))
+
+adv  = load("mean_mc_advective_boxB.csv")
+unif = load("mean_mc_uniform_boxB.csv")
+grid = load("mean_mc_grid_boxB.csv")
+zbar = load("domain_means_boxB.csv")
+YEARS = mm.YEARS
+zb = zbar.set_index("year")["zbar"]
+
+def fmt(df, dec=3):
+    return df.round(dec).to_html(index=False, border=0)
+```
+
+This report is **descriptive only**. It measures the sampling distribution of the residual-field
+domain mean under two designs — sampling that is uniform with respect to the analysis measure, and
+sampling by advected virtual floats — and displays those distributions. It constructs no test
+statistic, reports no $p$-value, and draws no conclusion about the assumptions D1a/D1b or the
+permutation test of `theory.tex`. Standard errors are given so the reader can judge what the Monte
+Carlo does and does not resolve.
+
+# Estimand, truth, and estimator
+
+Let $\mathbb{P}$ be the normalized area $\times$ time probability measure on the Box B analysis
+domain: the base measure is surface measure restricted to the wet native GLORYS cells
+($\mathrm{deptho} > 2000$ m, intersected with the data support), $A_j = e1t_j\,e2t_j$, tensored with
+counting measure on the $365$ days of the year and normalized. The target is the residual field's
+domain mean,
+
+$$\bar Z_k \;=\; \int_{\mathcal{X}} \tilde Z_k \, d\mathbb{P},$$
+
+for each analysis year $k \in \{2015,\dots,2019\}$, where $\tilde Z_k$ is the year-$k$ OHC 0–2000 m
+field with the fitted mean field removed. A design is a finite point set
+$\{x_i\}_{i=1}^{n} \subset \mathcal{X}$; its estimator and bias are
+
+$$\hat Z^{(l,d)}_k \;=\; \frac{1}{n}\sum_{i=1}^{n} \tilde Z_k\!\left(x_i^{(l,d)}\right),
+\qquad
+B^{(l,d)}_k \;=\; \hat Z^{(l,d)}_k - \bar Z_k .$$
+
+$\tilde Z_k$ is a simple function on the native $1/12^\circ \times$ daily grid, so evaluation at
+$x_i$ is the cell-day lookup of the cell *containing* $x_i$ — not an interpolation. No partition
+coarser than the data grid is introduced anywhere, so there is no quadrature remainder to carry.
+
+```{python}
+#| label: tbl-truth
+#| echo: false
+
+t = pd.DataFrame({
+    "year": zbar["year"],
+    "Zbar (GJ/m2)": zbar["zbar"] * GJ,
+    "sd_P(Z) (GJ/m2)": zbar["sd_Z"] * GJ,
+    "Zbar / sd": zbar["zbar"] / zbar["sd_Z"],
+})
+HTML(fmt(t))
+```
+
+: Domain mean and dispersion of the residual field, by analysis year. {#tbl-truth}
+
+The mean field is fitted to a trend-plus-harmonics basis over 1995–2019, so $\bar Z_k$ would be
+exactly zero if the fit were exact on the analysis years. It is not: 2018 carries a residual
+$\bar Z_{2018} = +1.17$ GJ/m$^2$, or $0.16\,\sigma$. This is leftover mean-field misfit, not a
+property of the sampling, and it **cancels from $B$ by construction** — $B$ differences a sample
+mean against the domain mean of the same field, so any spatially uniform offset $\delta_k$ in
+$\tilde Z_k$ drops out identically. It is carried in @tbl-truth rather than assumed away.
+
+# The two ensembles
+
+Both use the same $1{,}895$ designs' worth of sample sizes, so they differ only in *where* the
+points sit.
+
+**Advective.** Virtual floats deployed uniformly with respect to $\mathbb{P}$ over a $\pm 8^\circ$
+seeding margin and staggered across the year, advected through velocity year $l$, and retained only
+where they profile inside Box B. Ten velocity years $l \in \{2010,\dots,2019\}$ with $189$–$190$
+independent deployment replicates each. Because the residual field exists only for 2015–2019, each
+velocity year is paired with all five analysis years: the pairing $l = k$ is **aligned** (flow and
+field are the same calendar year), all others **unaligned**, and 2010–2014 are unaligned for every
+$k$.
+
+**Uniform (U-full).** For each advective design, $n$ iid draws with cell $\propto A_j$ and
+$\mathrm{doy} \sim \mathrm{Unif}\{0,\dots,364\}$ — a genuine iid sample from $\mathbb{P}$, matched to
+that design's own $n$. By construction $\mathbb{E}[B] = 0$, so this ensemble is simultaneously the
+reference distribution and an end-to-end check of the gather, the day-of-year indexing, and the
+$\bar Z_k$ subtraction.
+
+```{python}
+#| label: tbl-nsize
+#| echo: false
+
+n = adv["n"]
+s = pd.DataFrame({
+    "quantity": ["profiles per design", "distinct floats per design"],
+    "min": [n.min(), adv["n_floats"].min()],
+    "5%": [n.quantile(.05), adv["n_floats"].quantile(.05)],
+    "median": [n.median(), adv["n_floats"].median()],
+    "95%": [n.quantile(.95), adv["n_floats"].quantile(.95)],
+    "max": [n.max(), adv["n_floats"].max()],
+})
+HTML(fmt(s, 0))
+```
+
+: Retained sample size across the 1,895 advective designs. {#tbl-nsize}
+
+The spread in @tbl-nsize is large and is itself an outcome of the flow — retentive years hold more
+floats inside the box. Two consequences to keep in view: $\hat Z$ is a ratio estimator (the
+denominator is random), and the two ensembles are matched *conditional on* $n$.
+
+# Uniform sampling: the reference distribution
+
+```{python}
+#| label: fig-ref
+#| echo: false
+#| fig-cap: "Uniform-sampling estimates of the residual-field mean, one panel per analysis year. Red line is the truth Zbar_k. 1,895 designs, each an iid sample from P matched to an advective design's sample size."
+
+mm.plot_reference_hists(unif, zbar)
+plt.show()
+```
+
+```{python}
+#| label: tbl-ref
+#| echo: false
+
+nv = adv["n"].to_numpy()
+rows = []
+for j, k in enumerate(YEARS):
+    b = (unif[f"zhat_{k}"] - zb[k]).to_numpy()
+    rows.append({
+        "year": k,
+        "mean B (GJ/m2)": b.mean() * GJ,
+        "MC se": b.std(ddof=1) / np.sqrt(len(b)) * GJ,
+        "mean B / se": b.mean() / (b.std(ddof=1) / np.sqrt(len(b))),
+        "sd of Zhat": b.std(ddof=1) * GJ,
+        "iid prediction": zbar["sd_Z"][j] * np.sqrt(np.mean(1.0 / nv)) * GJ,
+    })
+HTML(fmt(pd.DataFrame(rows)))
+```
+
+: Uniform ensemble against its two analytic targets: $\mathbb{E}[B]=0$ and
+$\mathrm{sd}(\hat Z) = \sigma_k \sqrt{\overline{1/n}}$. {#tbl-ref}
+
+The ensemble is centred on the truth in every year — the largest deviation is $1.6$ Monte Carlo
+standard errors — and its width sits within $5\%$ of $\sigma_k\sqrt{\overline{1/n}}$ in every year.
+The residual gap is a Jensen term: $\overline{1/n}$ is not $1/\bar n$, and the ensemble mixes
+designs whose $n$ spans two orders of magnitude.
+
+# Advective sampling
+
+```{python}
+#| label: fig-nsize
+#| echo: false
+#| fig-cap: "Profiles and distinct floats retained inside Box B, by velocity year. Boxes are the interquartile range over ~190 deployment replicates; outliers suppressed."
+
+mm.plot_sample_sizes(adv)
+plt.show()
+```
+
+```{python}
+#| label: fig-grid
+#| echo: false
+#| fig-cap: "Sampling distribution of Zhat for every (analysis year, velocity year) pairing. Rows are the analysis year of the field, columns the velocity year of the flow. Grey: advective designs. Dashed blue: the n-matched uniform reference for the same cell. Red vertical line: the truth Zbar_k. Aligned cells (flow year = field year) are outlined in red. The x axis is shared within each row."
+
+mm.plot_advective_grid(adv, unif, zbar)
+plt.show()
+```
+
+@fig-grid is the report's main object. Read down a column to see one flow year applied to all five
+fields; read across a row to see one field sampled by all ten flows. Everything in this figure is
+one estimator applied to one field — only the point locations change.
+
+```{python}
+#| label: fig-heat
+#| echo: false
+#| fig-cap: "Mean bias per cell in GJ per m2, with its Monte-Carlo standard error in parentheses. Aligned cells are bold. Averaged over ~190 deployment replicates, so these resolve the deployment-averaged bias to about +/- 0.05 GJ/m2."
+
+mm.plot_bias_heatmap(grid)
+plt.show()
+```
+
+```{python}
+#| label: tbl-aligned
+#| echo: false
+
+a = grid[grid["aligned"]].copy()
+un = grid[~grid["aligned"]]
+o = un.groupby("analysis_year")["mean_B"]
+se_un = un.groupby("analysis_year")["se_B"].mean().to_numpy()
+sd_un = o.std(ddof=1).to_numpy()
+t = pd.DataFrame({
+    "year": a["analysis_year"].to_numpy(),
+    "aligned mean B": a["mean_B"].to_numpy() * GJ,
+    "aligned MC se": a["se_B"].to_numpy() * GJ,
+    "unaligned mean": o.mean().to_numpy() * GJ,
+    "unaligned sd (9 flows)": sd_un * GJ,
+    "mean MC se of those 9": se_un * GJ,
+    "implied between-flow sd": np.sqrt(np.clip(sd_un**2 - se_un**2, 0, None)) * GJ,
+    "aligned - column mean": (a["mean_B"].to_numpy()
+                              - grid.groupby("analysis_year")["mean_B"].mean().to_numpy()) * GJ,
+})
+HTML(fmt(t))
+```
+
+: Aligned cell against the nine unaligned flows, per analysis year. "Implied between-flow sd" is
+$\sqrt{\max(0,\,s^2 - \overline{\mathrm{se}}^2)}$, the part of the observed spread across the nine
+flows not accounted for by their own Monte Carlo error. {#tbl-aligned}
+
+Three features of @fig-heat and @tbl-aligned, stated as measurements:
+
+1. The matrix is dominated by **column** structure. Every velocity year places roughly $+0.25$
+   GJ/m$^2$ on $\tilde Z_{2016}$ and roughly $-0.25$ on $\tilde Z_{2019}$, including 2010–2014,
+   whose flows are five to nine years removed from those fields.
+2. The **aligned** entries are $-0.031$, $+0.263$, $-0.015$, $-0.216$, $-0.368$ GJ/m$^2$ with Monte
+   Carlo standard errors of $0.044$–$0.062$. Subtracting each column's mean over all ten velocity
+   years leaves $[+0.001, +0.002, -0.069, -0.137, -0.109]$.
+3. **Two different noise scales are in play, and they are similar in size.** Replication over $\sim
+   190$ deployments per cell shrinks the deployment component of the error to $0.04$–$0.06$
+   GJ/m$^2$. The observed spread across the nine unaligned velocity years is $0.031$–$0.059$
+   GJ/m$^2$ — the same order — so after removing each entry's own Monte Carlo error the residual
+   between-flow standard deviation is $0$–$0.03$ GJ/m$^2$. Unaligned cells within a column are
+   nearly interchangeable at this resolution; the flow year barely moves them.
+
+```{python}
+#| label: tbl-deff
+#| echo: false
+
+d = adv[[f"deff_{y}" for y in YEARS]].median()
+w = []
+for k in YEARS:
+    ga = adv.groupby("vel_year")[f"zhat_{k}"].std(ddof=1).mean()
+    gu = unif.groupby("vel_year")[f"zhat_{k}"].std(ddof=1).mean()
+    w.append({"year": k, "median design effect": d[f"deff_{k}"],
+              "sd Zhat advective": ga * GJ, "sd Zhat uniform": gu * GJ,
+              "ratio": ga / gu})
+HTML(fmt(pd.DataFrame(w)))
+```
+
+: Within-design dependence. The design effect is
+$\sum_f \big(\sum_{i \in f} (\tilde Z_i - \hat Z)\big)^2 / \sum_i (\tilde Z_i - \hat Z)^2$, summing
+over floats $f$. {#tbl-deff}
+
+The advective histograms in @fig-grid are visibly wider than their uniform overlays. @tbl-deff
+attributes that: consecutive cycles of one float are near-replicates, so a design of $n$ profiles
+from $\sim 50$ floats carries roughly $n/1.9$ independent observations, and the advective ensemble
+runs $1.3$–$1.5$ times wider than its $n$-matched uniform counterpart. The width gap is dependence,
+not bias.
+
+# Temporal coverage versus spatial concentration
+
+An advected array does not sample the year uniformly. It ramps up from empty, and floats wander into
+the box over time, so the realized day-of-year marginal is heavily late-loaded (median day 250,
+5th percentile day 90). Meanwhile the fitted mean field leaves a real seasonal residual: the spatial
+mean $\bar Z_k(d) = \int \tilde Z_k(\cdot, d)\, d\mathbb{P}_{\text{space}}$ varies over the year with
+a standard deviation of $0.4$–$0.7$ GJ/m$^2$.
+
+That combination alone biases $\hat Z$ without any spatial concentration whatever. Writing
+$\hat f^{(l,d)}$ for a design's empirical day-of-year distribution, the bias splits exactly in
+expectation as
+
+$$\mathbb{E}\big[B^{(l,d)}_k\big] \;=\;
+\underbrace{\sum_{d} \big(\hat f^{(l,d)}_d - \tfrac{1}{365}\big)\, \bar Z_k(d)}_{\text{temporal coverage}}
+\;+\;
+\underbrace{\Big(\mathbb{E}\big[B^{(l,d)}_k\big] - \sum_{d} \big(\hat f^{(l,d)}_d - \tfrac{1}{365}\big)\bar Z_k(d)\Big)}_{\text{spatial, given time}} .$$
+
+The first term is what a design would suffer if it kept its own sampling days but drew its positions
+iid from $\mathbb{P}$ in space; it has the closed form above and is computed exactly, not simulated.
+The second is the remainder, attributable to *where* in the box the floats are on the days they
+sample. The split requires no assumption.
+
+```{python}
+#| label: fig-decomp
+#| echo: false
+#| fig-cap: "Total bias split into temporal-coverage and spatial-given-time components, per analysis year (panels) and velocity year (bars). Black dots are the total. The aligned velocity year is shaded."
+
+mm.plot_decomposition(grid)
+plt.show()
+```
+
+```{python}
+#| label: tbl-decomp
+#| echo: false
+
+t = pd.DataFrame({
+    "year": a["analysis_year"].to_numpy(),
+    "total B": a["mean_B"].to_numpy() * GJ,
+    "temporal": a["mean_temporal"].to_numpy() * GJ,
+    "spatial | time": a["mean_spatial"].to_numpy() * GJ,
+    "MC se": a["se_B"].to_numpy() * GJ,
+    "column sd of temporal": grid.groupby("analysis_year")["mean_temporal"].std(ddof=1).to_numpy() * GJ,
+})
+HTML(fmt(t))
+```
+
+: Decomposition of the aligned cells, and the variability of the temporal term across the ten
+velocity years. {#tbl-decomp}
+
+Two measurements:
+
+- **The temporal term is nearly identical across velocity years.** Its standard deviation down a
+  column is $0.001$–$0.003$ GJ/m$^2$, against column means of up to $0.25$. Day-of-year coverage is
+  a property of the deployment schedule and the array's ramp-up, essentially not of which year's
+  flow the floats are pushed by.
+- **It accounts for most of the aligned bias in three of five years** — $95\%$ of 2016, $66\%$ of
+  2019, $63\%$ of 2015 — while in 2017 it carries the opposite sign to the total. What remains after
+  removing it is $[-0.012, +0.014, -0.058, -0.156, -0.126]$ GJ/m$^2$.
+
+The temporal term is therefore close to, but not the same as, the column main effect of @fig-heat.
+Column means are $[-0.032, +0.261, +0.054, -0.079, -0.259]$ GJ/m$^2$ against temporal terms of
+$[-0.020, +0.249, +0.043, -0.060, -0.243]$: the two agree to within $0.02$ GJ/m$^2$, and the gap is
+a flow-independent *spatial* concentration effect of that size sitting underneath. The two routes to
+a residual — subtract the column mean, or subtract the closed-form temporal component — differ by
+that gap, and both leave 2017–2019 with the largest remainders.
+
+# Caveats
+
+- **One box.** Box B (35–45 N, 40–60 W) straddles the North Atlantic Current and Gulf Stream
+  extension. Nothing here speaks to the quiescent Sargasso control (Box A), for which no residual
+  field has been built.
+- **One flow realization per year.** The $\sim\!190$ replicates per cell are independent
+  *deployments*; the velocity field is a single realization of that calendar year. Every standard
+  error quoted is over deployment randomness only.
+- **$n$ is endogenous.** Retention inside the box is an outcome of the flow, so $\hat Z$ is a ratio
+  estimator, the sample sizes differ systematically by velocity year (@fig-nsize), and the two
+  ensembles are matched conditional on $n$. Design-weighted and profile-weighted averages of the
+  temporal component differ substantially because $n$ and day-of-year coverage are strongly
+  correlated ($r = -0.76$ for 2016); the design-weighted average is the one consistent with
+  $\mathbb{E}[B]$ and is used throughout.
+- **The ramp-up is an artefact of the experiment.** Floats are released through the year into an
+  initially empty box, which is what makes the day-of-year marginal so skewed. A spun-up array in
+  steady state would have a flatter marginal and a correspondingly smaller temporal term.
+- **$\tilde Z$ inherits the mean-field fit.** The seasonal residual driving the temporal term is
+  itself what the trend-plus-harmonics basis failed to absorb; a different mean-field specification
+  would move it. @tbl-truth reports the fit's leftover offset per year.
