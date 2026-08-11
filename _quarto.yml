@@ -2,17 +2,18 @@ project:
   type: website
   render:
     - "index.qmd"
-    - "reports/bias_bound_motivation.qmd"
-    - "reports/bias_bound_sampling.qmd"
-    - "reports/bias_bound_permutation.qmd"
+    #- "reports/bias_bound_motivation.qmd"
+    #- "reports/bias_bound_sampling.qmd"
+    #- "reports/bias_bound_permutation.qmd"
     #- "reports/bias_bound_prediction.qmd"
     #- "reports/bias_bound_validation.qmd"
     #- "reports/bias_bound_outlook.qmd"
-    #- "reports/pilot_simulation.qmd"  # temporarily disabled to speed up nac.qmd preview
-    - "reports/nac.qmd"
-    - "reports/nac_gp.qmd"
-    - "reports/resolution.qmd"
+    #- "reports/pilot_simulation.qmd"
+    #- "reports/nac.qmd"
+    #- "reports/nac_gp.qmd"
+    #- "reports/resolution.qmd"
     - "reports/design_invariance.qmd"
+    - "reports/uniform_deployment.qmd"
 
 execute:
   freeze: auto
@@ -30,20 +31,21 @@ website:
       - index.qmd
       - section: "Methodology"
         contents:
-          - reports/bias_bound_motivation.qmd
-          - reports/bias_bound_sampling.qmd
-          - reports/bias_bound_permutation.qmd
+          #- reports/bias_bound_motivation.qmd
+          #- reports/bias_bound_sampling.qmd
+          #- reports/bias_bound_permutation.qmd
           #- reports/bias_bound_prediction.qmd
           #- reports/bias_bound_validation.qmd
           #- reports/bias_bound_outlook.qmd
       - section: "North Atlantic Current"
         contents:
-          - reports/nac.qmd
-          - reports/nac_gp.qmd
-          - reports/resolution.qmd
+          #- reports/nac.qmd
+          #- reports/nac_gp.qmd
+          #- reports/resolution.qmd
       - section: "OSSE"
         contents:
           - reports/design_invariance.qmd
+          - reports/uniform_deployment.qmd
 
 
 format:
