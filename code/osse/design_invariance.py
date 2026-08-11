@@ -6,16 +6,24 @@ diagnostics in velocity_diagnostics.py can only flag drivers -- this produces
 the weight vectors themselves.
 
 Deliberately a PROXY for the full park-and-profile OSSE: pure horizontal
-advection at the park depth, no ascent/descent/surface drift and no mortality.
-The nine-day park dominates displacement (osse.tex sec:simulation), so this
-captures the occupancy structure D1b is about at a fraction of the cost. It is a
-diagnostic, not the experiment.
+advection at the park depth, no ascent/descent/surface drift. The nine-day park
+dominates displacement (osse.tex sec:simulation), so this captures the occupancy
+structure D1b is about at a fraction of the cost. It is a diagnostic, not the
+experiment.
 
-Every year gets an identical deployment plan on identical days-of-year, so any
-difference in the resulting weights is attributable to the velocity field.
+Two deployment arms, differing only in deployment design (both draw lifespans
+from the same empirical pool, and both key their RNG on (year, rep) so the MD
+designs are iid as Lemma 1 requires):
+
+  argo    -- positions drawn from the pooled real Argo deployment record
+  uniform -- space-time uniform with respect to P: equal-area in latitude,
+             uniform in day-of-year, seeded well beyond the box
+
+Contrasting them separates advective sampling bias from deployment-design bias.
 
 Run from the repo root:
-    python code/osse/design_invariance.py [--year 2015] [--reps 5] [--box boxB]
+    python code/osse/design_invariance.py [--years 2015] [--reps 5] [--box boxB]
+                                          [--source argo|uniform]
 """
 
 import argparse
@@ -40,6 +48,11 @@ N_FLOATS = 50            # osse.tex: ~45-50 resident floats per box
 # widens the real-deployment pool from 104 to 153, which matters because
 # replicate realisations are drawn from that finite pool.
 SEED_MARGIN = 4.0
+# The uniform arm must not starve the box of inflow, so its margin exceeds the
+# annual rms displacement (4 deg is only 0.6x of it in lat, 0.5x in lon).
+SEED_MARGIN_UNIFORM = 8.0
+N_FLOATS_UNIFORM = 160   # deployed across the year; the array ramps from empty,
+                         # so this is ~N_FLOATS in mean standing stock
 JITTER_KM = 5.0          # per-replicate seed perturbation
 
 
@@ -102,6 +115,33 @@ def deployment_plan_argo(pool, n_floats=N_FLOATS, reps=5, year=0):
             np.concatenate(rep), np.concatenate(life))
 
 
+def deployment_plan_uniform(pool, box, n_floats=N_FLOATS_UNIFORM, reps=5, year=0,
+                            margin=SEED_MARGIN_UNIFORM, seed_days=cfg.DAYS_PER_YEAR):
+    """Space-time uniform deployment: the design that samples P before advection.
+
+    Latitude is drawn uniform in sin(lat), not in degrees: P is the normalised
+    area measure, and uniform-in-degrees tilts it by 1/cos(lat) (16% across box
+    B), which would put a deployment component into the advective arm at t = 0.
+    Day-of-year is uniform so the array is an age mixture rather than one cohort.
+    Lifespans come from the same empirical pool as the real-deployment arm, so
+    the two arms differ in deployment design alone and not in mortality.
+    """
+    la0, la1 = cfg.BOXES[box]["lat_bounds"]
+    lo0, lo1 = cfg.BOXES[box]["lon_bounds"]
+    s0, s1 = np.sin(np.deg2rad([la0 - margin, la1 + margin]))
+    life_pool = pool["lifespan_days"].to_numpy()
+
+    out = []
+    for d in range(reps):
+        r = np.random.default_rng([3000, int(year), d])
+        out.append((np.rad2deg(np.arcsin(r.uniform(s0, s1, n_floats))),
+                    r.uniform(lo0 - margin, lo1 + margin, n_floats),
+                    r.uniform(0.0, seed_days, n_floats),
+                    np.full(n_floats, d + 1),
+                    r.choice(life_pool, size=n_floats, replace=True)))
+    return tuple(np.concatenate(x) for x in zip(*out))
+
+
 def deployment_plan(box, n_floats=N_FLOATS, reps=5, independent=True):
     """Replicate deployment realisations, identical across velocity years.
 
@@ -139,13 +179,14 @@ def deployment_plan(box, n_floats=N_FLOATS, reps=5, independent=True):
     return np.concatenate(lat), np.concatenate(lon), np.concatenate(rep)
 
 
-def run_year(year, box, reps, out_zarr, runtime_days=360, independent=True, pool=None):
+def run_year(year, box, reps, out_zarr, runtime_days=360, independent=True, pool=None,
+             source="argo", n_floats_uniform=N_FLOATS_UNIFORM):
     """Advect the plan through one velocity year at the park depth.
 
     Floats leaving the velocity buffer are deleted rather than reflected: the
     box is not closed, and a float advected out of the domain has left the
     experiment. The per-year loss rate is itself a D1b diagnostic, so it is
-    reported (frac_domain_exit) rather than silently absorbed.
+    reported (frac_early_stop) rather than silently absorbed.
     """
     from parcels import (AdvectionRK4, FieldSet, JITParticle, ParticleSet,
                          StatusCode, Variable)
@@ -173,26 +214,30 @@ def run_year(year, box, reps, out_zarr, runtime_days=360, independent=True, pool
         dimensions={"time": "time", "depth": "depth", "lat": "latitude", "lon": "longitude"},
         allow_time_extrapolation=False,
     )
-    if pool is not None:
+    if source == "uniform":
+        lat, lon, doy, rep, life = deployment_plan_uniform(
+            pool, box, n_floats=n_floats_uniform, reps=reps, year=year,
+            seed_days=runtime_days)
+    elif pool is not None:
         lat, lon, rep, life = deployment_plan_argo(pool, reps=reps, year=year)
+        doy = np.zeros(len(lat))
     else:
         lat, lon, rep = deployment_plan(box, reps=reps, independent=independent)
-        life = np.zeros(len(lat))
-    # All floats start on 1 Jan: the design must be a function of (omega, V_l)
-    # alone, so a float cannot outlive its velocity year. Mortality still runs,
-    # so floats whose observed lifespan is under a year retire mid-year. The
-    # array is therefore at full strength from 1 Jan -- younger and more
-    # clustered near deployment sites than the real standing stock.
-    t0 = np.datetime64(f"{year}-01-01")
+        doy, life = np.zeros(len(lat)), np.zeros(len(lat))
+    # Release times stay inside the velocity year: the design must be a function
+    # of (omega, V_l) alone, so a float cannot be advected by a neighbouring
+    # year's flow. Staggering within the year is therefore the most age-mixing
+    # available without breaking that -- the array still ramps from empty.
+    t0 = np.datetime64(f"{year}-01-01", "s")
     pset = ParticleSet(fieldset=fieldset, pclass=ArgoFloat,
                        lon=lon, lat=lat, depth=np.full(len(lat), PARK_DEPTH),
-                       time=np.full(len(lat), t0),
+                       time=t0 + (doy * 86400.0).astype("int64").astype("timedelta64[s]"),
                        lifespan=life * 86400.0)
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         pset.execute([AdvectionRK4, DeleteOutOfBounds, Mortality],
-                     runtime=np.timedelta64(runtime_days, "D"),
+                     endtime=t0 + np.timedelta64(runtime_days * 86400, "s"),
                      dt=np.timedelta64(1, "h"),
                      output_file=pset.ParticleFile(name=out_zarr,
                                                    outputdt=np.timedelta64(CYCLE_DAYS, "D")),
@@ -218,8 +263,11 @@ def profiles_from_zarr(path, rep, year):
         "lon": lon.ravel(),
         "doy": np.floor(doy.ravel()).astype("float"),
     })
-    # Drop cycle 0: the deployment position, not a post-ascent surfacing.
-    return df[df["cycle"] > 0].dropna(subset=["lat", "lon", "doy"])
+    # Drop each float's FIRST record -- its release position, not a post-ascent
+    # surfacing. Under staggered release this is no longer globally cycle 0,
+    # since a float released mid-year has NaN records before it enters.
+    df = df.dropna(subset=["lat", "lon", "doy"]).sort_values(["float_id", "cycle"])
+    return df[df.groupby("float_id").cumcount() > 0]
 
 
 def in_box(df, box):
@@ -228,7 +276,8 @@ def in_box(df, box):
     return df["lat"].between(la0, la1) & df["lon"].between(lo0, lo1)
 
 
-def weights_and_summary(df, box, deg=cfg.COARSE_DEG, days=cfg.COARSE_DAYS):
+def weights_and_summary(df, box, deg=cfg.COARSE_DEG, days=cfg.COARSE_DAYS,
+                        run_days=360):
     """Per-(year, rep) occupancy weights over box cells, plus scalar diagnostics."""
     df = df.copy()
     df["inside"] = in_box(df, box)
@@ -246,24 +295,27 @@ def weights_and_summary(df, box, deg=cfg.COARSE_DEG, days=cfg.COARSE_DAYS):
     for (y, r), g in df.groupby(["vel_year", "rep"]):
         gi = g[g["inside"]]
         wr = w[(w["vel_year"] == y) & (w["rep"] == r)]["w"].to_numpy()
-        last_in = gi.groupby("float_id")["cycle"].max()
         # Great-circle displacement from each float's first recorded position.
         gl = g.sort_values("cycle").groupby("float_id")
         d0 = gl.first()[["lat", "lon"]]
         dl = gl.last()[["lat", "lon"]]
         dy = (dl["lat"] - d0["lat"]) * 111.0
         dx = (dl["lon"] - d0["lon"]) * 111.0 * np.cos(np.deg2rad(d0["lat"]))
-        final_cycle = g["cycle"].max()
+        # Parcels packs every trajectory from its own obs 0, so "cycle" is the
+        # float's age in cycles, not calendar position. Under staggered release
+        # these must be judged per float against the run end, not a global cycle.
+        last_cycle, last_doy = gl["cycle"].max(), gl["doy"].max()
+        last_in = gi.groupby("float_id")["cycle"].max().reindex(last_cycle.index)
         rows.append({
             "vel_year": y, "rep": r,
             "n_profiles_in_box": len(gi),
             "n_floats": g["float_id"].nunique(),
-            # A float whose last record precedes the final cycle was deleted at
-            # the domain edge.
-            "frac_domain_exit": 1.0 - gl["cycle"].max().eq(final_cycle).mean(),
+            # Stopped recording more than a cycle before the run end: domain
+            # exit or mortality, which the profile record cannot separate.
+            "frac_early_stop": float((last_doy < run_days - CYCLE_DAYS).mean()),
             "frac_inside": g["inside"].mean(),
             "residence_days": gi.groupby("float_id").size().mean() * CYCLE_DAYS,
-            "retention_end": last_in.eq(g["cycle"].max()).mean() if len(last_in) else 0.0,
+            "retention_end": float(last_in.eq(last_cycle).mean()),
             "rms_disp_km": float(np.sqrt((dx**2 + dy**2).mean())),
             "n_cells_occupied": len(wr),
             "participation_ratio": float(1.0 / np.sum(wr**2)) if len(wr) else 0.0,
@@ -272,13 +324,16 @@ def weights_and_summary(df, box, deg=cfg.COARSE_DEG, days=cfg.COARSE_DAYS):
 
 
 def main(years=None, reps=10, box="boxB", runtime_days=360, keep_zarr=False,
-         independent=True, source="argo"):
+         independent=True, source="argo", n_floats_uniform=N_FLOATS_UNIFORM,
+         tag=""):
     os.makedirs(cfg.OUT_DIR, exist_ok=True)
     scratch = os.path.join(cfg.OUT_DIR, "_traj")
     os.makedirs(scratch, exist_ok=True)
 
+    # The uniform arm needs the pool too -- for lifespans only, so that the two
+    # arms share a mortality model and their contrast isolates deployment design.
     pool = None
-    if source == "argo":
+    if source in ("argo", "uniform"):
         pool = load_deployment_pool(box=box)
         print(f"deployment pool: {len(pool)} real Argo deployments "
               f"(pooled 2010-2019), median lifespan {pool['lifespan_days'].median():.0f} d")
@@ -289,22 +344,26 @@ def main(years=None, reps=10, box="boxB", runtime_days=360, keep_zarr=False,
         years = [y for y in years
                  if len(glob.glob(os.path.join(VEL_DIR, f"velocity_daily_park_{y}_*.nc"))) == 12]
 
+    nf = n_floats_uniform if source == "uniform" else N_FLOATS
+    sfx = ("" if source == "argo" else f"_{source}") + tag
+
     all_prof = []
     for y in years:
-        zpath = os.path.join(scratch, f"traj_{box}_{y}.zarr")
-        print(f"[{y}] advecting {N_FLOATS} floats x {reps} reps at {PARK_DEPTH:.0f} m ...")
-        _, rep = run_year(y, box, reps, zpath, runtime_days, independent, pool)
+        zpath = os.path.join(scratch, f"traj_{box}{sfx}_{y}.zarr")
+        print(f"[{y}] advecting {nf} floats x {reps} reps at {PARK_DEPTH:.0f} m ...")
+        _, rep = run_year(y, box, reps, zpath, runtime_days, independent, pool,
+                          source, n_floats_uniform)
         all_prof.append(profiles_from_zarr(zpath, rep, y))
         if not keep_zarr:
             import shutil
             shutil.rmtree(zpath, ignore_errors=True)
 
     prof = pd.concat(all_prof, ignore_index=True)
-    w, summ = weights_and_summary(prof, box)
+    w, summ = weights_and_summary(prof, box, run_days=runtime_days)
 
-    w.to_csv(os.path.join(cfg.OUT_DIR, f"design_weights_{box}.csv"), index=False)
-    summ.to_csv(os.path.join(cfg.OUT_DIR, f"design_summary_{box}.csv"), index=False)
-    prof.to_csv(os.path.join(cfg.OUT_DIR, f"design_profiles_{box}.csv"), index=False)
+    w.to_csv(os.path.join(cfg.OUT_DIR, f"design_weights_{box}{sfx}.csv"), index=False)
+    summ.to_csv(os.path.join(cfg.OUT_DIR, f"design_summary_{box}{sfx}.csv"), index=False)
+    prof.to_csv(os.path.join(cfg.OUT_DIR, f"design_profiles_{box}{sfx}.csv"), index=False)
 
     print("\nPer-year means (averaged over replicates):")
     print(summ.groupby("vel_year").mean(numeric_only=True).round(3).to_string())
@@ -322,6 +381,9 @@ if __name__ == "__main__":
     ap.add_argument("--box", default="boxB")
     ap.add_argument("--days", type=int, default=360)  # 36 cycles; stops before the last daily field
     ap.add_argument("--keep-zarr", action="store_true")
+    ap.add_argument("--n-floats-uniform", type=int, default=N_FLOATS_UNIFORM)
+    ap.add_argument("--tag", default="", help="output filename suffix (array jobs)")
     a = ap.parse_args()
     main([int(y) for y in a.years.split(",")] if a.years else None,
-         a.reps, a.box, a.days, a.keep_zarr, not a.jitter_ensemble, a.source)
+         a.reps, a.box, a.days, a.keep_zarr, not a.jitter_ensemble, a.source,
+         a.n_floats_uniform, a.tag)
