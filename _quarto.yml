@@ -14,6 +14,7 @@ project:
     #- "reports/resolution.qmd"
     - "reports/design_invariance.qmd"
     - "reports/uniform_deployment.qmd"
+    - "reports/mean_estimation_mc.qmd"
 
 execute:
   freeze: auto
@@ -46,6 +47,7 @@ website:
         contents:
           - reports/design_invariance.qmd
           - reports/uniform_deployment.qmd
+          - reports/mean_estimation_mc.qmd
 
 
 format:
