@@ -84,6 +84,23 @@ distribution of all $3{,}650$ days. Averaging over months would have smoothed aw
 mesoscale structure that makes float position matter, so the quantiles are used to pick
 representative days rather than to build a composite.
 
+```{python}
+#| label: fig-meanfield
+#| echo: false
+#| fig-cap: "Fitted mean field (quadratic trend plus annual and semiannual harmonics) at mid-month, 2015, in GJ per m2. Shown quarterly because the basis is smooth in time: day-to-day change is about 0.03 GJ/m2 against a 3.8 GJ/m2 seasonal range, so daily panels would be indistinguishable. Rows carry their own scale. This is the field subtracted from OHC to give the residual in the previous figure."
+
+mm.plot_mean_field_months()
+plt.show()
+```
+
+@fig-meanfield is the companion: the smooth field removed from OHC to leave $\tilde Z$. It varies on
+two time scales and neither is daily. Within a year the seasonal harmonics move the Box B domain
+mean by $3.80$ GJ/m$^2$ ($1.50$ in Box A); across 2010–2019 the trend moves it by $2.59$ ($0.96$);
+between consecutive days it moves by $0.03$. That separation is what makes the decomposition useful
+— the mean field carries the large, smooth, predictable structure, and everything mesoscale and
+day-to-day is left in the residual of @fig-days. It also explains why the residual's spatial
+dispersion, not its domain mean, is what a sampling design can be biased by.
+
 Three features carry through the whole report. First, the residual field is **strongly structured in
 space** at every quantile — even the 5th-percentile day carries a coherent front — and that
 structure is what makes *where* an array sits matter at all. Second, **daily spatial structure is

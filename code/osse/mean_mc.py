@@ -245,45 +245,135 @@ def quantile_days(box, qs=(0.05, 0.5, 0.95)):
     return pd.DataFrame(out)
 
 
+def mean_field_months(box, year, months=(1, 4, 7, 10)):
+    """Fitted mean field evaluated at mid-month, as a (month, lat, lon) array.
+
+    The basis is smooth in time -- day-to-day change is ~0.03 GJ/m^2 against a
+    ~4 GJ/m^2 seasonal range -- so month is the finest unit at which it varies
+    visibly.
+    """
+    from osse import build_residual_field as brf
+    with xr.open_dataset(os.path.join(cfg.OUT_DIR, f"mean_field_coef_{box}.nc")) as ds:
+        shape = (ds.sizes["latitude"], ds.sizes["longitude"])
+        beta = ds["beta"].values.reshape(ds.sizes["coef"], -1)
+        t = np.array([np.datetime64(f"{year}-{m:02d}-15") for m in months],
+                     dtype="datetime64[ns]")
+        m = brf.evaluate_mean_field(beta, t, shape, quadratic=True,
+                                    t_ref=ds.attrs["t_ref"])
+        return xr.DataArray(m, dims=("month", "latitude", "longitude"),
+                            coords={"month": list(months),
+                                    "latitude": ds["latitude"], "longitude": ds["longitude"]})
+
+
+def _map_grid(nrow, ncol, figsize, left=0.05, right=0.885, bottom=0.05, top=0.90,
+              hgap=0.015, vgap=0.11):
+    """GeoAxes grid at explicit positions, plus one colorbar slot per row.
+
+    Positions are set by hand rather than by a layout engine: cartopy gridliners
+    raise inside tight_layout, and constrained layout resolves row-spanning
+    colorbars inconsistently, which silently collapses the map axes.
+    """
+    import matplotlib.pyplot as plt
+    import cartopy.crs as ccrs
+
+    pc = ccrs.PlateCarree()
+    fig = plt.figure(figsize=figsize)
+    w = (right - left - (ncol - 1) * hgap) / ncol
+    h = (top - bottom - (nrow - 1) * vgap) / nrow
+    axes, caxes = [], []
+    for r in range(nrow):
+        y = top - (r + 1) * h - r * vgap
+        axes.append([fig.add_axes([left + c * (w + hgap), y, w, h], projection=pc)
+                     for c in range(ncol)])
+        caxes.append(fig.add_axes([right + 0.012, y + 0.04 * h, 0.014, h * 0.92]))
+    return fig, axes, caxes
+
+
+def _geo_ticks(ax, extent, bottom_labels, left_labels, step=5.0):
+    """Lat/lon ticks via the ordinary matplotlib tick machinery.
+
+    Deliberately NOT ax.gridlines(draw_labels=True): the cartopy gridliner makes
+    GeoAxes.get_tightbbox raise on a NaN label position, matplotlib swallows
+    that, and the figure's tight bbox then collapses onto whatever axes did
+    succeed -- so a bbox_inches="tight" save (what the Jupyter inline backend
+    does, hence Quarto) drops every map and keeps only the colorbars.
+    """
+    import cartopy.crs as ccrs
+    from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
+    lo0, lo1, la0, la1 = extent
+    ax.set_xticks(np.arange(np.ceil(lo0 / step) * step, lo1 + 1e-9, step),
+                  crs=ccrs.PlateCarree())
+    ax.set_yticks(np.arange(np.ceil(la0 / step) * step, la1 + 1e-9, step),
+                  crs=ccrs.PlateCarree())
+    ax.xaxis.set_major_formatter(LongitudeFormatter())
+    ax.yaxis.set_major_formatter(LatitudeFormatter())
+    ax.tick_params(labelsize=7, labelbottom=bottom_labels, labelleft=left_labels)
+    ax.grid(lw=0.25, color="0.6", alpha=0.4)
+
+
+def _draw_map(ax, da, norm, cmap, extent, title, bottom_labels, left_labels):
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+    pc = ccrs.PlateCarree()
+    ax.set_extent(extent, crs=pc)
+    ax.add_feature(cfeature.LAND, facecolor="0.88", zorder=0)
+    ax.add_feature(cfeature.COASTLINE, lw=0.4)
+    im = ax.pcolormesh(da["longitude"], da["latitude"], da.values * J_TO_GJ,
+                       cmap=cmap, norm=norm, transform=pc, shading="auto")
+    ax.set_title(title, fontsize=9)
+    _geo_ticks(ax, extent, bottom_labels, left_labels)
+    return im
+
+
+def _box_extent(box, pad=0.5):
+    (la0, la1), (lo0, lo1) = cfg.BOXES[box]["lat_bounds"], cfg.BOXES[box]["lon_bounds"]
+    return [lo0 - pad, lo1 + pad, la0 - pad, la1 + pad]
+
+
 def plot_quantile_days(boxes=("boxB", "boxA"), qs=(0.05, 0.5, 0.95),
-                       figsize=(13, 7.6), clip=0.995):
+                       figsize=(12.5, 8.2), clip=0.995):
     """Single-day residual fields at quantiles of each box's daily spatial spread.
 
     One row per box on its own colour scale: the boxes differ several-fold in
     amplitude, and a shared scale would flatten the within-box structure this
     figure exists to show.
     """
-    import matplotlib.pyplot as plt
-    import cartopy.crs as ccrs
-    import cartopy.feature as cfeature
     from matplotlib.colors import TwoSlopeNorm
 
-    pc = ccrs.PlateCarree()
-    fig, axes = plt.subplots(len(boxes), len(qs), figsize=figsize,
-                             subplot_kw={"projection": pc}, layout="constrained",
-                             squeeze=False)
+    fig, axes, caxes = _map_grid(len(boxes), len(qs), figsize)
     for r, box in enumerate(boxes):
         sel = quantile_days(box, qs)
-        (la0, la1), (lo0, lo1) = cfg.BOXES[box]["lat_bounds"], cfg.BOXES[box]["lon_bounds"]
         with xr.open_dataset(os.path.join(cfg.OUT_DIR, f"residual_field_{box}.nc")) as ds:
             days = [ds["z"].sel(year=int(d.year)).isel(doy=int(d.doy)).load()
                     for _, d in sel.iterrows()]
         hi = max(float(np.nanquantile(np.abs(d.values), clip)) for d in days) * J_TO_GJ
         norm = TwoSlopeNorm(vmin=-hi, vcenter=0.0, vmax=hi)
         for c, (ax, day, (_, d)) in enumerate(zip(axes[r], days, sel.iterrows())):
-            ax.set_extent([lo0 - 0.5, lo1 + 0.5, la0 - 0.5, la1 + 0.5], crs=pc)
-            ax.add_feature(cfeature.LAND, facecolor="0.88", zorder=0)
-            ax.add_feature(cfeature.COASTLINE, lw=0.4)
-            im = ax.pcolormesh(day["longitude"], day["latitude"], day.values * J_TO_GJ,
-                               cmap="RdBu_r", norm=norm, transform=pc, shading="auto")
-            ax.set_title(f"{box}  {int(d.q * 100)}th pctile day\n"
-                         f"{int(d.year)} doy {int(d.doy) + 1}, "
-                         f"sd {d.sd * J_TO_GJ:.2f} GJ/m2", fontsize=9)
-            gl = ax.gridlines(draw_labels=True, lw=0.25, color="0.6", alpha=0.4)
-            gl.top_labels = gl.right_labels = False
-            gl.bottom_labels, gl.left_labels = r == len(boxes) - 1, c == 0
-            gl.xlabel_style = gl.ylabel_style = {"size": 7}
-        fig.colorbar(im, ax=axes[r], shrink=0.85, pad=0.02, label="Z (GJ/m2)")
+            im = _draw_map(ax, day, norm, "RdBu_r", _box_extent(box),
+                           f"{box}  {int(d.q * 100)}th pctile day\n"
+                           f"{int(d.year)} doy {int(d.doy) + 1}, "
+                           f"sd {d.sd * J_TO_GJ:.2f} GJ/m2",
+                           r == len(boxes) - 1, c == 0)
+        fig.colorbar(im, cax=caxes[r], label="Z (GJ/m2)")
+    return fig
+
+
+def plot_mean_field_months(boxes=("boxB", "boxA"), year=2015, months=(1, 4, 7, 10),
+                           figsize=(14.5, 8.2)):
+    """Fitted mean field at mid-month, one row per box on its own scale."""
+    from matplotlib.colors import Normalize
+    names = {1: "Jan", 4: "Apr", 7: "Jul", 10: "Oct"}
+
+    fig, axes, caxes = _map_grid(len(boxes), len(months), figsize)
+    for r, box in enumerate(boxes):
+        mf = mean_field_months(box, year, months)
+        lo, hi = (float(np.nanquantile(mf.values, q)) * J_TO_GJ for q in (0.01, 0.99))
+        norm = Normalize(vmin=lo, vmax=hi)
+        for c, ax in enumerate(axes[r]):
+            im = _draw_map(ax, mf.isel(month=c), norm, "viridis", _box_extent(box),
+                           f"{box}  {names.get(months[c], months[c])} {year}",
+                           r == len(boxes) - 1, c == 0)
+        fig.colorbar(im, cax=caxes[r], label="mean field (GJ/m2)")
     return fig
 
 
@@ -317,8 +407,7 @@ def plot_domain_map(boxes=("boxA", "boxB"), figsize=(7.5, 6.4)):
                                fill=fill, facecolor=color if fill else "none",
                                alpha=0.18 if fill else 1.0, edgecolor=color,
                                lw=2.0, ls="-" if fill else "--", zorder=2, label=label))
-    gl = ax.gridlines(draw_labels=True, lw=0.3, color="0.6", alpha=0.5)
-    gl.top_labels = gl.right_labels = False
+    _geo_ticks(ax, [v[2] - 1.5, v[3] + 1.5, v[0] - 1.5, v[1] + 1.5], True, True, step=10.0)
     ax.legend(loc="lower left", fontsize=8, framealpha=0.9)
     return fig
 
