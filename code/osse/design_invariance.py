@@ -359,7 +359,73 @@ def run_year(year, box, reps, out_zarr, runtime_days=360, independent=True, pool
                      output_file=pset.ParticleFile(name=out_zarr,
                                                    outputdt=np.timedelta64(CYCLE_DAYS, "D")),
                      verbose_progress=False)
-    return out_zarr, rep
+    return out_zarr, rep, life
+
+
+def monthly_stock(path, box, year, life, reps, run_days=360, spin_days=0):
+    """Per-calendar-month float budget over the whole run, spin-up included.
+
+    Must run before the trajectory record is discarded: profiles_from_zarr clips
+    to the analysis window, so this is the only point at which the spin-up is
+    observable. Counts are totals over replicates; n_reps is carried so callers
+    can normalise.
+
+    Retirement and domain exit are separable because death day is release +
+    lifespan: a float that stops reporting before the run ends without reaching
+    that day left the velocity domain. Both are keyed on the last profile, so
+    they are mutually exclusive.
+    """
+    ds = xr.open_zarr(path)
+    lat, lon, t = ds["lat"].values, ds["lon"].values, ds["time"].values
+    pid = np.asarray(ds["trajectory"].values)
+    pid = (pid[:, 0] if pid.ndim == 2 else pid).astype(int)
+    ds.close()
+    if pid.min() < 0 or pid.max() >= len(life):
+        raise ValueError(f"{path}: trajectory ids outside the seeded ParticleSet")
+
+    ok = np.isfinite(lat)
+    first = ok.argmax(axis=1)
+    released = t[np.arange(len(lat)), first]
+    ok[np.arange(len(lat)), first] = False          # obs 0 is the deployment
+    ym = pd.PeriodIndex(pd.to_datetime(t[ok]), freq="M")
+    fid = np.repeat(np.arange(len(lat)), ok.sum(axis=1))
+
+    (sla0, sla1), (slo0, slo1) = seed_bounds(box, SEED_MARGIN_UNIFORM)
+    prof = pd.DataFrame({"ym": ym, "fid": fid, "lat": lat[ok], "lon": lon[ok]})
+    prof["in_seed"] = prof["lat"].between(sla0, sla1) & prof["lon"].between(slo0, slo1)
+    prof["in_box"] = in_box(prof, box)
+
+    g = prof.groupby("ym", observed=True)
+    tab = pd.DataFrame({"in_domain": g["fid"].nunique(),
+                        "prof_seed": g["in_seed"].sum(),
+                        "prof_box": g["in_box"].sum()})
+
+    span = prof.groupby("fid")["ym"].agg(["min", "max"])
+    last_t = pd.Series(pd.to_datetime(t[ok])).groupby(fid).max()
+    death = (pd.to_datetime(released[span.index.to_numpy()])
+             + pd.to_timedelta(life[pid][span.index.to_numpy()], unit="D"))
+    end = pd.Timestamp(f"{year}-01-01") + pd.Timedelta(days=run_days - CYCLE_DAYS)
+    gone = (last_t < end).to_numpy()
+    retired = gone & (death <= last_t + pd.Timedelta(days=CYCLE_DAYS)).to_numpy()
+
+    tab["deployed"] = pd.PeriodIndex(pd.to_datetime(released), freq="M").value_counts()
+    tab["retired"] = span["max"][retired].value_counts()
+    tab["advected_out"] = span["max"][gone & ~retired].value_counts()
+    tab = tab.fillna(0.0).sort_index()
+
+    left = tab["retired"] + tab["advected_out"]
+    entered = span["min"].value_counts().reindex(tab.index).fillna(0.0)
+    bal = (tab["in_domain"].diff() - (entered - left.shift())).abs().iloc[1:]
+    if bal.max() > 1e-6:
+        raise ValueError(f"stock budget off by {bal.max():.4f} floats/month")
+
+    ticks = pd.date_range(pd.Timestamp(f"{year}-01-01") - pd.Timedelta(days=spin_days),
+                          pd.Timestamp(f"{year}-01-01") + pd.Timedelta(days=run_days),
+                          freq=f"{CYCLE_DAYS}D")
+    tab["epochs"] = (pd.PeriodIndex(ticks, freq="M").value_counts()
+                     .reindex(tab.index).fillna(0.0))
+    tab["n_reps"] = reps
+    return tab.reset_index().rename(columns={"index": "ym"})
 
 
 def profiles_from_zarr(path, rep, year, run_days=360):
@@ -486,14 +552,24 @@ def main(years=None, reps=10, box="boxB", runtime_days=360, keep_zarr=False,
     nf = n_floats_uniform if source in ("uniform", "steady") else N_FLOATS
     sfx = ("" if source == "argo" else f"_{source}") + tag
 
-    all_prof = []
+    all_prof, all_stock = [], []
     for y in years:
         zpath = os.path.join(scratch, f"traj_{box}{sfx}_{y}.zarr")
         print(f"[{y}] advecting {nf} floats x {reps} reps at {PARK_DEPTH:.0f} m "
               f"({spin_days} d spin-up) ...")
-        _, rep = run_year(y, box, reps, zpath, runtime_days, independent, pool,
-                          source, n_floats_uniform, spin_days, rep_offset)
+        _, rep, life = run_year(y, box, reps, zpath, runtime_days, independent, pool,
+                                source, n_floats_uniform, spin_days, rep_offset)
         all_prof.append(profiles_from_zarr(zpath, rep, y, runtime_days))
+        # Recorded here because the profile table is clipped to the analysis
+        # window and the trajectory record is about to be deleted: without this
+        # the spin-up is unrecoverable without re-simulating. Non-fatal on
+        # purpose -- it is a diagnostic, and the advection above is the
+        # expensive part of the job.
+        try:
+            all_stock.append(monthly_stock(zpath, box, y, life, reps,
+                                           runtime_days, spin_days).assign(vel_year=y))
+        except Exception as e:  # noqa: BLE001
+            warnings.warn(f"[{y}] monthly_stock failed, continuing: {e}")
         if not keep_zarr:
             import shutil
             shutil.rmtree(zpath, ignore_errors=True)
@@ -504,6 +580,9 @@ def main(years=None, reps=10, box="boxB", runtime_days=360, keep_zarr=False,
     w.to_csv(os.path.join(cfg.OUT_DIR, f"design_weights_{box}{sfx}.csv"), index=False)
     summ.to_csv(os.path.join(cfg.OUT_DIR, f"design_summary_{box}{sfx}.csv"), index=False)
     prof.to_csv(os.path.join(cfg.OUT_DIR, f"design_profiles_{box}{sfx}.csv"), index=False)
+    if all_stock:
+        pd.concat(all_stock, ignore_index=True).to_csv(
+            os.path.join(cfg.OUT_DIR, f"design_stock_{box}{sfx}.csv"), index=False)
 
     print("\nPer-year means (averaged over replicates):")
     print(summ.groupby("vel_year").mean(numeric_only=True).round(3).to_string())

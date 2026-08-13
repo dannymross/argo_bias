@@ -52,6 +52,29 @@ statistic, reports no $p$-value, and draws no conclusion about the assumptions D
 permutation test of `theory.tex`. Standard errors are given so the reader can judge what the Monte
 Carlo does and does not resolve.
 
+# Data and models
+
+**Field.** GLORYS12V1 reanalysis on its native $1/12^\circ$ grid. OHC is the $0$–$2000$ m depth
+integral of potential temperature against constant $c_p\rho$ (`code/ohc.py`), evaluated daily over
+2010–2019. Cells enter the analysis only where $\mathrm{deptho} > 2000$ m *and* the integral is
+defined at every level, which is $92.4\%$ of Box B by area.
+
+**Mean field.** Per-cell OLS of monthly OHC on $\{1,\,t,\,t^2,\,\sin 2\pi t,\,\cos 2\pi t,\,
+\sin 4\pi t,\,\cos 4\pi t\}$, fitted to the 1993–2019 monthly record with regressors averaged over
+each month to match what a monthly mean is. All cells share one design matrix, so the fit is a
+single pseudo-inverse. The residual field is $\tilde Z_k = \mathrm{OHC}_k - \hat m$, evaluated daily
+on the same mask.
+
+**Advection.** OceanParcels, park depth $1000$ m, driven by GLORYS daily $(u,v)$ over
+$15$–$50^\circ$ N, $70$–$30^\circ$ W. Floats advect continuously at park depth and record a position
+every $10$ days; there is no ascent, descent or surface drift, so a cycle is a position sample, not
+a simulated dive. Floats are deleted on leaving the velocity domain and retired at a lifespan drawn
+from the real Argo record for this region ($153$ deployments, median $1339$ d).
+
+**Estimation.** No model is fitted to the sampled values. $\hat Z$ is the unweighted mean of
+$\tilde Z_k$ at the profile positions, and $\bar Z_k$ is the exact $\mathbb{P}$-weighted domain mean
+of the same field; the comparison is arithmetic throughout.
+
 # The analysis domain
 
 Two analysis boxes sit inside the downloaded GLORYS region, both spanning $60^\circ$–$40^\circ$ W:
@@ -107,32 +130,24 @@ mm.plot_ohc_decomposition()
 plt.show()
 ```
 
-@fig-decomp3 shows all three fields together. The identity $\mathrm{OHC} = \hat m + \tilde Z$ holds
-exactly on the analysis mask — the top row is reconstructed from the other two rather than
-re-integrated from temperature, and reproduces the GLORYS OHC to the last bit. The visual point is
-the scale separation: OHC runs $60$–$90$ GJ/m$^2$ and is almost entirely reproduced by the smooth
-mean field, while $\tilde Z$ is a few GJ/m$^2$ of mesoscale structure. On the Box B day shown,
+In @fig-decomp3 the identity $\mathrm{OHC} = \hat m + \tilde Z$ holds exactly on the analysis mask:
+the top row is reconstructed from the other two rather than re-integrated from temperature, and
+reproduces the GLORYS field bitwise. OHC runs $60$–$90$ GJ/m$^2$ and is almost entirely captured by
+the smooth mean field; $\tilde Z$ is a few GJ/m$^2$ of mesoscale structure. On the Box B day shown,
 domain-mean OHC is $67.9$ GJ/m$^2$ against a mean field of $66.5$ and a residual of $+1.45$.
 
-@fig-meanfield is the middle row of that decomposition through the year: the smooth field removed
-from OHC to leave $\tilde Z$. It varies on
-two time scales and neither is daily. Within a year the seasonal harmonics move the Box B domain
-mean by $3.80$ GJ/m$^2$ ($1.50$ in Box A); across 2010–2019 the trend moves it by $2.59$ ($0.96$);
-between consecutive days it moves by $0.03$. That separation is what makes the decomposition useful
-— the mean field carries the large, smooth, predictable structure, and everything mesoscale and
-day-to-day is left in the residual of @fig-days. It also explains why the residual's spatial
-dispersion, not its domain mean, is what a sampling design can be biased by.
+The mean field varies on two time scales, neither daily: the harmonics move the Box B domain mean by
+$3.80$ GJ/m$^2$ within a year ($1.50$ in Box A), the trend by $2.59$ across 2010–2019 ($0.96$), and
+consecutive days by $0.03$. Everything mesoscale and day-to-day is therefore left in $\tilde Z$.
 
-Three features carry through the whole report. First, the residual field is **strongly structured in
-space** at every quantile — even the 5th-percentile day carries a coherent front — and that
-structure is what makes *where* an array sits matter at all. Second, **daily spatial structure is
-almost the entire story**: Box B's median daily spread is $6.63$ GJ/m$^2$ against a total
-$\mathrm{sd}_{\mathbb{P}}(\tilde Z) = 6.81$ that also includes variation of the domain mean across
-days and years, so the field's variability is overwhelmingly within-day spatial, not seasonal drift
-of the mean. Third, the two boxes differ sharply in amplitude — daily spread spans $5.4$–$8.7$
-GJ/m$^2$ in Box B against $1.4$–$2.7$ in Box A. Both the bias and its Monte Carlo error scale with
-that amplitude, so the boxes are comparable only on a standardized $B/\sigma_k$ scale, never in raw
-GJ/m$^2$.
+Three properties of $\tilde Z$ matter downstream. It is **strongly structured in space** at every
+quantile — even the 5th-percentile day carries a coherent front — which is what makes float position
+matter. That structure is **almost all of its variability**: Box B's median daily spatial spread is
+$6.63$ GJ/m$^2$ against a total $\mathrm{sd}_{\mathbb{P}}(\tilde Z) = 6.81$ that also includes
+variation of the domain mean across days and years. And the two boxes differ several-fold in
+amplitude — daily spread spans $5.4$–$8.7$ GJ/m$^2$ in Box B against $1.4$–$2.7$ in Box A — so bias
+and Monte Carlo error both scale with $\sigma_k$, and the boxes are comparable only on a
+standardized $B/\sigma_k$ scale.
 
 # Estimand, truth, and estimator
 
@@ -184,21 +199,25 @@ carried in @tbl-truth rather than assumed away.
 Both use the same $7{,}500$ designs' worth of sample sizes, so they differ only in *where* the
 points sit.
 
-**Advective.** Virtual floats deployed uniformly with respect to $\mathbb{P}$ over a $\pm 8^\circ$
-seeding margin clipped to the velocity domain, advected through velocity year $l$, and retained only
-where they profile inside Box B. Ten velocity years $l \in \{2010,\dots,2019\}$ with $750$
-independent deployment replicates each, paired with all ten analysis years: the pairing $l = k$ is
-**aligned** (flow and field are the same calendar year), all others **unaligned**.
+**Advective.** $307$ floats per replicate seeded uniformly with respect to $\mathbb{P}$ — equal-area
+in latitude, uniform in longitude — over the analysis box widened by $8^\circ$ and clipped to the
+velocity domain, then advected through velocity year $l$. Only profiles falling inside Box B enter
+$\hat Z$. Ten velocity years $l \in \{2010,\dots,2019\}$, $750$ independent replicates each, each
+paired with all ten analysis years: $l = k$ is **aligned** (flow and field the same calendar year),
+all others **unaligned**.
 
-**The array is in renewal equilibrium, not ramping.** Floats are released from $540$ days before the
-analysis year on a schedule calibrated to hold the in-box standing stock flat — a non-negative
-deconvolution of the measured in-box response $g(u) = \mathbb{P}(\text{in box at age } u)$ against a
-constant target. The realized standing stock is $44$–$48$ floats across the year (mean $46$), so the
-day-of-year marginal is close to uniform by construction. This matters: an array ramping up from
-empty samples late in the year, and because the fitted mean field leaves a seasonal residual in the
-domain mean, that alone biases $\hat Z$ with no spatial concentration whatever. That artefact
-dominated an earlier version of this experiment; here it is removed by design rather than corrected
-afterwards.
+**Deployment runs from 540 days before the analysis year, and the array is in equilibrium when the
+window opens.** A constant release rate cannot reach equilibrium here — the empirical lifespan
+median is $1339$ d, so the stock is still climbing after $900$ d. The release density $f$ is instead
+solved as a smooth non-negative deconvolution against the measured in-box response
+$g(u) = \mathbb{P}(\text{in box at age } u)$,
+
+$$\min_{f \ge 0}\; \lVert f * g - 1 \rVert^2 \;+\; \lambda \lVert D^2 f \rVert^2 ,$$
+
+which front-loads $80\%$ of releases into the spin-up so the in-box stock is flat across $[0,360)$
+rather than ramping. The roughness penalty is load-bearing: the unpenalized solution is a sparse
+vertex of the feasible set, and releasing in bursts would rebuild the cohort structure in float age
+that this design exists to remove. @tbl-stock shows the schedule in action.
 
 **Uniform (U-full).** For each advective design, $n$ iid draws with cell $\propto A_j$ and
 $\mathrm{doy} \sim \mathrm{Unif}\{0,\dots,364\}$ — a genuine iid sample from $\mathbb{P}$, matched to
@@ -219,33 +238,36 @@ plt.show()
 #| label: tbl-stock
 #| echo: false
 
-s = mm.float_stock_table().reset_index().rename(columns={"index": "month"})
+s = mm.stock_table().reset_index().rename(columns={"index": "year-month"})
 HTML(fmt(s, 1))
 ```
 
-: Monthly float-stock budget for the Box B steady arm, 2015, averaged over the 150 deployment
-replicates of one chunk. Floats retired are mortality (the empirical Argo lifespan pool); floats
-advected out left the velocity domain and were deleted. Both are counted at a float's last profile,
-so they are mutually exclusive and satisfy exactly
+: Float-stock budget by calendar month for a target year of 2015, from spin-up start (2013-07-10)
+to run end (2015-12-26), per replicate. The production pipeline clips its saved profiles to the
+analysis window and deletes the trajectory record, so the spin-up is recovered by re-running with
+that record retained: the deployment RNG is keyed on (year, replicate), so this reproduces
+production replicates 1-6 exactly -- verified bitwise against the production output on their
+analysis-year overlap. Retirements are mortality from the Argo lifespan pool, domain exits are
+floats deleted on leaving the velocity region; both are keyed on a float's last profile, so they are
+mutually exclusive and satisfy exactly
 stock$_m$ $-$ stock$_{m-1}$ = arrivals$_m$ $-$ departures$_{m-1}$. {#tbl-stock}
 
-@tbl-stock is the budget behind @fig-deploy. Three things to read from it.
+@tbl-stock is the spin-up doing its job. **2013-07 to 2014-09 is the build:** releases run $8$–$22$
+floats a month and the domain population climbs from $8$ to $193$. **From 2014-10 the array is at
+equilibrium** — stock holds near $195$ for the last three months of spin-up, so it is already
+stationary when the analysis window opens. **Across 2015** releases fall to $2$–$8$ a month, exactly
+replacing the $2$–$6$ lost each month to mortality and domain exit, and the stock stays in
+$186$–$196$. That is what the deconvolved schedule buys, and it is why the day-of-year marginal of
+the sampled profiles is near-uniform rather than late-loaded.
 
-**The stock is flat, and that is the design working.** Floats in the velocity domain run $188$–$199$
-across the year with no trend, and inside the analysis box the array holds $46$–$50$ floats per
-sampling epoch — the standing stock the release schedule was calibrated to. Losses are steady at
-$25$ retirements and $30$ domain exits over the year, replaced by $59$ new deployments.
-
-**Only about a quarter of profiles are usable.** Of $6{,}333$ profiles per replicate falling in the
-seeding region, $1{,}710$ land inside the analysis box and enter $\hat Z$. The rest are floats
-sitting in the margin, which is the price of seeding wide enough to keep the box replenished.
-
-**The monthly profile counts are a cadence artefact, not a coverage signal.** Parcels writes output
-on a fixed cadence from the run start, so every float profiles on the *same* days — doy $0, 10,
-20, \dots$ — rather than cycling from its own deployment date. Months therefore contain two, three
-or four sampling epochs, and the profile columns swing by a factor of two for that reason alone. The
-"10-day epochs" column is carried so this is visible: dividing by it gives $46$–$50$ in-box profiles
-per epoch in every month.
+Two further readings. **About a quarter of profiles are usable:** in 2015 roughly $500$ profiles per
+replicate per month fall in the seeding region and $130$ inside the analysis box, the rest being
+floats sitting in the margin — the price of seeding wide enough to keep the box replenished.
+**The profile columns swing with cadence, not coverage:** output is written on a fixed $10$-day
+cadence from run start, so all floats profile on the same days and a month contains two, three or
+four sampling epochs. Dividing by the epoch column gives $42$–$48$ in-box floats throughout 2015.
+These are $6$ of the $750$ production replicates, so the within-year decline carries replicate noise:
+the full ensemble resolves the same quantity as $46$–$50$ per epoch with a $-3\%$ drift.
 
 ## How the synthetic array compares to real Argo
 

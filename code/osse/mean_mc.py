@@ -512,81 +512,36 @@ def _doy_months(year):
     return d[~((d.month == 2) & (d.day == 29))].month.to_numpy()
 
 
-def float_stock_table(box="boxB", year=2015, arm="steady", chunk=0, reps=150,
-                      n_floats=None, spin_days=None, run_days=360):
-    """Monthly float-stock budget, per replicate.
+def stock_table(box="boxB", year=2015, tag="_spinup", reps=6, spin_days=None,
+                n_floats=None, run_days=360, path=None):
+    """Per-replicate float-stock budget by calendar month, spin-up included.
 
-    Retirement and domain exit are separable only because the deployment plan is
-    regenerable: a float's death day is release + lifespan, so a float that
-    stops profiling before the run ends without having reached that day left the
-    velocity domain instead. The two are mutually exclusive by construction, and
-    the stock balance stock[m] - stock[m-1] = deployed - retired - exited is
-    asserted below.
+    Counting lives in design_invariance.monthly_stock, which production now runs
+    before it discards the trajectory record; this only regenerates the lifespan
+    vector needed to attribute departures and formats the result for display.
     """
     from osse import design_invariance as di
 
-    prof = pd.read_csv(
-        os.path.join(cfg.OUT_DIR, f"design_profiles_{box}_{arm}_y{year}_c{chunk}.csv"),
-        usecols=["rep", "float_id", "lat", "lon", "doy"])
     pool = di.load_deployment_pool(box=box)
-    lat, lon, rel, prep, life = di.deployment_plan_steady(
+    *_, life = di.deployment_plan_steady(
         pool, box, n_floats=n_floats or di.N_FLOATS_STEADY, reps=reps, year=year,
         spin_days=spin_days or di.SPIN_DAYS, run_days=run_days)
-    if not np.array_equal(prep[prof["float_id"].to_numpy()], prof["rep"].to_numpy()):
-        raise ValueError("float_id does not index the regenerated deployment plan")
+    raw = di.monthly_stock(
+        path or os.path.join(cfg.OUT_DIR, "_traj", f"traj_{box}_steady{tag}_{year}.zarr"),
+        box, year, life, reps, run_days, spin_days or di.SPIN_DAYS)
 
-    mon = _doy_months(year)
-    prof["month"] = mon[prof["doy"].to_numpy().astype(int)]
-    (sla0, sla1), (slo0, slo1) = di.seed_bounds(box, di.SEED_MARGIN_UNIFORM)
-    prof["in_seed"] = (prof["lat"].between(sla0, sla1) & prof["lon"].between(slo0, slo1))
-    prof["in_box"] = di.in_box(prof, box)
-
-    g = prof.groupby("month")
-    tab = pd.DataFrame({
-        "floats in domain": g["float_id"].nunique(),
-        "profiles in seeding region": g["in_seed"].sum(),
-        "profiles in analysis region": g["in_box"].sum(),
-    })
-
-    # Departures are keyed on the LAST PROFILE, not the death day: a float that
-    # dies early in a month last profiled in the previous one, and keying the
-    # two causes differently would double-count across the boundary. The death
-    # day only labels the cause -- gone before its next scheduled cycle means
-    # mortality, otherwise it was deleted on leaving the velocity domain.
-    span = prof.groupby("float_id")["doy"].agg(["min", "max"])
-    death = (rel + life)[span.index.to_numpy()]
-    gone = span[span["max"] < run_days - di.CYCLE_DAYS]
-    cause_retired = death[span["max"] < run_days - di.CYCLE_DAYS] <= gone["max"] + di.CYCLE_DAYS
-    gone_month = pd.Series(mon[gone["max"].to_numpy().astype(int)], index=gone.index)
-
-    entered = pd.Series(mon[span["min"].to_numpy().astype(int)]).value_counts()
-    released = rel[(rel >= 0) & (rel < run_days)]
-    tab["new floats deployed"] = pd.Series(mon[released.astype(int)]).value_counts()
-    tab["floats retired"] = gone_month[cause_retired.to_numpy()].value_counts()
-    tab["floats advected out"] = gone_month[~cause_retired.to_numpy()].value_counts()
-    tab = tab.fillna(0.0)
-
-    # Exact identity on the profile record: floats present this month are last
-    # month's, less those that left last month, plus those that arrived.
-    left = tab["floats retired"] + tab["floats advected out"]
-    bal = (tab["floats in domain"].diff()
-           - (entered.reindex(tab.index).fillna(0.0) - left.shift())).abs().iloc[1:]
-    if bal.max() > 1e-6:
-        raise ValueError(f"stock budget off by {bal.max():.4f} floats/month")
-
-    tab = tab / reps
-    # Parcels writes on a fixed cadence from run start, so every float profiles
-    # on the SAME days. Monthly profile counts therefore track how many 10-day
-    # epochs fall in the month (2 to 4), not sampling intensity -- carried as a
-    # column so the month-to-month swing is not read as a change in coverage.
-    # Not a per-replicate count, so it is added after the division by reps.
-    tab["10-day epochs"] = pd.Series(mon[:run_days:di.CYCLE_DAYS]).value_counts()
-
-    tab.index = [f"{m:02d}" for m in tab.index]
-    tab.loc["Year"] = [tab["floats in domain"].mean(), *tab.iloc[:, 1:].sum()]
-    return tab[["new floats deployed", "floats in domain", "floats retired",
-                "floats advected out", "10-day epochs",
-                "profiles in seeding region", "profiles in analysis region"]]
+    per = ["deployed", "in_domain", "retired", "advected_out", "prof_seed", "prof_box"]
+    tab = raw.set_index("ym")[per] / reps
+    tab["epochs"] = raw.set_index("ym")["epochs"]
+    tab.index = tab.index.astype(str)
+    return tab.rename(columns={
+        "deployed": "new floats deployed", "in_domain": "floats in domain",
+        "retired": "floats retired", "advected_out": "floats advected out",
+        "epochs": "10-day epochs", "prof_seed": "profiles in seeding region",
+        "prof_box": "profiles in analysis region"})[
+        ["new floats deployed", "floats in domain", "floats retired",
+         "floats advected out", "10-day epochs", "profiles in seeding region",
+         "profiles in analysis region"]]
 
 
 def plot_deployment_advection(box="boxB", year=2015, reps=3, traj_rep=1,
