@@ -1,11 +1,16 @@
 ---
 title: "Monte-Carlo Sampling Distributions of the Residual-Field Mean"
 jupyter: python3
+fig-dpi: 300
 ---
 
 ```{=html}
 <style>
 table.dataframe { width: auto; max-width: 90%; font-size: 0.85em; margin-left: auto; margin-right: auto; }
+/* The field maps are native 1/12 deg cells drawn as hard-edged quads. Browsers
+   smooth-scale images by default, which blurs those cells into a continuous
+   field the data does not have; nearest-neighbour scaling keeps them discrete. */
+figure img, .quarto-figure img { image-rendering: pixelated; }
 </style>
 ```
 
@@ -93,7 +98,24 @@ mm.plot_mean_field_months()
 plt.show()
 ```
 
-@fig-meanfield is the companion: the smooth field removed from OHC to leave $\tilde Z$. It varies on
+```{python}
+#| label: fig-decomp3
+#| echo: false
+#| fig-cap: "The decomposition on one representative day per box, in GJ per m2. Top: GLORYS OHC 0-2000 m. Middle: the fitted mean field on that date. Bottom: the residual Z that remains. The top two rows share one sequential scale so the residual's size relative to the OHC it came from is readable directly; the residual has its own diverging scale. The day shown is each box's median-spread day, as in the previous figure."
+
+mm.plot_ohc_decomposition()
+plt.show()
+```
+
+@fig-decomp3 shows all three fields together. The identity $\mathrm{OHC} = \hat m + \tilde Z$ holds
+exactly on the analysis mask — the top row is reconstructed from the other two rather than
+re-integrated from temperature, and reproduces the GLORYS OHC to the last bit. The visual point is
+the scale separation: OHC runs $60$–$90$ GJ/m$^2$ and is almost entirely reproduced by the smooth
+mean field, while $\tilde Z$ is a few GJ/m$^2$ of mesoscale structure. On the Box B day shown,
+domain-mean OHC is $67.9$ GJ/m$^2$ against a mean field of $66.5$ and a residual of $+1.45$.
+
+@fig-meanfield is the middle row of that decomposition through the year: the smooth field removed
+from OHC to leave $\tilde Z$. It varies on
 two time scales and neither is daily. Within a year the seasonal harmonics move the Box B domain
 mean by $3.80$ GJ/m$^2$ ($1.50$ in Box A); across 2010–2019 the trend moves it by $2.59$ ($0.96$);
 between consecutive days it moves by $0.03$. That separation is what makes the decomposition useful
@@ -183,6 +205,23 @@ $\mathrm{doy} \sim \mathrm{Unif}\{0,\dots,364\}$ — a genuine iid sample from $
 that design's own $n$. By construction $\mathbb{E}[B] = 0$, so this ensemble is simultaneously the
 reference distribution and an end-to-end check of the gather, the day-of-year indexing, and the
 $\bar Z_k$ subtraction.
+
+```{python}
+#| label: fig-deploy
+#| echo: false
+#| fig-cap: "Left: seed positions of three deployment replicates, drawn uniformly with respect to P over the seeding margin (dashed) clipped to the velocity domain, and equal-area in latitude. Right: one replicate's float tracks through 2015, with a dot at every profile (10-day cycle). Only profiles inside the analysis box (red) enter Zhat. Tracks are coloured by float; 60 of the replicate's floats are shown to keep the panel readable."
+
+mm.plot_deployment_advection()
+plt.show()
+```
+
+@fig-deploy shows what the advective ensemble physically is. Floats are seeded uniformly with
+respect to $\mathbb{P}$ over a margin *wider* than the analysis box, because a design that seeded
+only inside the box would be depleted by floats leaving and never replenished from outside. The
+tracks then show the mechanism the whole report is about: the flow does not move floats
+independently of the field, and the profiles that land inside the box are not a uniform sample of
+it. Each track is one float's ten-day cycling over the year, so the dots are exactly the points
+$x_i$ that enter $\hat Z$ when they fall inside the red box.
 
 ```{python}
 #| label: tbl-nsize

@@ -265,9 +265,9 @@ def mean_field_months(box, year, months=(1, 4, 7, 10)):
                                     "latitude": ds["latitude"], "longitude": ds["longitude"]})
 
 
-def _map_grid(nrow, ncol, figsize, left=0.05, right=0.885, bottom=0.05, top=0.90,
-              hgap=0.015, vgap=0.11):
-    """GeoAxes grid at explicit positions, plus one colorbar slot per row.
+def _map_grid(nrow, ncol, figsize, cbar=True, left=0.05, right=0.885, bottom=0.05,
+              top=0.90, hgap=0.015, vgap=0.11):
+    """GeoAxes grid at explicit positions, optionally a colorbar slot per row.
 
     Positions are set by hand rather than by a layout engine: cartopy gridliners
     raise inside tight_layout, and constrained layout resolves row-spanning
@@ -277,6 +277,7 @@ def _map_grid(nrow, ncol, figsize, left=0.05, right=0.885, bottom=0.05, top=0.90
     import cartopy.crs as ccrs
 
     pc = ccrs.PlateCarree()
+    right = right if cbar else 0.985
     fig = plt.figure(figsize=figsize)
     w = (right - left - (ncol - 1) * hgap) / ncol
     h = (top - bottom - (nrow - 1) * vgap) / nrow
@@ -285,8 +286,71 @@ def _map_grid(nrow, ncol, figsize, left=0.05, right=0.885, bottom=0.05, top=0.90
         y = top - (r + 1) * h - r * vgap
         axes.append([fig.add_axes([left + c * (w + hgap), y, w, h], projection=pc)
                      for c in range(ncol)])
-        caxes.append(fig.add_axes([right + 0.012, y + 0.04 * h, 0.014, h * 0.92]))
+        if cbar:
+            caxes.append(fig.add_axes([right + 0.012, y + 0.04 * h, 0.014, h * 0.92]))
     return fig, axes, caxes
+
+
+def _doy_date(year, doy):
+    """Calendar date of a day index on the 365-day leap-stripped calendar."""
+    days = pd.date_range(f"{year}-01-01", f"{year}-12-31", freq="D")
+    return days[~((days.month == 2) & (days.day == 29))][int(doy)]
+
+
+def ohc_decomposition(box, year, doy):
+    """OHC, fitted mean field, and residual on one day.
+
+    OHC is reconstructed as mhat + Z rather than re-integrated from thetao: the
+    residual is defined as OHC - mhat on the same mask, so the sum recovers the
+    GLORYS 0-2000 m OHC exactly, with no re-read of the daily temperature.
+    """
+    from osse import build_residual_field as brf
+    t = _doy_date(year, doy)
+    with xr.open_dataset(os.path.join(cfg.OUT_DIR, f"residual_field_{box}.nc")) as ds:
+        z = ds["z"].sel(year=int(year)).isel(doy=int(doy)).load()
+    with xr.open_dataset(os.path.join(cfg.OUT_DIR, f"mean_field_coef_{box}.nc")) as ds:
+        m = brf.evaluate_mean_field(
+            ds["beta"].values.reshape(ds.sizes["coef"], -1),
+            np.array([t], dtype="datetime64[ns]"),
+            (ds.sizes["latitude"], ds.sizes["longitude"]),
+            quadratic=True, t_ref=ds.attrs["t_ref"])[0]
+    mhat = xr.DataArray(m, coords=z.coords, dims=z.dims).where(np.isfinite(z))
+    return (mhat + z).rename("ohc"), mhat.rename("mhat"), z, t
+
+
+def plot_ohc_decomposition(boxes=("boxB", "boxA"), q=0.5, figsize=(9.5, 11.0),
+                           clip=0.995):
+    """OHC = mean field + residual on one representative day, per box.
+
+    Rows are the three fields; the first two share one sequential scale so the
+    residual's size relative to the OHC it came from is readable directly.
+    """
+    from matplotlib.colors import Normalize, TwoSlopeNorm
+
+    parts, dates = {}, {}
+    for b in boxes:
+        d = quantile_days(b, (q,)).iloc[0]
+        *fields, t = ohc_decomposition(b, int(d.year), int(d.doy))
+        parts[b], dates[b] = fields, t
+
+    flat = np.concatenate([np.ravel(p[i].values) for b in boxes for i in (0, 1)
+                           for p in [parts[b]]])
+    lo, hi = (float(np.nanquantile(flat, x)) * J_TO_GJ for x in (0.005, 0.995))
+    res = max(float(np.nanquantile(np.abs(parts[b][2].values), clip)) for b in boxes) * J_TO_GJ
+    norms = [Normalize(lo, hi), Normalize(lo, hi),
+             TwoSlopeNorm(vmin=-res, vcenter=0.0, vmax=res)]
+    cmaps = ["viridis", "viridis", "RdBu_r"]
+    labels = ["OHC 0-2000 m (GJ/m2)", "mean field (GJ/m2)", "residual Z (GJ/m2)"]
+    names = ["OHC (observed)", "fitted mean field", "residual Z = OHC - mean"]
+
+    fig, axes, caxes = _map_grid(3, len(boxes), figsize, top=0.93, vgap=0.075)
+    for r in range(3):
+        for c, b in enumerate(boxes):
+            im = _draw_map(axes[r][c], parts[b][r], norms[r], cmaps[r], _box_extent(b),
+                           f"{b}  {names[r]}\n{dates[b]:%Y-%m-%d}",
+                           r == 2, c == 0)
+        fig.colorbar(im, cax=caxes[r], label=labels[r])
+    return fig
 
 
 def _geo_ticks(ax, extent, bottom_labels, left_labels, step=5.0):
@@ -318,8 +382,12 @@ def _draw_map(ax, da, norm, cmap, extent, title, bottom_labels, left_labels):
     ax.set_extent(extent, crs=pc)
     ax.add_feature(cfeature.LAND, facecolor="0.88", zorder=0)
     ax.add_feature(cfeature.COASTLINE, lw=0.4)
+    # shading="nearest" (not "auto") and antialiased=False keep every native
+    # 1/12 deg cell a hard-edged quad; "auto" happens to resolve to the same
+    # thing here, but only because the coordinate vectors match the data shape.
     im = ax.pcolormesh(da["longitude"], da["latitude"], da.values * J_TO_GJ,
-                       cmap=cmap, norm=norm, transform=pc, shading="auto")
+                       cmap=cmap, norm=norm, transform=pc, shading="nearest",
+                       antialiased=False, linewidth=0, rasterized=True)
     ax.set_title(title, fontsize=9)
     _geo_ticks(ax, extent, bottom_labels, left_labels)
     return im
@@ -355,6 +423,82 @@ def plot_quantile_days(boxes=("boxB", "boxA"), qs=(0.05, 0.5, 0.95),
                            f"sd {d.sd * J_TO_GJ:.2f} GJ/m2",
                            r == len(boxes) - 1, c == 0)
         fig.colorbar(im, cax=caxes[r], label="Z (GJ/m2)")
+    return fig
+
+
+def deployment_sample(box, year=2015, reps=3, spin_days=None, n_floats=None):
+    """Seed positions of the first few steady-arm replicates.
+
+    Regenerated from the same (year, rep)-keyed RNG the production run used, so
+    these are the actual deployments, not a fresh draw resembling them.
+    """
+    from osse import design_invariance as di
+    pool = di.load_deployment_pool(box=box)
+    lat, lon, day, rep, _ = di.deployment_plan_steady(
+        pool, box, n_floats=n_floats or di.N_FLOATS_STEADY, reps=reps, year=year,
+        spin_days=spin_days or di.SPIN_DAYS)
+    return pd.DataFrame({"lat": lat, "lon": lon, "release_day": day, "rep": rep})
+
+
+def trajectory_sample(box, year=2015, rep=1, arm="steady", chunk=0):
+    """One replicate's profile positions, ordered along each float's track."""
+    path = os.path.join(cfg.OUT_DIR, f"design_profiles_{box}_{arm}_y{year}_c{chunk}.csv")
+    df = pd.read_csv(path, usecols=["rep", "float_id", "cycle", "lat", "lon", "doy"])
+    return df[df["rep"] == rep].sort_values(["float_id", "cycle"])
+
+
+def plot_deployment_advection(box="boxB", year=2015, reps=3, traj_rep=1,
+                              figsize=(13.5, 6.2), max_tracks=60):
+    """Where floats are seeded, and where the flow then takes them.
+
+    Left: seed positions of a few replicates over the clipped seeding margin.
+    Right: one replicate's tracks through the analysis year, with a marker at
+    every profile. Only the box interior contributes to Zhat.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+    from osse import design_invariance as di
+
+    seeds = deployment_sample(box, year, reps)
+    trk = trajectory_sample(box, year, traj_rep)
+    (sla0, sla1), (slo0, slo1) = di.seed_bounds(box, di.SEED_MARGIN_UNIFORM)
+    (la0, la1), (lo0, lo1) = cfg.BOXES[box]["lat_bounds"], cfg.BOXES[box]["lon_bounds"]
+    ext = [min(slo0, trk.lon.min()) - 1, max(slo1, trk.lon.max()) + 1,
+           min(sla0, trk.lat.min()) - 1, max(sla1, trk.lat.max()) + 1]
+
+    fig, axes, _ = _map_grid(1, 2, figsize, cbar=False, top=0.90, bottom=0.08)
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+    pc = ccrs.PlateCarree()
+    for j, ax in enumerate(axes[0]):
+        ax.set_extent(ext, crs=pc)
+        ax.add_feature(cfeature.LAND, facecolor="0.88", zorder=0)
+        ax.add_feature(cfeature.COASTLINE, lw=0.4)
+        ax.add_patch(Rectangle((slo0, sla0), slo1 - slo0, sla1 - sla0, transform=pc,
+                               fill=False, edgecolor="tab:blue", lw=1.4, ls="--",
+                               zorder=3, label="seeding margin"))
+        ax.add_patch(Rectangle((lo0, la0), lo1 - lo0, la1 - la0, transform=pc,
+                               fill=False, edgecolor="crimson", lw=2.0, zorder=4,
+                               label=f"{box} (analysis domain)"))
+        _geo_ticks(ax, ext, True, j == 0, step=10.0)
+
+    for r, g in seeds.groupby("rep"):
+        axes[0][0].plot(g["lon"], g["lat"], ".", ms=3.0, alpha=0.7, transform=pc,
+                        label=f"replicate {int(r)}")
+    axes[0][0].set_title(f"deployment: {reps} replicates x {len(seeds)//reps} floats",
+                         fontsize=10)
+    axes[0][0].legend(loc="upper left", fontsize=7, framealpha=0.9, markerscale=2.5)
+
+    ids = trk["float_id"].unique()[:max_tracks]
+    cols = plt.cm.turbo(np.linspace(0.05, 0.95, len(ids)))
+    for k, fid in enumerate(ids):
+        g = trk[trk["float_id"] == fid]
+        axes[0][1].plot(g["lon"], g["lat"], "-", lw=0.7, color=cols[k], alpha=0.75,
+                        transform=pc)
+        axes[0][1].plot(g["lon"], g["lat"], ".", ms=1.6, color=cols[k], alpha=0.9,
+                        transform=pc)
+    axes[0][1].set_title(f"advection, {year}: {len(ids)} of {trk['float_id'].nunique()} "
+                         f"tracks, dots are profiles", fontsize=10)
     return fig
 
 
