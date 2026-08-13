@@ -447,6 +447,148 @@ def trajectory_sample(box, year=2015, rep=1, arm="steady", chunk=0):
     return df[df["rep"] == rep].sort_values(["float_id", "cycle"])
 
 
+def argo_region_summary(box="boxB", years=None, path=None, cache=None):
+    """Real Argo occupancy of the box, per analysis year; cached.
+
+    Standing stock is the mean number of distinct floats reporting within a
+    10-day window, which is what compares against the virtual array: real floats
+    cycle on their own schedules, so a straight profile count would confound
+    array size with cycling cadence.
+    """
+    years = years or _field_years(box)
+    cache = cache or os.path.join(cfg.OUT_DIR, f"argo_region_{box}.csv")
+    if os.path.exists(cache):
+        return pd.read_csv(cache)
+    from osse import design_invariance as di
+
+    d = pd.read_csv(path or os.path.join(os.path.dirname(cfg.GLORYS_DIR), "argo_ohc.csv"),
+                    usecols=["float_id", "lat", "lon", "date", "ohc_2000"])
+    d["date"] = pd.to_datetime(d["date"], format="ISO8601", utc=True)
+    (la0, la1), (lo0, lo1) = cfg.BOXES[box]["lat_bounds"], cfg.BOXES[box]["lon_bounds"]
+    d = d[d["lat"].between(la0, la1) & d["lon"].between(lo0, lo1)
+          & d["ohc_2000"].notna()]
+    d["year"] = d["date"].dt.year
+    d = d[d["year"].isin(years)]
+    d["bin"] = (d["date"].dt.dayofyear - 1) // di.CYCLE_DAYS
+
+    stock = (d.groupby(["year", "bin"])["float_id"].nunique()
+              .groupby("year").mean())
+    out = (d.groupby("year")
+             .agg(argo_profiles=("float_id", "size"), argo_floats=("float_id", "nunique"))
+             .join(stock.rename("argo_stock")).reset_index())
+    out.to_csv(cache, index=False)
+    return out
+
+
+def argo_comparison_table(box="boxB", arm="_steady", years=None):
+    """Virtual array against the real Argo record, same box and years.
+
+    Virtual standing stock is in-box profiles per 10-day epoch: every virtual
+    float profiles on every epoch, so n / n_epochs is the number in the box.
+    """
+    from osse import design_invariance as di
+    real = argo_region_summary(box, years).set_index("year")
+    adv = pd.read_csv(os.path.join(cfg.OUT_DIR, f"mean_mc_advective_{box}{arm}.csv"))
+    n_ep = cfg.DAYS_PER_YEAR // di.CYCLE_DAYS
+    sim = adv.groupby("vel_year").agg(sim_profiles=("n", "mean"),
+                                      sim_floats=("n_floats", "mean"))
+    sim["sim_stock"] = sim["sim_profiles"] / n_ep
+
+    t = real.join(sim).reset_index().rename(columns={"index": "year"})
+    t["stock ratio"] = t["sim_stock"] / t["argo_stock"]
+    # Per-year means, not sums: distinct float counts would double-count floats
+    # present in several years, and the simulated columns are already per-design
+    # means over an independent 750-design ensemble in each year.
+    t.loc["mean"] = ["mean", *t.iloc[:, 1:].mean()]
+    return t.rename(columns={
+        "year": "year", "argo_profiles": "Argo profiles", "argo_floats": "Argo floats",
+        "argo_stock": "Argo stock", "sim_profiles": "sim profiles",
+        "sim_floats": "sim floats", "sim_stock": "sim stock"})
+
+
+def _doy_months(year):
+    """Calendar month of each index on the 365-day leap-stripped calendar."""
+    d = pd.date_range(f"{year}-01-01", f"{year}-12-31", freq="D")
+    return d[~((d.month == 2) & (d.day == 29))].month.to_numpy()
+
+
+def float_stock_table(box="boxB", year=2015, arm="steady", chunk=0, reps=150,
+                      n_floats=None, spin_days=None, run_days=360):
+    """Monthly float-stock budget, per replicate.
+
+    Retirement and domain exit are separable only because the deployment plan is
+    regenerable: a float's death day is release + lifespan, so a float that
+    stops profiling before the run ends without having reached that day left the
+    velocity domain instead. The two are mutually exclusive by construction, and
+    the stock balance stock[m] - stock[m-1] = deployed - retired - exited is
+    asserted below.
+    """
+    from osse import design_invariance as di
+
+    prof = pd.read_csv(
+        os.path.join(cfg.OUT_DIR, f"design_profiles_{box}_{arm}_y{year}_c{chunk}.csv"),
+        usecols=["rep", "float_id", "lat", "lon", "doy"])
+    pool = di.load_deployment_pool(box=box)
+    lat, lon, rel, prep, life = di.deployment_plan_steady(
+        pool, box, n_floats=n_floats or di.N_FLOATS_STEADY, reps=reps, year=year,
+        spin_days=spin_days or di.SPIN_DAYS, run_days=run_days)
+    if not np.array_equal(prep[prof["float_id"].to_numpy()], prof["rep"].to_numpy()):
+        raise ValueError("float_id does not index the regenerated deployment plan")
+
+    mon = _doy_months(year)
+    prof["month"] = mon[prof["doy"].to_numpy().astype(int)]
+    (sla0, sla1), (slo0, slo1) = di.seed_bounds(box, di.SEED_MARGIN_UNIFORM)
+    prof["in_seed"] = (prof["lat"].between(sla0, sla1) & prof["lon"].between(slo0, slo1))
+    prof["in_box"] = di.in_box(prof, box)
+
+    g = prof.groupby("month")
+    tab = pd.DataFrame({
+        "floats in domain": g["float_id"].nunique(),
+        "profiles in seeding region": g["in_seed"].sum(),
+        "profiles in analysis region": g["in_box"].sum(),
+    })
+
+    # Departures are keyed on the LAST PROFILE, not the death day: a float that
+    # dies early in a month last profiled in the previous one, and keying the
+    # two causes differently would double-count across the boundary. The death
+    # day only labels the cause -- gone before its next scheduled cycle means
+    # mortality, otherwise it was deleted on leaving the velocity domain.
+    span = prof.groupby("float_id")["doy"].agg(["min", "max"])
+    death = (rel + life)[span.index.to_numpy()]
+    gone = span[span["max"] < run_days - di.CYCLE_DAYS]
+    cause_retired = death[span["max"] < run_days - di.CYCLE_DAYS] <= gone["max"] + di.CYCLE_DAYS
+    gone_month = pd.Series(mon[gone["max"].to_numpy().astype(int)], index=gone.index)
+
+    entered = pd.Series(mon[span["min"].to_numpy().astype(int)]).value_counts()
+    released = rel[(rel >= 0) & (rel < run_days)]
+    tab["new floats deployed"] = pd.Series(mon[released.astype(int)]).value_counts()
+    tab["floats retired"] = gone_month[cause_retired.to_numpy()].value_counts()
+    tab["floats advected out"] = gone_month[~cause_retired.to_numpy()].value_counts()
+    tab = tab.fillna(0.0)
+
+    # Exact identity on the profile record: floats present this month are last
+    # month's, less those that left last month, plus those that arrived.
+    left = tab["floats retired"] + tab["floats advected out"]
+    bal = (tab["floats in domain"].diff()
+           - (entered.reindex(tab.index).fillna(0.0) - left.shift())).abs().iloc[1:]
+    if bal.max() > 1e-6:
+        raise ValueError(f"stock budget off by {bal.max():.4f} floats/month")
+
+    tab = tab / reps
+    # Parcels writes on a fixed cadence from run start, so every float profiles
+    # on the SAME days. Monthly profile counts therefore track how many 10-day
+    # epochs fall in the month (2 to 4), not sampling intensity -- carried as a
+    # column so the month-to-month swing is not read as a change in coverage.
+    # Not a per-replicate count, so it is added after the division by reps.
+    tab["10-day epochs"] = pd.Series(mon[:run_days:di.CYCLE_DAYS]).value_counts()
+
+    tab.index = [f"{m:02d}" for m in tab.index]
+    tab.loc["Year"] = [tab["floats in domain"].mean(), *tab.iloc[:, 1:].sum()]
+    return tab[["new floats deployed", "floats in domain", "floats retired",
+                "floats advected out", "10-day epochs",
+                "profiles in seeding region", "profiles in analysis region"]]
+
+
 def plot_deployment_advection(box="boxB", year=2015, reps=3, traj_rep=1,
                               figsize=(13.5, 6.2), max_tracks=60):
     """Where floats are seeded, and where the flow then takes them.

@@ -215,6 +215,75 @@ mm.plot_deployment_advection()
 plt.show()
 ```
 
+```{python}
+#| label: tbl-stock
+#| echo: false
+
+s = mm.float_stock_table().reset_index().rename(columns={"index": "month"})
+HTML(fmt(s, 1))
+```
+
+: Monthly float-stock budget for the Box B steady arm, 2015, averaged over the 150 deployment
+replicates of one chunk. Floats retired are mortality (the empirical Argo lifespan pool); floats
+advected out left the velocity domain and were deleted. Both are counted at a float's last profile,
+so they are mutually exclusive and satisfy exactly
+stock$_m$ $-$ stock$_{m-1}$ = arrivals$_m$ $-$ departures$_{m-1}$. {#tbl-stock}
+
+@tbl-stock is the budget behind @fig-deploy. Three things to read from it.
+
+**The stock is flat, and that is the design working.** Floats in the velocity domain run $188$–$199$
+across the year with no trend, and inside the analysis box the array holds $46$–$50$ floats per
+sampling epoch — the standing stock the release schedule was calibrated to. Losses are steady at
+$25$ retirements and $30$ domain exits over the year, replaced by $59$ new deployments.
+
+**Only about a quarter of profiles are usable.** Of $6{,}333$ profiles per replicate falling in the
+seeding region, $1{,}710$ land inside the analysis box and enter $\hat Z$. The rest are floats
+sitting in the margin, which is the price of seeding wide enough to keep the box replenished.
+
+**The monthly profile counts are a cadence artefact, not a coverage signal.** Parcels writes output
+on a fixed cadence from the run start, so every float profiles on the *same* days — doy $0, 10,
+20, \dots$ — rather than cycling from its own deployment date. Months therefore contain two, three
+or four sampling epochs, and the profile columns swing by a factor of two for that reason alone. The
+"10-day epochs" column is carried so this is visible: dividing by it gives $46$–$50$ in-box profiles
+per epoch in every month.
+
+## How the synthetic array compares to real Argo
+
+```{python}
+#| label: tbl-argo
+#| echo: false
+
+HTML(fmt(mm.argo_comparison_table(), 1))
+```
+
+: Real Argo occupancy of Box B against the virtual array, by analysis year. "Stock" is the mean
+number of distinct floats reporting within a 10-day window, the quantity that compares across the
+two: real floats cycle on their own schedules, so raw profile counts confound array size with
+cadence. Simulated columns are means over that year's 750 designs; the last row is the per-year
+mean, not a sum. {#tbl-argo}
+
+@tbl-argo is a calibration check, and it does not fully pass. Two mismatches, both worth stating
+plainly:
+
+**The virtual array is denser than the real one — $2.6\times$ on average.** Real Argo holds $8$–$31$
+floats in Box B at a given time against the simulation's $41$–$44$. The array was sized to a
+standing stock of $\sim\!46$ floats as "Argo-sized", but the real regional stock over 2010–2019
+averages $19.8$. The ratio is worst in the early years ($5.2\times$ in 2011) and closest in
+2017 ($1.3\times$), when Argo coverage in the North Atlantic peaked.
+
+**The real array grows; the virtual one is deliberately constant.** Real stock spans a factor of
+$3.8$ across the decade, from $8.1$ in 2011 to $31.0$ in 2017. The simulation holds $41$–$44$ in
+every year by construction, because a design whose size tracked the real deployment history would
+confound array growth with the flow-year contrast the $10\times10$ grid exists to measure.
+
+What this does and does not affect. It does **not** move $\mathbb{E}[B]$: the estimator is a sample
+mean, and its bias under a given deployment law does not depend on how many floats realize that law.
+The aligned-minus-column contrasts are therefore unaffected. It *does* affect **width**. The
+per-design spread scales like $n^{-1/2}$, so at $2.6\times$ the real sampling density the histograms
+in @fig-grid are roughly $\sqrt{2.6} \approx 1.6$ times narrower than a real Argo array in this box
+would produce. Read the spreads as a lower bound on what a real array would face, not as a forecast
+of it.
+
 @fig-deploy shows what the advective ensemble physically is. Floats are seeded uniformly with
 respect to $\mathbb{P}$ over a margin *wider* than the analysis box, because a design that seeded
 only inside the box would be depleted by floats leaving and never replenished from outside. The
@@ -497,6 +566,23 @@ contrast of @tbl-aligned is essentially a contrast in spatial sampling.
   ensembles are matched conditional on $n$. Design-weighted and profile-weighted averages of the
   temporal component differ because $n$ and day-of-year coverage are correlated; the design-weighted
   average is the one consistent with $\mathbb{E}[B]$ and is used throughout.
+- **The array is denser than real Argo, and constant where the real one grows.** The simulated
+  standing stock is $2.6\times$ the real Box B stock on average and up to $5.2\times$ in the sparse
+  early years, and it is held fixed at $41$–$44$ floats while the real stock swings by a factor of
+  $3.8$ across the decade (@tbl-argo). This leaves $\mathbb{E}[B]$ alone — the bias of a sample mean
+  under a given deployment law does not depend on how many floats realize it — but the per-design
+  spreads shown throughout are roughly $\sqrt{2.6}\approx 1.6$ times narrower than a real array in
+  this box would produce. Treat every width here as a lower bound on real sampling variability. The
+  array was sized to a plausible Argo-like float count rather than matched to this region's measured
+  density; density-matching would mean re-running at roughly $120$ floats instead of $307$.
+- **Profiling is synchronized across floats.** Trajectory output is written on a fixed cadence from
+  the run start, so all virtual floats profile on the same $36$ days of the year rather than each
+  cycling from its own deployment date, as real Argo floats do (@tbl-stock). The realized
+  day-of-year marginal is therefore supported on $36$ atoms rather than spread over the year, which
+  is part of why the temporal component varies so little across designs. It does not bias
+  $\hat Z$ on its own — the epochs are near-uniformly spaced — but it understates the temporal
+  diversity a real array would have, and any statement here about day-of-year coverage should be
+  read with that in mind.
 - **The spin-up ages the array.** Holding the standing stock flat requires releasing $\sim\!80\%$ of
   floats before the analysis year, which leaves the in-box age distribution older than a
   constant-rate array would give. The alternative — accepting the ramp — puts a far larger artefact
