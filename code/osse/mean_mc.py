@@ -32,8 +32,36 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from osse import osse_config as cfg
 
 J_TO_GJ = 1e-9
-YEARS = list(cfg.ANALYSIS_YEARS)
+
+
+def _field_years(box="boxB"):
+    """Analysis years actually present in the residual field, not the config.
+
+    The field is what every downstream column name is keyed to, so rebuilding it
+    over a wider window must not require editing cfg.ANALYSIS_YEARS in lockstep.
+    """
+    p = os.path.join(cfg.OUT_DIR, f"residual_field_{box}.nc")
+    if os.path.exists(p):
+        with xr.open_dataset(p) as ds:
+            return [int(y) for y in ds["year"].values]
+    return list(cfg.ANALYSIS_YEARS)
+
+
+YEARS = _field_years()
 ZCOLS = [f"z_{y}" for y in YEARS]
+
+
+def set_box(box):
+    """Rebind the analysis-year list to `box`'s residual field.
+
+    Every z_/zhat_/temporal_/deff_ column name is keyed to YEARS, so a run on a
+    box other than boxB must switch it before anything else -- otherwise the
+    columns are silently keyed to boxB's window.
+    """
+    global YEARS, ZCOLS
+    YEARS = _field_years(box)
+    ZCOLS = [f"z_{y}" for y in YEARS]
+    return YEARS
 
 
 def load_field(box="boxB", tag=None):
@@ -155,6 +183,144 @@ def bias_grid(adv, unif, zbar):
                 "unif_sd_B": (gu[f"zhat_{k}"] - zb[k]).std(ddof=1),
             })
     return pd.DataFrame(rows)
+
+
+# --------------------------- domain and field ----------------------------
+
+def _file_extent(pattern):
+    """(lat0, lat1, lon0, lon1) of the first GLORYS file matching a glob."""
+    path = sorted(glob.glob(os.path.join(cfg.GLORYS_DIR, pattern)))[0]
+    with xr.open_dataset(path) as ds:
+        return (float(ds["latitude"].min()), float(ds["latitude"].max()),
+                float(ds["longitude"].min()), float(ds["longitude"].max()))
+
+
+def domain_extents(boxes=("boxA", "boxB")):
+    """Analysis boxes and the two downloaded regions, read from the files.
+
+    Read rather than taken from the download config so the drawn extents are the
+    data actually on disk.
+    """
+    out = {"velocity": _file_extent("velocity_daily/velocity_daily_park_*.nc"),
+           "thetao": _file_extent("thetao_daily/thetao_daily_*.nc")}
+    for b in boxes:
+        (la0, la1), (lo0, lo1) = cfg.BOXES[b]["lat_bounds"], cfg.BOXES[b]["lon_bounds"]
+        out[b] = (la0, la1, lo0, lo1)
+    return out
+
+
+def daily_spread(box, path=None):
+    """sd_P(Z) on each (year, doy) of the residual field; cached.
+
+    The spatial dispersion under the same measure P the estimand integrates
+    against, so it scores a day by how much spatial structure a design sampling
+    that day could possibly be biased by.
+    """
+    path = path or os.path.join(cfg.OUT_DIR, f"daily_spread_{box}.csv")
+    if os.path.exists(path):
+        return pd.read_csv(path)
+    zf, wet, w = load_field(box)
+    years = _field_years(box)
+    rows = []
+    for i, y in enumerate(years):
+        zw = zf[i][:, wet].astype(np.float64)
+        m1 = zw @ w
+        rows.append(pd.DataFrame({"year": y, "doy": np.arange(zw.shape[0]),
+                                  "mean": m1,
+                                  "sd": np.sqrt((zw * zw) @ w - m1**2)}))
+    out = pd.concat(rows, ignore_index=True)
+    out.to_csv(path, index=False)
+    return out
+
+
+def quantile_days(box, qs=(0.05, 0.5, 0.95)):
+    """The (year, doy) whose spatial sd is nearest each quantile of sd_P(Z)."""
+    s = daily_spread(box)
+    sd = s["sd"].to_numpy()
+    out = []
+    for q in qs:
+        i = int(np.argmin(np.abs(sd - np.quantile(sd, q))))
+        out.append({"q": q, "year": int(s["year"][i]), "doy": int(s["doy"][i]),
+                    "sd": sd[i]})
+    return pd.DataFrame(out)
+
+
+def plot_quantile_days(boxes=("boxB", "boxA"), qs=(0.05, 0.5, 0.95),
+                       figsize=(13, 7.6), clip=0.995):
+    """Single-day residual fields at quantiles of each box's daily spatial spread.
+
+    One row per box on its own colour scale: the boxes differ several-fold in
+    amplitude, and a shared scale would flatten the within-box structure this
+    figure exists to show.
+    """
+    import matplotlib.pyplot as plt
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+    from matplotlib.colors import TwoSlopeNorm
+
+    pc = ccrs.PlateCarree()
+    fig, axes = plt.subplots(len(boxes), len(qs), figsize=figsize,
+                             subplot_kw={"projection": pc}, layout="constrained",
+                             squeeze=False)
+    for r, box in enumerate(boxes):
+        sel = quantile_days(box, qs)
+        (la0, la1), (lo0, lo1) = cfg.BOXES[box]["lat_bounds"], cfg.BOXES[box]["lon_bounds"]
+        with xr.open_dataset(os.path.join(cfg.OUT_DIR, f"residual_field_{box}.nc")) as ds:
+            days = [ds["z"].sel(year=int(d.year)).isel(doy=int(d.doy)).load()
+                    for _, d in sel.iterrows()]
+        hi = max(float(np.nanquantile(np.abs(d.values), clip)) for d in days) * J_TO_GJ
+        norm = TwoSlopeNorm(vmin=-hi, vcenter=0.0, vmax=hi)
+        for c, (ax, day, (_, d)) in enumerate(zip(axes[r], days, sel.iterrows())):
+            ax.set_extent([lo0 - 0.5, lo1 + 0.5, la0 - 0.5, la1 + 0.5], crs=pc)
+            ax.add_feature(cfeature.LAND, facecolor="0.88", zorder=0)
+            ax.add_feature(cfeature.COASTLINE, lw=0.4)
+            im = ax.pcolormesh(day["longitude"], day["latitude"], day.values * J_TO_GJ,
+                               cmap="RdBu_r", norm=norm, transform=pc, shading="auto")
+            ax.set_title(f"{box}  {int(d.q * 100)}th pctile day\n"
+                         f"{int(d.year)} doy {int(d.doy) + 1}, "
+                         f"sd {d.sd * J_TO_GJ:.2f} GJ/m2", fontsize=9)
+            gl = ax.gridlines(draw_labels=True, lw=0.25, color="0.6", alpha=0.4)
+            gl.top_labels = gl.right_labels = False
+            gl.bottom_labels, gl.left_labels = r == len(boxes) - 1, c == 0
+            gl.xlabel_style = gl.ylabel_style = {"size": 7}
+        fig.colorbar(im, ax=axes[r], shrink=0.85, pad=0.02, label="Z (GJ/m2)")
+    return fig
+
+
+def plot_domain_map(boxes=("boxA", "boxB"), figsize=(7.5, 6.4)):
+    """Analysis boxes inside the velocity and thetao download regions."""
+    import matplotlib.pyplot as plt
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+    from matplotlib.patches import Rectangle
+
+    e = domain_extents(boxes)
+    pc = ccrs.PlateCarree()
+    # tight_layout collapses the GeoAxes boundary that the gridliner draws
+    # against, so layout is left to constrained mode here and below.
+    fig, ax = plt.subplots(figsize=figsize, subplot_kw={"projection": pc},
+                           layout="constrained")
+    v = e["velocity"]
+    ax.set_extent([v[2] - 1.5, v[3] + 1.5, v[0] - 1.5, v[1] + 1.5], crs=pc)
+    ax.add_feature(cfeature.LAND, facecolor="0.88", zorder=0)
+    ax.add_feature(cfeature.COASTLINE, lw=0.5)
+
+    style = {"velocity": ("tab:blue", "velocity (advection domain)"),
+             "thetao": ("tab:green", "thetao (OHC truth + mean field)"),
+             "boxA": ("tab:orange", "Box A (subtropical gyre)"),
+             "boxB": ("crimson", "Box B (NAC / Gulf Stream)")}
+    for name in ("velocity", "thetao") + tuple(boxes):
+        la0, la1, lo0, lo1 = e[name]
+        color, label = style[name]
+        fill = name in boxes
+        ax.add_patch(Rectangle((lo0, la0), lo1 - lo0, la1 - la0, transform=pc,
+                               fill=fill, facecolor=color if fill else "none",
+                               alpha=0.18 if fill else 1.0, edgecolor=color,
+                               lw=2.0, ls="-" if fill else "--", zorder=2, label=label))
+    gl = ax.gridlines(draw_labels=True, lw=0.3, color="0.6", alpha=0.5)
+    gl.top_labels = gl.right_labels = False
+    ax.legend(loc="lower left", fontsize=8, framealpha=0.9)
+    return fig
 
 
 # ------------------------------- plotting --------------------------------
@@ -309,6 +475,7 @@ if __name__ == "__main__":
                          "design_profiles_<box>_<ARM>_y*.csv")
     ap.add_argument("--seed", type=int, default=11)
     a = ap.parse_args()
+    set_box(a.box)
 
     if a.gather:
         gather_arm(a.box, a.gather, a.tag)

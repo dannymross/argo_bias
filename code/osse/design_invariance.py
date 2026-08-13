@@ -64,7 +64,9 @@ JITTER_KM = 5.0          # per-replicate seed perturbation
 # floats through the same eddies twice and inflate exactly the aligned coupling
 # the experiment is built to measure.
 SPIN_DAYS = 540
-N_FLOATS_STEADY = 450    # over SPIN_DAYS + run_days; ~48 in-box standing stock
+N_FLOATS_STEADY = 307    # over SPIN_DAYS + run_days; ~48 in-box standing stock
+                         # (calibrated on the clipped seeding region: every seed lands
+                         #  in the velocity domain, so none are deleted on step one)
 
 
 def load_deployment_pool(box=None, lat_bounds=(15, 50), lon_bounds=(-70, -30),
@@ -137,16 +139,15 @@ def deployment_plan_uniform(pool, box, n_floats=N_FLOATS_UNIFORM, reps=5, year=0
     Lifespans come from the same empirical pool as the real-deployment arm, so
     the two arms differ in deployment design alone and not in mortality.
     """
-    la0, la1 = cfg.BOXES[box]["lat_bounds"]
-    lo0, lo1 = cfg.BOXES[box]["lon_bounds"]
-    s0, s1 = np.sin(np.deg2rad([la0 - margin, la1 + margin]))
+    (la0, la1), (lo0, lo1) = seed_bounds(box, margin)
+    s0, s1 = np.sin(np.deg2rad([la0, la1]))
     life_pool = pool["lifespan_days"].to_numpy()
 
     out = []
     for d in range(reps):
         r = np.random.default_rng([3000, int(year), d])
         out.append((np.rad2deg(np.arcsin(r.uniform(s0, s1, n_floats))),
-                    r.uniform(lo0 - margin, lo1 + margin, n_floats),
+                    r.uniform(lo0, lo1, n_floats),
                     r.uniform(0.0, seed_days, n_floats),
                     np.full(n_floats, d + 1),
                     r.choice(life_pool, size=n_floats, replace=True)))
@@ -164,9 +165,8 @@ def deployment_plan_steady(pool, box, n_floats=N_FLOATS_STEADY, reps=5, year=0,
     That removes both the late-loaded day-of-year marginal and the collinearity
     between float age and day of year.
     """
-    la0, la1 = cfg.BOXES[box]["lat_bounds"]
-    lo0, lo1 = cfg.BOXES[box]["lon_bounds"]
-    s0, s1 = np.sin(np.deg2rad([la0 - margin, la1 + margin]))
+    (la0, la1), (lo0, lo1) = seed_bounds(box, margin)
+    s0, s1 = np.sin(np.deg2rad([la0, la1]))
     life_pool = pool["lifespan_days"].to_numpy()
 
     sched = release_schedule(box, spin_days, run_days)
@@ -177,7 +177,7 @@ def deployment_plan_steady(pool, box, n_floats=N_FLOATS_STEADY, reps=5, year=0,
     for d in range(rep_offset, rep_offset + reps):
         r = np.random.default_rng([4000, int(year), d])
         out.append((np.rad2deg(np.arcsin(r.uniform(s0, s1, n_floats))),
-                    r.uniform(lo0 - margin, lo1 + margin, n_floats),
+                    r.uniform(lo0, lo1, n_floats),
                     sched(r, n_floats),
                     np.full(n_floats, d + 1),
                     r.choice(life_pool, size=n_floats, replace=True)))
@@ -221,6 +221,35 @@ def park_files(year, spin_days=0):
         raise FileNotFoundError(f"{year}: {len(missing)} park velocity files missing, "
                                 f"first {os.path.basename(missing[0])}")
     return files
+
+
+def velocity_extent(path=None, inset=0.25):
+    """Seedable (lat, lon) bounds of the park velocity grid, from the files.
+
+    Read rather than hard-coded: the buffer region lives in the download config,
+    and a seed outside it is deleted on the first kernel step. The inset keeps
+    seeds a few grid cells clear of the edge so they are not lost to
+    interpolation at the boundary.
+    """
+    path = path or sorted(glob.glob(os.path.join(VEL_DIR, "velocity_daily_park_*.nc")))[0]
+    with xr.open_dataset(path) as ds:
+        return ((float(ds["latitude"].min()) + inset, float(ds["latitude"].max()) - inset),
+                (float(ds["longitude"].min()) + inset, float(ds["longitude"].max()) - inset))
+
+
+def seed_bounds(box, margin):
+    """Box +/- margin, clipped to the velocity domain.
+
+    Box B sits only 5 deg below the northern edge of the buffer, so an 8 deg
+    margin puts 9.5% of equal-area seeds outside the domain, where they are
+    deleted before contributing. Clipping is distribution-neutral -- those seeds
+    never entered any design -- and simply stops wasting them.
+    """
+    la0, la1 = cfg.BOXES[box]["lat_bounds"]
+    lo0, lo1 = cfg.BOXES[box]["lon_bounds"]
+    (vla0, vla1), (vlo0, vlo1) = velocity_extent()
+    return ((max(la0 - margin, vla0), min(la1 + margin, vla1)),
+            (max(lo0 - margin, vlo0), min(lo1 + margin, vlo1)))
 
 
 def park_files_available(year, spin_days=0):

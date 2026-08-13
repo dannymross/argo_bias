@@ -124,7 +124,8 @@ def coarsen(zda, area, deg=cfg.COARSE_DEG, days=cfg.COARSE_DAYS):
     return out
 
 
-def main(box="boxB", quadratic=True):
+def main(box="boxB", quadratic=True, years=None):
+    years = tuple(years) if years else tuple(cfg.ANALYSIS_YEARS)
     os.makedirs(cfg.OUT_DIR, exist_ok=True)
     area, wet = load_static(box)
 
@@ -143,7 +144,7 @@ def main(box="boxB", quadratic=True):
 
     daily_files = [
         f
-        for y in cfg.ANALYSIS_YEARS
+        for y in years
         for f in glob.glob(os.path.join(cfg.GLORYS_DIR, "thetao_daily", f"thetao_daily_{y}_*.nc"))
     ]
     print(f"[{box}] residual field: {len(daily_files)} daily files")
@@ -153,11 +154,11 @@ def main(box="boxB", quadratic=True):
     z = z.where(wet)
 
     # (year, doy, lat, lon): the layout the day-of-year-aligned gather indexes.
-    years = daily["time"].dt.year.values
+    yr_of = daily["time"].dt.year.values
     zda = xr.DataArray(
-        np.stack([z.values[years == y] for y in cfg.ANALYSIS_YEARS]).astype(np.float32),
+        np.stack([z.values[yr_of == y] for y in years]).astype(np.float32),
         dims=("year", "doy", "latitude", "longitude"),
-        coords={"year": list(cfg.ANALYSIS_YEARS), "doy": np.arange(cfg.DAYS_PER_YEAR),
+        coords={"year": list(years), "doy": np.arange(cfg.DAYS_PER_YEAR),
                 "latitude": z["latitude"], "longitude": z["longitude"]},
         name="z",
     )
@@ -177,7 +178,7 @@ def main(box="boxB", quadratic=True):
 
     w = area.fillna(0.0)
     means = pd.DataFrame({
-        "year": list(cfg.ANALYSIS_YEARS),
+        "year": list(years),
         "zbar": ((zda * w).sum(("latitude", "longitude")) / w.sum()).mean("doy").values,
         "sd_Z": zda.std(("doy", "latitude", "longitude")).values,
     })
@@ -213,4 +214,11 @@ def _write(ds, path):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "boxB")
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("box", nargs="?", default="boxB")
+    ap.add_argument("--years", help="comma-separated; default cfg.ANALYSIS_YEARS")
+    ap.add_argument("--linear", action="store_true", help="drop the quadratic trend term")
+    a = ap.parse_args()
+    main(a.box, not a.linear,
+         [int(y) for y in a.years.split(",")] if a.years else None)
