@@ -1008,6 +1008,16 @@ both ($1.00$ and $0.98$).
   carries the same mismatch at $2.4\times$, which is close enough to Box B's $2.6\times$ that the
   two boxes' widths remain comparable to each other even though neither is comparable to a real
   array.
+- **The seeding rectangle is not masked to ocean — known, deferred, to be fixed.** $3.4\%$ of Box B's
+  seeds land on dry cells and are inert for the whole run ($0.1\%$ in Box A). Nothing here is wrong
+  because of it: the surviving seeds stay exactly area-uniform over the ocean part of the rectangle,
+  $\hat Z$ evaluates only on the analysis mask, and every count in this report is taken from what
+  reported in-box rather than from the nominal float count. What it costs is $\sim\!3\%$ of Box B's
+  effective array and a small asymmetry against Box A, which currently rides along inside the
+  measured density ratios rather than being controlled. The fix is to reject seeds off the ocean mask
+  at draw time in `deployment_plan_steady`; it changes the deployment law, so it needs a full
+  re-simulation ($\approx 94$ CPU-h) and should be batched with any other change that also requires
+  one — a genuinely independent Argo-density ensemble being the obvious candidate.
 - **Profiling is synchronized across floats.** Trajectory output is written on a fixed cadence from
   the run start, so all virtual floats profile on the same $36$ days of the year rather than each
   cycling from its own deployment date, as real Argo floats do (@tbl-stock). The realized

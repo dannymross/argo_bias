@@ -244,6 +244,15 @@ def seed_bounds(box, margin):
     margin puts 9.5% of equal-area seeds outside the domain, where they are
     deleted before contributing. Clipping is distribution-neutral -- those seeds
     never entered any design -- and simply stops wasting them.
+
+    NOT masked to ocean, and box B's margin reaches the North American coast:
+    3.4% of its seeds land on dry cells (0.1% for box A), sit motionless, and
+    emit a position sample every cycle for the whole run. Harmless to Zhat,
+    which evaluates only on the analysis mask, and the surviving seeds stay
+    area-uniform over the ocean part of the rectangle -- it costs ~3% of box B's
+    effective array. KNOWN, DEFERRED: rejecting off-mask seeds at draw time
+    changes the deployment law, so it needs a full re-simulation and should be
+    batched with the next change that also needs one.
     """
     la0, la1 = cfg.BOXES[box]["lat_bounds"]
     lo0, lo1 = cfg.BOXES[box]["lon_bounds"]
