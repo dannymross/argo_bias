@@ -291,14 +291,26 @@ different years.
 Both use the same $7{,}500$ designs' worth of sample sizes, so they differ only in *where* the
 points sit.
 
-**Advective.** $307$ floats per replicate (Box A: $357$) seeded uniformly with respect to
-$\mathbb{P}$ — equal-area in latitude, uniform in longitude — over the analysis box widened by
+**Advective.** $307$ floats per replicate (Box A: $357$) seeded uniformly with respect to *surface
+area* — equal-area in latitude, uniform in longitude — over the analysis box widened by
 $8^\circ$ and clipped to the velocity domain, then advected through velocity year $l$. Only profiles
 falling inside the analysis box enter $\hat Z$. Ten velocity years $l \in \{2010,\dots,2019\}$,
 $750$ independent replicates each, each paired with all ten analysis years: $l = k$ is **aligned**
 (flow and field the same calendar year), all others **unaligned**. The Box A float count was chosen
 to match Box B's over-density relative to real Argo (@tbl-argo), so the two grids differ in flow and
 field, not in how heavily they are sampled.
+
+The seeding rectangle is **not masked to ocean**, and Box B's reaches the North American coast, so
+$3.4\%$ of its seeds land on dry cells ($0.1\%$ in Box A). Those floats have no velocity, stay where
+they are, and keep emitting a position sample every cycle — the stationary dots over land in
+@fig-deploy. This costs array size and nothing else. It does not distort the deployment law: seeds
+that fall on ocean are still exactly area-uniform over the ocean part of the rectangle, since
+discarding the dry ones is a restriction to a sub-region rather than a reweighting within it. And it
+does not touch $\hat Z$, which evaluates $\tilde Z_k$ only on the analysis mask and drops everything
+else — of the first $3$ million gathered Box B profiles, none are on land. The effect is a
+$\sim\!3\%$ reduction in Box B's effective array, already absorbed into every measured quantity here,
+all of which are counted from what actually reported inside the box rather than from the nominal
+float count.
 
 **Deployment runs from 540 days before the analysis year (Box A: 720), and the array is in
 equilibrium when the window opens.** A constant release rate cannot reach equilibrium here — the
@@ -329,7 +341,7 @@ $\bar Z_k$ subtraction.
 ```{python}
 #| label: fig-deploy
 #| echo: false
-#| fig-cap: "Box B. Left: seed positions of three deployment replicates, drawn uniformly with respect to P over the seeding margin (dashed) clipped to the velocity domain, and equal-area in latitude. Right: one replicate's float tracks through 2015, with a dot at every profile (10-day cycle). Only profiles inside the analysis box (red) enter Zhat. Tracks are coloured by float; 60 of the replicate's floats are shown to keep the panel readable."
+#| fig-cap: "Box B. Left: seed positions of three deployment replicates, drawn uniformly with respect to surface area over the seeding margin (dashed) clipped to the velocity domain, equal-area in latitude. The margin is not masked to ocean, so about 3 percent of Box B seeds fall on land; those floats never move and never enter Zhat. Right: one replicate's float tracks through 2015, with a dot at every profile (10-day cycle). Only profiles inside the analysis box (red) enter Zhat. Tracks are coloured by float; 60 of the replicate's floats are shown to keep the panel readable."
 
 mm.plot_deployment_advection()
 plt.show()

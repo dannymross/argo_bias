@@ -7,7 +7,8 @@ Zhat = mean_i Z_k(x_i) and bias B = Zhat - Zbar_k.
 Three ensembles are compared, each advective design paired with synthetic
 designs of exactly its own n so that only the point *locations* differ:
 
-  advective  the advected uniform deployment, from sampled_residuals_*.csv
+  advective  the advected uniform deployment, from
+             sampled_residuals_<tag>_<box>.csv
   U-full     n iid draws, cell ~ area, doy ~ Uniform{0..364}; E[B] = 0
   U-doy      n iid draws over cells, holding the advective design's own doys,
              which isolates the bias attributable to *when* the array samples
@@ -96,6 +97,16 @@ def domain_means(zf, wet, w):
                          "sd_Z": np.sqrt(m2.mean(axis=1) - zbar**2)}), by_doy
 
 
+def sampled_path(box, tag):
+    """Where a gathered arm lives. The box is part of the name, not optional.
+
+    Both boxes run the same arms, so a box-free name lets a box A gather
+    silently clobber box B's file -- which is what happened once, and cost a
+    re-gather to notice and undo.
+    """
+    return os.path.join(cfg.OUT_DIR, f"sampled_residuals_{tag}_{box}.csv")
+
+
 def gather_arm(box="boxB", arm="steady", out_tag=None):
     """Concatenate an arm's per-chunk profile CSVs and evaluate Z at each point.
 
@@ -114,7 +125,7 @@ def gather_arm(box="boxB", arm="steady", out_tag=None):
         raise ValueError(f"{dup} duplicated (vel_year, rep, float_id, cycle) rows: "
                          "chunk rep-offsets overlap")
     sampled, ndropped = sr.gather(prof, sr.load_residual_field(box))
-    out = os.path.join(cfg.OUT_DIR, f"sampled_residuals_{out_tag or arm}.csv")
+    out = sampled_path(box, out_tag or arm)
     sampled.to_csv(out, index=False)
     print(f"{len(files)} files, {len(sampled):,} profiles kept, "
           f"{ndropped:,} dropped (masked/outside) -> {out}")
@@ -158,7 +169,7 @@ def advective_estimates(box="boxB", tag="uniform_mc", path=None, keep=None,
 
     `keep` thins each replicate to that many of the `n_deployed` seeded floats.
     """
-    path = path or os.path.join(cfg.OUT_DIR, f"sampled_residuals_{tag}.csv")
+    path = path or sampled_path(box, tag)
     df = pd.read_csv(path, usecols=["vel_year", "rep", "float_id", "doy"] + ZCOLS)
     if keep is not None:
         df = thin_floats(df, keep, n_deployed, seed)
@@ -1357,10 +1368,10 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--box", default="boxB")
     ap.add_argument("--tag", default="uniform_mc",
-                    help="sampled_residuals_<tag>.csv to read")
+                    help="read sampled_residuals_<tag>_<box>.csv")
     ap.add_argument("--arm", default="", help="output filename suffix, e.g. _steady")
     ap.add_argument("--gather", metavar="ARM",
-                    help="first build sampled_residuals_<tag>.csv from this arm's "
+                    help="first build sampled_residuals_<tag>_<box>.csv from this arm's "
                          "design_profiles_<box>_<ARM>_y*.csv")
     ap.add_argument("--seed", type=int, default=11)
     ap.add_argument("--keep", type=int, help="thin each replicate to this many floats")

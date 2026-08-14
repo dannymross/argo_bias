@@ -3,8 +3,12 @@
 # arm's Monte-Carlo summaries. Memory-bound rather than CPU-bound: the whole
 # profile table is concatenated in memory before the gather.
 #
-#   sbatch code/osse/submit_gather_arm.slurm steady _steady
-#   sbatch code/osse/submit_gather_arm.slurm uniform "" uniform_mc
+# Output is sampled_residuals_<TAG>_<BOX>.csv: the box is always in the name, so
+# the two boxes' gathers of the same arm cannot overwrite each other.
+#
+#   sbatch code/osse/submit_gather_arm.slurm steady _steady steady boxB
+#   sbatch code/osse/submit_gather_arm.slurm steady _steady steady boxA
+#   sbatch code/osse/submit_gather_arm.slurm uniform "" uniform_mc boxB
 #
 #SBATCH --job-name=osse_gather_arm
 #SBATCH --partition=standard
@@ -29,7 +33,7 @@ TAG="${3:-$ARM}"
 BOX="${4:-boxB}"
 PY=/storage/work/dmr6737/.conda/envs/argo_bias/bin/python
 
-echo "=== gathering arm '$ARM' -> sampled_residuals_${TAG}.csv ==="
+echo "=== gathering arm '$ARM' ($BOX) -> sampled_residuals_${TAG}_${BOX}.csv ==="
 "$PY" code/osse/mean_mc.py --box "$BOX" --gather "$ARM" --tag "$TAG" --arm "$SUFFIX"
 
 echo "=== done ==="
