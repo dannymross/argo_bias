@@ -64,14 +64,19 @@ def set_box(box):
     return YEARS
 
 
+def area_weights(box="boxB"):
+    """Flat index of the analysis mask and the P weights on it."""
+    a = xr.open_dataset(os.path.join(cfg.OUT_DIR, f"cell_area_{box}.nc"))["cell_area"]
+    a = a.values.ravel()
+    wet = np.flatnonzero(np.isfinite(a))
+    return wet, a[wet] / a[wet].sum()
+
+
 def load_field(box="boxB", tag=None):
     """Flattened residual field, the wet-cell index, and the P weights on it."""
     z = xr.open_dataset(os.path.join(cfg.OUT_DIR, f"residual_field_{tag or box}.nc"))["z"]
-    area = xr.open_dataset(os.path.join(cfg.OUT_DIR, f"cell_area_{box}.nc"))["cell_area"]
-    zf = z.values.reshape(z.sizes["year"], z.sizes["doy"], -1)
-    a = area.values.ravel()
-    wet = np.flatnonzero(np.isfinite(a))
-    return zf, wet, a[wet] / a[wet].sum()
+    wet, w = area_weights(box)
+    return z.values.reshape(z.sizes["year"], z.sizes["doy"], -1), wet, w
 
 
 def domain_means(zf, wet, w):
@@ -245,6 +250,95 @@ def quantile_days(box, qs=(0.05, 0.5, 0.95)):
     return pd.DataFrame(out)
 
 
+VEL_COMPS = {"uo": "eastward", "vo": "northward"}
+M_S_TO_CM_S = 100.0
+
+
+def _velocity_year(box, year):
+    """Park-depth (u, v) over one year on the leap-stripped 365-day calendar.
+
+    Interpolated to PARK_DEPTH between the two archived levels, which is what
+    Parcels does to the same files when it advects the floats.
+    """
+    from osse import design_invariance as di
+    (la0, la1), (lo0, lo1) = cfg.BOXES[box]["lat_bounds"], cfg.BOXES[box]["lon_bounds"]
+    files = [os.path.join(cfg.GLORYS_DIR, "velocity_daily",
+                          f"velocity_daily_park_{year}_{m:02d}.nc") for m in range(1, 13)]
+    with xr.open_mfdataset(files, combine="by_coords") as ds:
+        d = (ds[["uo", "vo"]]
+             .sel(latitude=slice(la0, la1), longitude=slice(lo0, lo1))
+             .interp(depth=di.PARK_DEPTH).load())
+    t = d["time"].dt
+    return d.isel(time=~((t.month == 2) & (t.day == 29)).values)
+
+
+def daily_velocity_spread(box, path=None):
+    """Spatial mean and sd of each velocity component under P, per (year, doy).
+
+    Taken under the same P and on the same mask as the residual field -- the
+    velocity grid is cell-for-cell the analysis grid, and park-depth velocity is
+    defined everywhere the OHC integral is -- so these days are directly
+    comparable to the ones daily_spread scores.
+    """
+    path = path or os.path.join(cfg.OUT_DIR, f"daily_vel_spread_{box}.csv")
+    if os.path.exists(path):
+        return pd.read_csv(path)
+    wet, w = area_weights(box)
+    rows = []
+    for y in _field_years(box):
+        d = _velocity_year(box, y)
+        r = {"year": y, "doy": np.arange(d.sizes["time"])}
+        for c in VEL_COMPS:
+            x = d[c].values.reshape(d.sizes["time"], -1)[:, wet].astype(np.float64)
+            m1 = x @ w
+            r[f"mean_{c}"] = m1 * M_S_TO_CM_S
+            r[f"sd_{c}"] = np.sqrt(np.clip((x * x) @ w - m1**2, 0, None)) * M_S_TO_CM_S
+        rows.append(pd.DataFrame(r))
+    out = pd.concat(rows, ignore_index=True)
+    out.to_csv(path, index=False)
+    return out
+
+
+def velocity_quantile_days(box, comp="uo", qs=(0.05, 0.5, 0.95)):
+    """The (year, doy) whose spatial sd of `comp` is nearest each quantile."""
+    s = daily_velocity_spread(box)
+    sd = s[f"sd_{comp}"].to_numpy()
+    return pd.DataFrame([
+        {"q": q, "year": int(s["year"][i]), "doy": int(s["doy"][i]), "sd": sd[i]}
+        for q in qs
+        for i in [int(np.argmin(np.abs(sd - np.quantile(sd, q))))]])
+
+
+def plot_velocity_quantile_days(comp="uo", boxes=("boxB", "boxA"), qs=(0.05, 0.5, 0.95),
+                                figsize=(12.5, 8.2), clip=0.995):
+    """Single-day park-depth velocity at quantiles of each box's daily spread.
+
+    One row per box on its own scale, as in plot_quantile_days: the boxes differ
+    several-fold in current strength and a shared scale would flatten Box A.
+    """
+    from matplotlib.colors import TwoSlopeNorm
+
+    fig, axes, caxes = _map_grid(len(boxes), len(qs), figsize)
+    for r, box in enumerate(boxes):
+        sel = velocity_quantile_days(box, comp, qs)
+        days = []
+        for y, g in sel.groupby("year", sort=False):
+            d = _velocity_year(box, int(y))[comp]
+            days += [(i, d.isel(time=int(dd)) * M_S_TO_CM_S)
+                     for i, dd in zip(g.index, g["doy"])]
+        days = [d for _, d in sorted(days, key=lambda p: p[0])]
+        hi = max(float(np.nanquantile(np.abs(d.values), clip)) for d in days)
+        norm = TwoSlopeNorm(vmin=-hi, vcenter=0.0, vmax=hi)
+        for c, (ax, day, (_, s)) in enumerate(zip(axes[r], days, sel.iterrows())):
+            im = _draw_map(ax, day, norm, "RdBu_r", _box_extent(box),
+                           f"{box}  {int(s.q * 100)}th pctile day\n"
+                           f"{int(s.year)} doy {int(s.doy) + 1}, "
+                           f"sd {s.sd:.1f} cm/s", r == len(boxes) - 1, c == 0, scale=1.0)
+        fig.colorbar(im, cax=caxes[r],
+                     label=f"{VEL_COMPS[comp]} velocity at 1000 m (cm/s)")
+    return fig
+
+
 def mean_field_months(box, year, months=(1, 4, 7, 10)):
     """Fitted mean field evaluated at mid-month, as a (month, lat, lon) array.
 
@@ -375,7 +469,8 @@ def _geo_ticks(ax, extent, bottom_labels, left_labels, step=5.0):
     ax.grid(lw=0.25, color="0.6", alpha=0.4)
 
 
-def _draw_map(ax, da, norm, cmap, extent, title, bottom_labels, left_labels):
+def _draw_map(ax, da, norm, cmap, extent, title, bottom_labels, left_labels,
+              scale=J_TO_GJ):
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
     pc = ccrs.PlateCarree()
@@ -385,7 +480,7 @@ def _draw_map(ax, da, norm, cmap, extent, title, bottom_labels, left_labels):
     # shading="nearest" (not "auto") and antialiased=False keep every native
     # 1/12 deg cell a hard-edged quad; "auto" happens to resolve to the same
     # thing here, but only because the coordinate vectors match the data shape.
-    im = ax.pcolormesh(da["longitude"], da["latitude"], da.values * J_TO_GJ,
+    im = ax.pcolormesh(da["longitude"], da["latitude"], da.values * scale,
                        cmap=cmap, norm=norm, transform=pc, shading="nearest",
                        antialiased=False, linewidth=0, rasterized=True)
     ax.set_title(title, fontsize=9)
@@ -480,6 +575,48 @@ def argo_region_summary(box="boxB", years=None, path=None, cache=None):
     return out
 
 
+def truth_table(boxes=("boxB", "boxA")):
+    """Domain mean and dispersion of the residual field, both boxes side by side."""
+    out = None
+    for b in boxes:
+        t = pd.read_csv(os.path.join(cfg.OUT_DIR, f"domain_means_{b}.csv"))
+        t = pd.DataFrame({"year": t["year"],
+                          f"Zbar {b}": t["zbar"] * J_TO_GJ,
+                          f"sd_P(Z) {b}": t["sd_Z"] * J_TO_GJ,
+                          f"Zbar/sd {b}": t["zbar"] / t["sd_Z"]})
+        out = t if out is None else out.merge(t, on="year")
+    return out
+
+
+def nsize_table(boxes=("boxB", "boxA"), arm="_steady"):
+    """Retained sample size per advective design, both boxes."""
+    rows = []
+    for b in boxes:
+        adv = pd.read_csv(os.path.join(cfg.OUT_DIR, f"mean_mc_advective_{b}{arm}.csv"))
+        for lab, s in (("profiles", adv["n"]), ("distinct floats", adv["n_floats"])):
+            rows.append({"box": b, "quantity": f"{lab} per design", "min": s.min(),
+                         "5%": s.quantile(.05), "median": s.median(),
+                         "95%": s.quantile(.95), "max": s.max()})
+    return pd.DataFrame(rows)
+
+
+def argo_density_table(boxes=("boxB", "boxA")):
+    """Simulated against real standing stock, both boxes, by analysis year.
+
+    Only the stock and its ratio are carried: profile counts confound array size
+    with cycling cadence, and the ratio is what says whether the two boxes are
+    over-dense by the same factor and so remain comparable to each other.
+    """
+    out = None
+    for b in boxes:
+        t = argo_comparison_table(box=b)
+        t = t[t["year"] != "mean"][["year", "Argo stock", "sim stock", "stock ratio"]]
+        t.columns = ["year", f"Argo {b}", f"sim {b}", f"ratio {b}"]
+        out = t if out is None else out.merge(t, on="year")
+    out.loc["mean"] = ["mean", *out.iloc[:, 1:].mean()]
+    return out
+
+
 def argo_comparison_table(box="boxB", arm="_steady", years=None):
     """Virtual array against the real Argo record, same box and years.
 
@@ -545,7 +682,8 @@ def stock_table(box="boxB", year=2015, tag="_spinup", reps=6, spin_days=None,
 
 
 def plot_deployment_advection(box="boxB", year=2015, reps=3, traj_rep=1,
-                              figsize=(13.5, 6.2), max_tracks=60):
+                              figsize=(13.5, 6.2), max_tracks=60,
+                              n_floats=None, spin_days=None):
     """Where floats are seeded, and where the flow then takes them.
 
     Left: seed positions of a few replicates over the clipped seeding margin.
@@ -556,7 +694,7 @@ def plot_deployment_advection(box="boxB", year=2015, reps=3, traj_rep=1,
     from matplotlib.patches import Rectangle
     from osse import design_invariance as di
 
-    seeds = deployment_sample(box, year, reps)
+    seeds = deployment_sample(box, year, reps, spin_days, n_floats)
     trk = trajectory_sample(box, year, traj_rep)
     (sla0, sla1), (slo0, slo1) = di.seed_bounds(box, di.SEED_MARGIN_UNIFORM)
     (la0, la1), (lo0, lo1) = cfg.BOXES[box]["lat_bounds"], cfg.BOXES[box]["lon_bounds"]
@@ -653,6 +791,92 @@ def plot_domain_map(boxes=("boxA", "boxB"), figsize=(7.5, 6.4)):
     return fig
 
 
+def bathymetry(tag="static_vel"):
+    """GLORYS deptho over the velocity domain, on the native advection grid."""
+    with xr.open_dataset(os.path.join(cfg.GLORYS_DIR, "static", f"{tag}_bathy.nc")) as ds:
+        return ds["deptho"].load()
+
+
+def depth_mask_summary(boxes=("boxB", "boxA"), threshold=2000.0):
+    """Box area retained by the depth cut alone and by the full analysis mask.
+
+    The two differ: a cell can be deeper than the threshold and still be dropped
+    because the OHC integral is undefined at some level within it.
+    """
+    st = xr.open_dataset(os.path.join(cfg.GLORYS_DIR, "static", "static_coords.nc"))
+    dep = bathymetry()
+    rows = []
+    for b in boxes:
+        (la0, la1), (lo0, lo1) = cfg.BOXES[b]["lat_bounds"], cfg.BOXES[b]["lon_bounds"]
+        sl = dict(latitude=slice(la0, la1), longitude=slice(lo0, lo1))
+        A = np.squeeze((st["e1t"].sel(**sl) * st["e2t"].sel(**sl)).values)
+        d = dep.sel(**sl).values
+        with xr.open_dataset(os.path.join(cfg.OUT_DIR, f"cell_area_{b}.nc")) as ds:
+            am = ds["cell_area"].values
+        tot = np.nansum(A)
+        rows.append({"box": b, "cells": d.size,
+                     "% area deeper than cut": 100 * np.nansum(np.where(d > threshold, A, 0)) / tot,
+                     "% area in analysis mask": 100 * np.nansum(am) / tot,
+                     "median depth (m)": float(np.nanmedian(d))})
+    return pd.DataFrame(rows)
+
+
+def plot_bathymetry(boxes=("boxA", "boxB"), threshold=2000.0, figsize=(13.5, 6.2),
+                    cap=6000.0):
+    """Ocean depth over the advection domain, and what the depth cut removes.
+
+    Left: deptho, capped for display so the shelf break is resolved rather than
+    compressed against the abyssal plain. Right: the cells the cut excludes.
+    """
+    import matplotlib.pyplot as plt
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+    from matplotlib.colors import Normalize, ListedColormap
+    from matplotlib.patches import Rectangle, Patch
+
+    dep = bathymetry()
+    e = domain_extents(boxes)
+    v = e["velocity"]
+    ext = [v[2], v[3], v[0], v[1]]
+    pc = ccrs.PlateCarree()
+
+    fig, axes, caxes = _map_grid(1, 2, figsize, top=0.92, bottom=0.08, right=0.90)
+    shallow = dep.where(dep <= threshold)
+    for j, ax in enumerate(axes[0]):
+        ax.set_extent(ext, crs=pc)
+        ax.add_feature(cfeature.LAND, facecolor="0.88", zorder=3)
+        ax.add_feature(cfeature.COASTLINE, lw=0.4, zorder=4)
+        if j == 0:
+            im = ax.pcolormesh(dep["longitude"], dep["latitude"],
+                               np.minimum(dep.values, cap) * 1e-3, cmap="Blues",
+                               norm=Normalize(0.0, cap * 1e-3), transform=pc,
+                               shading="nearest", antialiased=False, linewidth=0,
+                               rasterized=True)
+            ax.set_title(f"GLORYS deptho (capped at {cap * 1e-3:.0f} km)", fontsize=9)
+        else:
+            ax.pcolormesh(dep["longitude"], dep["latitude"],
+                          np.isfinite(dep.values).astype(float), cmap=ListedColormap(["0.93"]),
+                          transform=pc, shading="nearest", rasterized=True)
+            ax.pcolormesh(shallow["longitude"], shallow["latitude"],
+                          np.isfinite(shallow.values).astype(float),
+                          cmap=ListedColormap(["tab:red"]), transform=pc,
+                          shading="nearest", antialiased=False, linewidth=0,
+                          rasterized=True, zorder=2)
+            ax.set_title(f"ocean shallower than {threshold:.0f} m (excluded)", fontsize=9)
+            ax.legend(handles=[Patch(facecolor="tab:red", label=f"< {threshold:.0f} m"),
+                               Patch(facecolor="0.93", label="analysis-eligible")],
+                      loc="lower left", fontsize=7, framealpha=0.9)
+        for b in boxes:
+            la0, la1, lo0, lo1 = e[b]
+            ax.add_patch(Rectangle((lo0, la0), lo1 - lo0, la1 - la0, transform=pc,
+                                   fill=False, edgecolor="k", lw=1.8, zorder=5))
+            ax.text(lo0 + 0.4, la1 - 1.4, b, transform=pc, fontsize=8, zorder=6,
+                    bbox=dict(fc="white", ec="none", alpha=0.75, pad=1.2))
+        _geo_ticks(ax, ext, True, j == 0, step=10.0)
+    fig.colorbar(im, cax=caxes[0], label="depth (km)")
+    return fig
+
+
 # ------------------------------- plotting --------------------------------
 
 def _hist(ax, x, **kw):
@@ -666,6 +890,274 @@ def bias_frame(est, zbar):
     zb = pd.Series(zbar["zbar"].to_numpy(), index=YEARS)
     return pd.DataFrame({k: est[f"zhat_{k}"].to_numpy() - zb[k] for k in YEARS},
                         index=est.index)
+
+
+def load_arm(box="boxB", arm="_steady"):
+    """Every cached ensemble for one box, with YEARS rebound to its field."""
+    set_box(box)
+    r = [pd.read_csv(os.path.join(cfg.OUT_DIR, f"mean_mc_{k}_{box}{arm}.csv"))
+         for k in ("advective", "uniform", "grid")]
+    return (*r, pd.read_csv(os.path.join(cfg.OUT_DIR, f"domain_means_{box}.csv")))
+
+
+def ref_table(unif, adv, zbar):
+    """Uniform ensemble against E[B] = 0 and sd(B) = sigma_k sqrt(mean 1/n)."""
+    nv = adv["n"].to_numpy()
+    B = bias_frame(unif, zbar)
+    se = B.std(ddof=1) / np.sqrt(len(B))
+    return pd.DataFrame({
+        "year": YEARS,
+        "mean B (GJ/m2)": B.mean().to_numpy() * J_TO_GJ,
+        "MC se": se.to_numpy() * J_TO_GJ,
+        "mean B / se": (B.mean() / se).to_numpy(),
+        "sd of B": B.std(ddof=1).to_numpy() * J_TO_GJ,
+        "iid prediction": zbar["sd_Z"].to_numpy() * np.sqrt(np.mean(1.0 / nv)) * J_TO_GJ,
+    })
+
+
+def aligned_table(grid):
+    """Aligned cell against the nine unaligned flows, per analysis year.
+
+    "Implied between-flow sd" nets each unaligned entry's own Monte-Carlo error
+    out of the observed spread across flows; it is the scale the diagonal
+    contrast should be read against, not the MC se.
+    """
+    a = grid[grid["aligned"]].sort_values("analysis_year")
+    o = grid[~grid["aligned"]].groupby("analysis_year")
+    sd_un, se_un = o["mean_B"].std(ddof=1).to_numpy(), o["se_B"].mean().to_numpy()
+    col = grid.groupby("analysis_year")["mean_B"].mean().to_numpy()
+    return pd.DataFrame({
+        "year": a["analysis_year"].to_numpy(),
+        "aligned mean B": a["mean_B"].to_numpy() * J_TO_GJ,
+        "aligned MC se": a["se_B"].to_numpy() * J_TO_GJ,
+        "unaligned mean": o["mean_B"].mean().to_numpy() * J_TO_GJ,
+        "unaligned sd (9 flows)": sd_un * J_TO_GJ,
+        "mean MC se of those 9": se_un * J_TO_GJ,
+        "implied between-flow sd": np.sqrt(np.clip(sd_un**2 - se_un**2, 0, None)) * J_TO_GJ,
+        "aligned - column mean": (a["mean_B"].to_numpy() - col) * J_TO_GJ,
+    })
+
+
+def deff_table(adv, unif):
+    """Float-clustered design effect, and the advective/uniform width ratio."""
+    d = adv[[f"deff_{y}" for y in YEARS]].median()
+    ga = [adv.groupby("vel_year")[f"zhat_{k}"].std(ddof=1).mean() for k in YEARS]
+    gu = [unif.groupby("vel_year")[f"zhat_{k}"].std(ddof=1).mean() for k in YEARS]
+    return pd.DataFrame({
+        "year": YEARS,
+        "median design effect": [d[f"deff_{k}"] for k in YEARS],
+        "sd B advective": np.array(ga) * J_TO_GJ,
+        "sd B uniform": np.array(gu) * J_TO_GJ,
+        "ratio": np.array(ga) / np.array(gu),
+    })
+
+
+def decomp_table(grid):
+    """Temporal/spatial split of the aligned cells, and the temporal term's
+    variability down each column."""
+    a = grid[grid["aligned"]].sort_values("analysis_year")
+    return pd.DataFrame({
+        "year": a["analysis_year"].to_numpy(),
+        "total B": a["mean_B"].to_numpy() * J_TO_GJ,
+        "temporal": a["mean_temporal"].to_numpy() * J_TO_GJ,
+        "spatial | time": a["mean_spatial"].to_numpy() * J_TO_GJ,
+        "MC se": a["se_B"].to_numpy() * J_TO_GJ,
+        "column sd of temporal": (grid.groupby("analysis_year")["mean_temporal"]
+                                  .std(ddof=1).to_numpy()) * J_TO_GJ,
+    })
+
+
+def contrast_table(boxes=("boxB", "boxA"), arm="_steady"):
+    """Aligned-minus-column contrast per box, raw and standardized by sigma_k.
+
+    The boxes differ several-fold in field amplitude, so only the sigma_k-scaled
+    column compares across them; the raw one is kept because it is what every
+    per-box table above reports.
+
+    The "se" column changes meaning on the pooled row -- per-year entries are
+    Monte-Carlo (deployment) error with the flow held fixed, the pooled entry is
+    the across-year standard error of the mean, which is the wider and the
+    relevant scale for the pooled statement. Stated in the caption.
+    """
+    out = None
+    for b in boxes:
+        _, _, grid, zbar = load_arm(b, arm)
+        a = grid[grid["aligned"]].sort_values("analysis_year")
+        col = grid.groupby("analysis_year")["mean_B"].mean().to_numpy()
+        sd = zbar.set_index("year")["sd_Z"].reindex(a["analysis_year"]).to_numpy()
+        c = a["mean_B"].to_numpy() - col
+        t = pd.DataFrame({"year": a["analysis_year"].to_numpy(),
+                          f"contrast {b}": c * J_TO_GJ,
+                          f"se {b}": a["se_B"].to_numpy() * J_TO_GJ,
+                          f"contrast/sd {b}": c / sd})
+        out = t if out is None else out.merge(t, on="year")
+    n = len(out)
+    out.loc["pooled"] = ["pooled", *(out.iloc[:, 1:].mean())]
+    for b in boxes:
+        out.loc["pooled", f"se {b}"] = (
+            out[f"contrast {b}"].iloc[:n].std(ddof=1) / np.sqrt(n))
+    return out
+
+
+def _contrast_matrix(years, gap=2):
+    """Rows of theory.tex eq (Tk): +1 on the aligned flow, -1/|C_k| on C_k.
+
+    C_k = {l : |l - k| >= gap} is the comparison set; gap=2 is the paper's, which
+    drops the adjacent velocity years because D2 is not claimed for them.
+    """
+    y = np.asarray(years)
+    A = np.zeros((len(y), len(y)))
+    for i, k in enumerate(y):
+        c = np.flatnonzero(np.abs(y - k) >= gap)
+        if not len(c):
+            raise ValueError(f"empty comparison set for {k} at gap={gap}")
+        A[i, i], A[i, c] = 1.0, -1.0 / len(c)
+    return A
+
+
+def permutation_test(box="boxB", arm="_steady", n_perm=10000, gap=2, seed=7):
+    """Velocity-label permutation test of H0: w^(k) independent of Z_k.
+
+    Valid only under theory.tex D0/D1a/D1b/D2, which make the MD designs iid
+    conditional on the fields and so the velocity-year labels exchangeable. The
+    null spread it generates is deployment (Monte-Carlo) variability alone --
+    which is exactly why it is anti-conservative when D1b fails.
+
+    Returns (per-year table, pooled dict). Values in GJ/m^2.
+    """
+    adv, _, _, zbar = load_arm(box, arm)
+    years = list(YEARS)
+    B = bias_frame(adv, zbar).to_numpy()
+    sizes = adv.groupby("vel_year").size()
+    if sizes.nunique() != 1:
+        raise ValueError(f"unbalanced design counts: {sizes.to_dict()}")
+    M, D, m = len(years), int(sizes.iloc[0]), len(years)
+    order = np.argsort(adv["vel_year"].to_numpy(), kind="stable")
+    A = _contrast_matrix(years, gap)
+
+    G = B[order].reshape(M, D, m).mean(axis=1)
+    T_obs = (A * G.T).sum(axis=1)
+
+    rng = np.random.default_rng(seed)
+    idx = np.arange(len(B))
+    Tp = np.empty((n_perm, m))
+    for r in range(n_perm):
+        rng.shuffle(idx)
+        Tp[r] = (A * B[idx].reshape(M, D, m).mean(axis=1).T).sum(axis=1)
+
+    sd = Tp.std(axis=0, ddof=1)
+    z_obs, zp = T_obs / sd, np.abs(Tp) / sd
+    lam = zp.max(axis=1)
+    tb_obs, tb = T_obs.mean(), Tp.mean(axis=1)
+
+    tab = pd.DataFrame({
+        "year": years,
+        "T_k (GJ/m2)": T_obs * J_TO_GJ,
+        "perm sd": sd * J_TO_GJ,
+        "T_k / perm sd": z_obs,
+        "p_k (FWER, 2-sided)": (1 + (lam[:, None] >= np.abs(z_obs)).sum(axis=0)) / (1 + n_perm),
+    })
+    pooled = {
+        "Tbar (GJ/m2)": tb_obs * J_TO_GJ,
+        "perm sd of Tbar": tb.std(ddof=1) * J_TO_GJ,
+        "Tbar / perm sd": tb_obs / tb.std(ddof=1),
+        "p two-sided": (1 + (np.abs(tb) >= abs(tb_obs)).sum()) / (1 + n_perm),
+        "p lower-tail": (1 + (tb <= tb_obs).sum()) / (1 + n_perm),
+        "p upper-tail": (1 + (tb >= tb_obs).sum()) / (1 + n_perm),
+        "n_perm": n_perm, "gap": gap, "D": D, "M": M,
+    }
+    return tab, pooled
+
+
+def design_invariance_test(box="boxB", arm="_steady", gap=2):
+    """One-way test of D1a/D1b on the comparison-set flows only.
+
+    Under D1a/D1b (plus D2, which is what licenses using C_k) the designs in
+    C_k are iid for a fixed analysis year, so their per-velocity-year means of
+    B_k differ only by deployment error. The aligned flow is excluded, so this
+    does not presuppose H0 and is not circular with permutation_test.
+    """
+    from scipy import stats
+
+    adv, _, _, zbar = load_arm(box, arm)
+    years = np.asarray(YEARS)
+    B = bias_frame(adv, zbar)
+    lab = adv["vel_year"].to_numpy()
+    rows = []
+    for i, k in enumerate(years):
+        c = years[np.abs(years - k) >= gap]
+        b, g = B[k].to_numpy(), lab
+        keep = np.isin(g, c)
+        b, g = b[keep], g[keep]
+        grp = [b[g == l] for l in c]
+        n = np.array([len(x) for x in grp])
+        mu = np.array([x.mean() for x in grp])
+        ms_b = (n * (mu - b.mean()) ** 2).sum() / (len(c) - 1)
+        ms_w = sum(((x - x.mean()) ** 2).sum() for x in grp) / (len(b) - len(c))
+        f = ms_b / ms_w
+        rows.append({
+            "year": int(k), "flows in C_k": len(c),
+            "F": f, "df1": len(c) - 1, "df2": len(b) - len(c),
+            "p": float(stats.f.sf(f, len(c) - 1, len(b) - len(c))),
+            "within-flow sd": np.sqrt(ms_w) * J_TO_GJ,
+            "between-flow sd": np.sqrt(max(0.0, (ms_b - ms_w) / n.mean())) * J_TO_GJ,
+        })
+    t = pd.DataFrame(rows)
+    t["sd ratio"] = t["between-flow sd"] / (t["within-flow sd"] / np.sqrt(750.0))
+    return t
+
+
+def null_sensitivity(box="boxB", arm="_steady", gap=2, n_perm=10000, seed=7):
+    """What the permutation p-values become once the flow-year variance is put back.
+
+    The permutation null resamples designs, so its spread is sigma_MC^2/D only.
+    If instead each velocity year carries its own effect with variance
+    sigma_flow^2 -- which is what D1b denies and design_invariance_test measures
+    -- then Var(T_k) = (sigma_flow^2 + sigma_MC^2/D)(1 + 1/|C_k|). This is a
+    normal-approximation sensitivity, not a valid test: with one flow
+    realization per year there is no exchangeable unit left to resample.
+    """
+    from scipy import stats
+
+    tab, pooled = permutation_test(box, arm, n_perm, gap, seed)
+    d = design_invariance_test(box, arm, gap)
+    nc = d["flows in C_k"].to_numpy()
+    var = (d["between-flow sd"] ** 2 + (d["within-flow sd"] ** 2) / 750.0) * (1 + 1 / nc)
+    out = tab.copy()
+    out["flow-inflated sd"] = np.sqrt(var)
+    out["sd inflation"] = out["flow-inflated sd"] / out["perm sd"]
+    out["T_k / inflated sd"] = out["T_k (GJ/m2)"] / out["flow-inflated sd"]
+    out["p_k (normal, Bonferroni)"] = np.minimum(
+        1.0, len(out) * 2 * stats.norm.sf(np.abs(out["T_k / inflated sd"])))
+    t = tab["T_k (GJ/m2)"].to_numpy()
+    n_neg = int((t < 0).sum())
+    pooled = {**pooled,
+              "sign test n_neg": n_neg, "sign test m": len(t),
+              "sign test p (2-sided)": float(
+                  2 * min(stats.binom.cdf(min(n_neg, len(t) - n_neg), len(t), 0.5), 0.5))}
+    return out, pooled
+
+
+def lag_profile(box="boxB", arm="_steady"):
+    """Cell mean minus its column mean, averaged by |l - k|.
+
+    D2 asserts the comparison flows carry no dependence on Z_k. If the deviation
+    at lag 1 and lag 2 is of the same sign as lag 0 rather than flat, the
+    comparison set is contaminated and the contrast is attenuated, not clean.
+    """
+    _, _, grid, zbar = load_arm(box, arm)
+    sd = zbar.set_index("year")["sd_Z"]
+    g = grid.copy()
+    g["lag"] = (g["vel_year"] - g["analysis_year"]).abs()
+    g["dev"] = g["mean_B"] - g.groupby("analysis_year")["mean_B"].transform("mean")
+    g["dev_sd"] = g["dev"] / g["analysis_year"].map(sd)
+    out = g.groupby("lag").agg(cells=("dev", "size"),
+                               mean_dev=("dev", "mean"),
+                               se=("dev", "sem"),
+                               mean_dev_sd=("dev_sd", "mean")).reset_index()
+    out["mean_dev"] *= J_TO_GJ
+    out["se"] *= J_TO_GJ
+    return out
 
 
 def plot_reference_hists(unif, zbar, figsize=(13, 3.0)):

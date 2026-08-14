@@ -26,6 +26,11 @@
      "parts": {"bathy": ["deptho", "deptho_lev", "mask"], "coords": ["e1t", "e2t", "e3t"]},
      "note": "split dataset: bathy (deptho/deptho_lev/mask) + coords (e1t/e2t/e3t); e3t is cell thickness for the OHC integral"},
 
+    {"name": "static", "cadence": "static", "region": "buffer",
+     "dataset_id": "cmems_mod_glo_phy_my_0.083deg_static", "file_prefix": "static_vel",
+     "parts": {"bathy": ["deptho", "deptho_lev", "mask"]},
+     "note": "deptho over the full advection domain (the boxes_halo pull above covers only the thetao region); same out_dir, distinct file_prefix"},
+
     {"name": "thetao_daily", "cadence": "daily", "region": "boxes_halo",
      "dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1D-m",
      "variables": ["thetao"], "depth": "thetao_depth",

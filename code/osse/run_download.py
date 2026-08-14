@@ -41,7 +41,8 @@ def _download_group(g, cfg, start=None, end=None):
     name = g["name"]
 
     if g["cadence"] == "static":
-        dg.fetch_static(out_dir, lon, lat, g["parts"], depth_bounds=depth)
+        dg.fetch_static(out_dir, lon, lat, g["parts"], depth_bounds=depth,
+                        file_prefix=g.get("file_prefix", "static"))
     elif g["cadence"] == "daily":
         dg.fetch_monthly(out_dir, name, g["dataset_id"], g["variables"], lon, lat,
                          period["daily_start"], period["daily_end"], depth_bounds=depth)
