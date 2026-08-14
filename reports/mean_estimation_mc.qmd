@@ -391,12 +391,17 @@ Retirements are mortality from the Argo lifespan pool, domain exits are floats d
 velocity region; both are keyed on a float's last profile, so they are mutually exclusive and satisfy
 exactly $\text{stock}_m - \text{stock}_{m-1} = \text{arrivals}_m - \text{departures}_{m-1}$.
 
-The last column, **floats in analysis region**, is the in-box standing stock: profiles in the
-analysis region divided by that month's sampling epochs. Every float profiles exactly once per epoch,
-so this is the number of distinct floats inside the box at a given moment — the same quantity, on the
-same definition, as the "sim" columns of @tbl-argo, and directly comparable to real Argo's occupancy.
-It is not the number of distinct floats that visit the box at some point during the month, which runs
-about $10\%$ higher because of turnover through the boundary.
+The two **floats in …** columns are standing stocks: profiles in that region divided by the month's
+sampling epochs. Every float profiles exactly once per epoch, so each is the number of distinct
+floats in that region at a given moment. The analysis-region one is the same quantity, on the same
+definition, as the "sim" columns of @tbl-argo, and so is directly comparable to real Argo occupancy.
+Neither is the number of distinct floats that *visit* the region at some point in the month, which
+runs about $10\%$ higher because of turnover across the boundary.
+
+Reading the three stock columns across gives the geometry of the array: in Box B through 2015 about
+$187$–$197$ floats sit in the velocity domain, $168$–$181$ of them within the seeding margin, and
+$41$–$48$ inside the analysis box itself. The seeding margin is where the array actually lives, and
+the box is a small window onto it.
 
 @tbl-stock is the spin-up doing its job. **2013-07 to 2014-09 is the build:** releases run $8$–$22$
 floats a month and the domain population climbs from $8$ to $193$. **From 2014-10 the array is at
@@ -417,8 +422,8 @@ profiles per replicate per month fall in Box B's seeding region and $130$ inside
 $212$ for Box A), the rest being floats sitting in the margin — the price of seeding wide enough to
 keep the box replenished. **The profile columns swing with cadence, not coverage:** output is written
 on a fixed $10$-day cadence from run start, so a month contains two, three or four sampling epochs
-and the raw profile counts swing with it. The standing-stock column removes that: it holds at
-$41$–$48$ floats throughout 2015 in Box B and $69$–$73$ in Box A. These are $6$ of the $750$
+and the raw profile counts swing with it. The standing-stock columns remove that: in-box stock holds
+at $41$–$48$ floats throughout 2015 in Box B and $69$–$73$ in Box A. These are $6$ of the $750$
 production replicates, so the within-year Box B decline carries replicate noise; the full ensemble
 puts the 2015 figure at $44.1$ (@tbl-argo).
 
@@ -887,6 +892,70 @@ displacement requiring both a structured field and a flow energetic enough to co
 within it — but this report measures two boxes, which cannot separate "gradient" from "speed" from
 anything else that differs between them. That attribution is not made here.
 
+# Sensitivity: an array at real Argo density
+
+@tbl-argo showed both virtual arrays running $2.4$–$2.6\times$ denser than the real Argo record.
+That leaves $\mathbb{E}[B]$ alone but narrows every histogram, so the question it raises is whether
+the aligned contrast survives at a density a real array would actually have. It does, and the check
+is exact rather than approximate.
+
+**Thinning is exact here.** `deployment_plan_steady` draws each float's seed position, release day
+and lifespan **iid** — inverse-CDF sampling of the release schedule, `rng.choice` on the lifespan
+pool, equal-area uniform in position — and Parcels advects particles independently of one another.
+A uniformly drawn subset of $k$ of a replicate's $n$ seeded floats is therefore itself an iid
+$k$-float design from the same law, identical in distribution to a fresh $k$-float simulation rather
+than merely similar to one. Thinning is applied to the **seeded** float slots, not to the floats that
+happen to reach the box: thinning the survivors to a fixed count would equalize $n$ across designs
+and destroy exactly the flow-dependent retention the grid is measuring. The release schedule needs no
+recalibration, since it is a density and flat stock is preserved at $k/n$ of the level.
+
+Each replicate is thinned to $118$ of $307$ floats in Box B and $149$ of $357$ in Box A, which puts
+the mean per-year stock ratio against real Argo at $0.99$ and $1.00$.
+
+```{python}
+#| label: tbl-density
+#| echo: false
+
+HTML(fmt(mm.density_sensitivity(), 4))
+```
+
+: Full and Argo-density arrays compared, per box. "Contrast" is the aligned-minus-column mean in
+GJ/m$^2$, "contrast/se" divides the pooled value by the across-year standard error of the ten
+per-year contrasts. {#tbl-density}
+
+**The Box B effect survives; Box A still shows nothing.** Thinning removes $62\%$ of Box B's
+profiles and $58\%$ of Box A's, yet the pooled contrast retains $90\%$ of its magnitude in Box B
+($-0.0529$ against $-0.0590$ GJ/m$^2$), stays negative in $10$ of $10$ analysis years, and remains
+$5.4$ across-year standard errors from zero. Box A moves from $+0.0030$ to $+0.0020$ GJ/m$^2$ and
+from four to five negative years, i.e. from indistinguishable-from-nothing to
+indistinguishable-from-nothing.
+
+Three quantities behave as they must, which is a check on the thinning as much as a result:
+
+- **Monte Carlo error grows as $n^{-1/2}$ and nothing else does.** The per-cell standard error rises
+  $\times 1.63$ in Box B and $\times 1.55$ in Box A, against $\sqrt{307/118} = 1.61$ and
+  $\sqrt{357/149} = 1.55$ predicted.
+- **The between-flow standard deviation does not move** — $0.0234 \to 0.0243$ GJ/m$^2$ in Box B,
+  $0.0063 \to 0.0057$ in Box A. It is a property of the flow field, not of how many floats sample it,
+  so it should be invariant to thinning, and it is to within its own estimation noise. This is why
+  the conclusion is robust: the report reads the diagonal against the between-flow scale, and that
+  scale is unchanged.
+- **The design effect is unchanged** ($2.30 \to 2.20$ and $4.24 \to 4.15$), confirming it measures
+  redundancy among a float's consecutive cycles rather than anything about array size.
+
+The uniform-reference check still passes at the thinned size in both boxes — $\mathbb{E}[B] = 0$ to
+within Monte Carlo error and widths matching $\sigma_k\sqrt{\overline{1/n}}$ — so the thinned
+ensembles are exercising the same verified pipeline.
+
+Two limitations. The thinned designs are **nested** inside the full ones, so the two ensembles are
+correlated; this is the right construction for asking "does the same experiment survive at lower
+density", but it is not an independent replicate, and a genuinely independent Argo-density ensemble
+would cost a fresh simulation. And Box B is density-matched **on the mean of per-year ratios**
+($0.99$), not on the ratio of pooled means ($0.82$): real Box B stock triples across the decade
+($8.1$ in 2011 to $31.0$ in 2017) while the simulated array is constant by construction, so the
+thinned array is over-dense before 2015 and under-dense after. Box A has no such trend and matches on
+both ($1.00$ and $0.98$).
+
 # Caveats
 
 - **Two boxes are not a design.** Box B and Box A differ in field structure, current speed,
@@ -914,15 +983,16 @@ anything else that differs between them. That attribution is not made here.
   temporal component differ because $n$ and day-of-year coverage are correlated; the design-weighted
   average is the one consistent with $\mathbb{E}[B]$ and is used throughout. This bites harder in
   Box A, where retention is stronger and the design effect correspondingly larger (@tbl-deff-a).
-- **The array is denser than real Argo, and constant where the real one grows.** The simulated
+- **The main arms are denser than real Argo, and constant where the real one grows.** The simulated
   standing stock is $2.6\times$ the real Box B stock on average and up to $5.2\times$ in the sparse
   early years, and it is held fixed at $41$–$44$ floats while the real stock swings by a factor of
   $3.8$ across the decade (@tbl-argo). This leaves $\mathbb{E}[B]$ alone — the bias of a sample mean
   under a given deployment law does not depend on how many floats realize it — but the per-design
-  spreads shown throughout are roughly $\sqrt{2.6}\approx 1.6$ times narrower than a real array in
-  this box would produce. Treat every width here as a lower bound on real sampling variability. The
-  array was sized to a plausible Argo-like float count rather than matched to this region's measured
-  density; density-matching would mean re-running at roughly $120$ floats instead of $307$. Box A
+  spreads shown outside @tbl-density are roughly $\sqrt{2.6}\approx 1.6$ times narrower than a real
+  array in this box would produce, so read those widths as a lower bound on real sampling
+  variability. @tbl-density resolves the substantive half of this by rerunning the estimator at real
+  density; what it cannot fix is the *constancy*, since a design tracking the real deployment history
+  would confound array growth with the flow-year contrast. Box A
   carries the same mismatch at $2.4\times$, which is close enough to Box B's $2.6\times$ that the
   two boxes' widths remain comparable to each other even though neither is comparable to a real
   array.

@@ -121,15 +121,47 @@ def gather_arm(box="boxB", arm="steady", out_tag=None):
     return sampled
 
 
-def advective_estimates(box="boxB", tag="uniform_mc", path=None):
+def thin_floats(df, keep, n_deployed, seed=17):
+    """Drop each replicate's floats down to `keep` of the `n_deployed` seeded.
+
+    Exact rather than approximate. deployment_plan_steady draws every float's
+    seed position, release day and lifespan iid, and Parcels advects particles
+    independently, so a uniform subset of k of a replicate's seeded floats is
+    itself an iid k-float design from the same law -- identical in distribution
+    to a fresh k-float run, not merely similar. Thinning is applied to the
+    *seeded* ids, not to the floats that happen to reach the box, or floats in
+    retentive years would be preferentially kept.
+    """
+    if keep >= n_deployed:
+        raise ValueError(f"keep={keep} not below n_deployed={n_deployed}")
+    rng = np.random.default_rng(seed)
+    slot = df["float_id"].to_numpy() % n_deployed
+    reps = df["rep"].to_numpy()
+    # One independent draw per (vel_year, rep): hash the pair into a row of the
+    # keep-mask so the same float slot is not kept in every design.
+    yr = pd.factorize(df["vel_year"], sort=True)[0]
+    ndes = (yr.max() + 1) * (reps.max() + 1)
+    mask = np.zeros((ndes, n_deployed), dtype=bool)
+    mask[:, :keep] = True
+    for i in range(ndes):
+        rng.shuffle(mask[i])
+    return df[mask[yr * (reps.max() + 1) + reps, slot]]
+
+
+def advective_estimates(box="boxB", tag="uniform_mc", path=None, keep=None,
+                        n_deployed=None, seed=17):
     """Per-design Zhat, sample size, and the float-clustered design effect.
 
     The design effect is sum_f (cluster sum of centred z)^2 / sum_i (centred
     z)^2: consecutive cycles of one float are near-replicates, so it is the
     factor by which the effective sample size falls short of n.
+
+    `keep` thins each replicate to that many of the `n_deployed` seeded floats.
     """
     path = path or os.path.join(cfg.OUT_DIR, f"sampled_residuals_{tag}.csv")
     df = pd.read_csv(path, usecols=["vel_year", "rep", "float_id", "doy"] + ZCOLS)
+    if keep is not None:
+        df = thin_floats(df, keep, n_deployed, seed)
     key = ["vel_year", "rep"]
     g = df.groupby(key, sort=True)
 
@@ -670,19 +702,23 @@ def stock_table(box="boxB", year=2015, tag="_spinup", reps=6, spin_days=None,
     per = ["deployed", "in_domain", "retired", "advected_out", "prof_seed", "prof_box"]
     tab = raw.set_index("ym")[per] / reps
     tab["epochs"] = raw.set_index("ym")["epochs"]
-    # Per-epoch, not per-month: a float profiles once an epoch, so this is the
-    # in-box standing stock and is what tbl-argo's "sim stock" compares against.
-    tab["stock_box"] = tab["prof_box"] / tab["epochs"]
+    # Per-epoch, not per-month: a float profiles once an epoch, so these are
+    # standing stocks, and the in-box one is what tbl-argo's "sim stock"
+    # compares against.
+    for src in ("seed", "box"):
+        tab[f"stock_{src}"] = tab[f"prof_{src}"] / tab["epochs"]
     tab.index = tab.index.astype(str)
     return tab.rename(columns={
         "deployed": "new floats deployed", "in_domain": "floats in domain",
         "retired": "floats retired", "advected_out": "floats advected out",
         "epochs": "10-day epochs", "prof_seed": "profiles in seeding region",
+        "stock_seed": "floats in seeding region",
         "prof_box": "profiles in analysis region",
         "stock_box": "floats in analysis region"})[
         ["new floats deployed", "floats in domain", "floats retired",
          "floats advected out", "10-day epochs", "profiles in seeding region",
-         "profiles in analysis region", "floats in analysis region"]]
+         "floats in seeding region", "profiles in analysis region",
+         "floats in analysis region"]]
 
 
 def plot_deployment_advection(box="boxB", year=2015, reps=3, traj_rep=1,
@@ -970,6 +1006,32 @@ def decomp_table(grid):
         "column sd of temporal": (grid.groupby("analysis_year")["mean_temporal"]
                                   .std(ddof=1).to_numpy()) * J_TO_GJ,
     })
+
+
+def density_sensitivity(boxes=("boxB", "boxA"), arms=(("_steady", "full"),
+                                                      ("_thin", "Argo-density"))):
+    """Array size, resolution and the aligned contrast, full against thinned."""
+    rows = []
+    for b in boxes:
+        for arm, lab in arms:
+            adv, _, grid, zbar = load_arm(b, arm)
+            al = aligned_table(grid)
+            c = al["aligned - column mean"].to_numpy()
+            sd = zbar.set_index("year")["sd_Z"].reindex(al["year"]).to_numpy() * J_TO_GJ
+            se = c.std(ddof=1) / np.sqrt(len(c))
+            rows.append({
+                "box": b, "array": lab,
+                "floats/design": round(adv["n_floats"].mean(), 1),
+                "profiles/design": round(adv["n"].mean()),
+                "median deff": float(adv[[f"deff_{y}" for y in YEARS]].median().median()),
+                "MC se/cell": grid["se_B"].mean() * J_TO_GJ,
+                "between-flow sd": design_invariance_test(b, arm)["between-flow sd"].mean(),
+                "contrast": c.mean(),
+                "contrast/sd_k": (c / sd).mean(),
+                "negative years": int((c < 0).sum()),
+                "contrast/se": c.mean() / se,
+            })
+    return pd.DataFrame(rows)
 
 
 def contrast_table(boxes=("boxB", "boxA"), arm="_steady"):
@@ -1301,6 +1363,9 @@ if __name__ == "__main__":
                     help="first build sampled_residuals_<tag>.csv from this arm's "
                          "design_profiles_<box>_<ARM>_y*.csv")
     ap.add_argument("--seed", type=int, default=11)
+    ap.add_argument("--keep", type=int, help="thin each replicate to this many floats")
+    ap.add_argument("--n-deployed", type=int, help="floats seeded per replicate; "
+                                                   "required with --keep")
     a = ap.parse_args()
     set_box(a.box)
 
@@ -1313,7 +1378,8 @@ if __name__ == "__main__":
     assert np.allclose(zbar["zbar"], cached["zbar"], rtol=1e-5, atol=1e3), "Zbar mismatch"
     assert np.allclose(zbar["sd_Z"], cached["sd_Z"], rtol=0.02), "sd_Z mismatch"
 
-    adv, doys = advective_estimates(a.box, a.tag)
+    adv, doys = advective_estimates(a.box, a.tag, keep=a.keep,
+                                    n_deployed=a.n_deployed, seed=a.seed)
     adv = adv.merge(temporal_component(doys, by_doy, zbar["zbar"].to_numpy()),
                     on=["vel_year", "rep"])
 
