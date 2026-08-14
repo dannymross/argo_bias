@@ -1034,3 +1034,196 @@ both ($1.00$ and $0.98$).
   itself what the trend-plus-harmonics basis failed to absorb; a different mean-field specification
   would move it. @tbl-truth reports the fit's leftover offset per year, which is largest in
   2010–2014.
+
+# Appendix: every standard deviation and standard error, derived
+
+This appendix is self-contained. It defines each dispersion measure the report and its companion
+quote, derives the relation each one is claimed to satisfy, and closes with a numerical check that
+every relation holds on the actual ensembles. Read it as the audit trail for the uncertainty
+statements made above.
+
+## A.1 What is random
+
+Three independent sources of randomness are in play, and almost every mistake in this area comes
+from conflating them. Fix an analysis year $k$ throughout.
+
+| symbol | source | replication available |
+|---|---|---|
+| $x_i$ | where a given design's profiles fall | $n$ per design |
+| $\omega$ | the deployment draw: seeds, release days, lifespans | $D = 750$ per velocity year |
+| $l$ | which calendar year's velocity field advects them | $M = 10$, **one realization each** |
+
+The residual fields $\{\tilde Z_k\}$ are **not** random: every quantity below is conditional on the
+realized GLORYS decade. The estimand $\bar Z_k = \int \tilde Z_k \, d\mathbb{P}$ is therefore a fixed
+number, not a parameter with a sampling distribution.
+
+## A.2 Dispersion of the field, $\sigma_k$
+
+With $\mathbb{P}$ the normalized area $\times$ time measure on the wet analysis cells,
+
+$$\sigma_k^2 \;=\; \int \tilde Z_k^2 \, d\mathbb{P} \;-\; \Big(\int \tilde Z_k \, d\mathbb{P}\Big)^2 .$$
+
+Writing $\mathbb{P} = \mathbb{P}_{\text{space}} \otimes \mathrm{Unif}\{1,\dots,365\}$ and conditioning
+on the day gives an exact variance decomposition,
+
+$$\sigma_k^2 \;=\; \underbrace{\mathbb{E}_d\big[\mathrm{Var}_{\text{space}}(\tilde Z_k(\cdot, d))\big]}_{\text{within-day spatial structure}}
+\;+\; \underbrace{\mathrm{Var}_d\big(\bar Z_k(d)\big)}_{\text{day-to-day movement of the domain mean}} .$$
+
+The first term is what @fig-days displays and is $96.5$–$99.6\%$ of the total; the second is what makes
+day-of-year coverage able to bias $\hat Z$ at all, and is the $\bar Z_k(d)$ dispersion quoted in the
+temporal/spatial section. Verified exactly (row 1 of @tbl-audit).
+
+## A.3 One design: the sampling variance of $\hat Z$
+
+**Uniform (U-full).** A design is $n$ iid draws from $\mathbb{P}$, so conditional on $n$,
+$\mathbb{E}[\hat Z \mid n] = \bar Z_k$ and $\mathrm{Var}(\hat Z \mid n) = \sigma_k^2 / n$. Since
+$\mathbb{E}[B \mid n] = 0$ for *every* $n$, the law of total variance leaves no between-$n$ term:
+
+$$\mathrm{Var}(B) \;=\; \mathbb{E}\big[\mathrm{Var}(B \mid n)\big] + \mathrm{Var}\big(\mathbb{E}[B \mid n]\big)
+\;=\; \sigma_k^2 \, \mathbb{E}\!\left[\tfrac{1}{n}\right] .$$
+
+This is the "iid prediction" column of @tbl-ref, and it is $\mathbb{E}[1/n]$ rather than
+$1/\mathbb{E}[n]$ — the difference is Jensen's, $1.4\%$ here, but it is the correct form.
+Verified to $1.4\%$ (row 3).
+
+**Advective.** Consecutive cycles of one float are near-replicates, so the profiles are clustered.
+The float-clustered design effect
+
+$$\mathrm{deff}_k \;=\; \frac{\sum_f \big(\sum_{i \in f} (\tilde Z_{k,i} - \hat Z_k)\big)^2}{\sum_i (\tilde Z_{k,i} - \hat Z_k)^2}$$
+
+is the usual cluster-sampling ratio, estimating $1 + (\bar m - 1)\rho$ for mean cluster size $\bar m$
+and intra-float correlation $\rho$. It gives an effective sample size $n_{\text{eff}} = n/\mathrm{deff}_k$
+and $\mathrm{Var}(\hat Z) \approx \mathrm{deff}_k \, \sigma_k^2/n$, so at matched $n$ the advective
+ensemble should be $\sqrt{\mathrm{deff}_k}$ times wider than the uniform one. That is exactly the
+"ratio" column of @tbl-deff against the square root of the "median design effect" column, and it
+holds to $3.5\%$ (row 4). **The width gap between the two ensembles is dependence, not bias.**
+
+## A.4 One cell: the two-level model
+
+A cell of the grid is a pair $(k, l)$ holding $D$ designs. Write
+
+$$B_k^{(l,d)} \;=\; \beta_k \;+\; a_{kl} \;+\; \varepsilon_{kld},
+\qquad \mathrm{Var}(a_{kl}) = \sigma_a^2, \quad \mathrm{Var}(\varepsilon_{kld}) = \sigma_\varepsilon^2,$$
+
+with $a$ the **flow-year effect** — what velocity year $l$ does to the sampling weights — and
+$\varepsilon$ the **deployment noise** from §A.3, whose variance is $\sigma_k^2 \mathbb{E}[1/n]$
+inflated by the design effect. The cell mean is $\bar G_{kl} = \beta_k + a_{kl} + \bar\varepsilon$.
+
+Two different standard deviations follow, and the whole argument of the report turns on keeping them
+apart:
+
+$$\underbrace{\mathrm{se}_{\mathrm{MC}} \;=\; \sigma_\varepsilon/\sqrt{D}}_{\text{flow held fixed}},
+\qquad
+\underbrace{\mathrm{sd}(\bar G_{kl}) \;=\; \sqrt{\sigma_a^2 + \sigma_\varepsilon^2/D}}_{\text{flow varying}} .$$
+
+$\mathrm{se}_{\mathrm{MC}}$ is the "MC se" / "$\mathrm{se}_B$" column everywhere in this report. It
+answers *"could this deployment ensemble have landed here by deployment randomness, with the flow
+held at year $l$?"* — and only that.
+
+**Estimating $\sigma_a$.** Two routes, both method-of-moments and both used above:
+
+1. *Netting* (@tbl-aligned): the spread $s^2$ of the nine unaligned cell means estimates
+   $\sigma_a^2 + \sigma_\varepsilon^2/D$, so $\hat\sigma_a^2 = \max(0,\, s^2 - \overline{\mathrm{se}}^2)$.
+2. *One-way ANOVA on $\mathcal{C}_k$* (`tbl-d1` of the companion report): $\mathrm{MS}_w$ estimates
+   $\sigma_\varepsilon^2$ and $\mathrm{MS}_b$ estimates $\sigma_\varepsilon^2 + D\sigma_a^2$, giving
+   $\hat\sigma_a^2 = (\mathrm{MS}_b - \mathrm{MS}_w)/D$.
+
+They target the same quantity and agree to $4\%$ ($0.0244$ vs $0.0234$ GJ/m$^2$ in Box B, $0.0060$ vs
+$0.0063$ in Box A); they differ only in which flows enter. Both can go negative and are clipped at
+zero, and both degenerate when $D\sigma_a^2 \lesssim \sigma_\varepsilon^2$ — Box A's 2018, where the
+netting leaves $0.0005$ GJ/m$^2$ and the resulting ratio is meaningless.
+
+## A.5 The contrast, and the $(1 + 1/|\mathcal{C}_k|)$ factor
+
+The aligned-minus-comparison contrast is
+$T_k = \bar G_{kk} - |\mathcal{C}_k|^{-1}\sum_{l \in \mathcal{C}_k} \bar G_{kl}$. If the cell means are
+independent with common variance $v$, then since the second term averages $c = |\mathcal{C}_k|$ of them,
+
+$$\mathrm{Var}(T_k) \;=\; v + \frac{v}{c} \;=\; v\Big(1 + \frac{1}{c}\Big),
+\qquad v \;=\; \sigma_a^2 + \frac{\sigma_\varepsilon^2}{D} .$$
+
+With $c \in \{7, 8\}$ the factor is $1.14$–$1.13$, i.e. the contrast is only $\sim\!7\%$ noisier than
+a single cell mean. The report's earlier "aligned $-$ column mean" uses all ten velocity years
+including the aligned one, which changes the coefficients slightly and the numbers negligibly.
+
+## A.6 Pooling across analysis years
+
+$\bar T = m^{-1}\sum_k T_k$ is reported with the **empirical across-year standard error**
+$\mathrm{sd}(\{T_k\})/\sqrt{m}$, not with a Monte-Carlo error propagated through §A.4. That choice is
+deliberate and its assumption should be stated plainly: **it is consistent only if the $T_k$ are
+independent across $k$**. They are not exactly, because all ten share the same $M$ velocity years, so
+their $a$-components are common rather than independent and $\mathrm{Cov}(T_k, T_{k'}) \neq 0$. The
+empirical version at least contains the flow variance, whereas the MC-propagated version excludes it
+entirely and would be far too small; neither is exact. This is the same limitation that blocks a
+valid pooled test, and it is why the report treats $\bar T$ descriptively.
+
+## A.7 The permutation null, and why it is narrow
+
+Relabelling assigns the $N = MD$ designs at random to $M$ groups of $D$. Because
+$\sum_g \bar G_g$ is then a fixed constant, $\mathrm{Var}(\sum_g \bar G_g) = 0$ forces
+$\mathrm{Cov}(\bar G_g, \bar G_h) = -\mathrm{Var}(\bar G)/(M-1)$, while simple random sampling
+without replacement gives $\mathrm{Var}(\bar G_g) = (S^2/D)(1 - 1/M)\,N/(N-1)$ with $S^2$ the pooled
+variance of all $N$ design values. Substituting both into $\mathrm{Var}(T_k)$ and simplifying, the
+$M$-dependence cancels exactly:
+
+$$\mathrm{Var}_{\mathrm{perm}}(T_k) \;=\; \Big(1 + \frac{1}{c}\Big)\frac{S^2}{D}\cdot\frac{N}{N-1} .$$
+
+Verified to $3\%$ (row 5). Now the crux. The pooled $S^2$ *mixes* flow years, so
+$S^2 \approx \sigma_a^2 + \sigma_\varepsilon^2$, whereas §A.5 gives the true variance as
+$(1 + 1/c)(\sigma_a^2 + \sigma_\varepsilon^2/D)$. The ratio is
+
+$$\frac{\mathrm{sd}_{\text{true}}(T_k)}{\mathrm{sd}_{\mathrm{perm}}(T_k)}
+\;=\; \sqrt{\frac{D\sigma_a^2 + \sigma_\varepsilon^2}{\sigma_a^2 + \sigma_\varepsilon^2}} ,$$
+
+which is the inflation factor tabulated in the companion report, verified to $7\%$ (row 6). Two
+consequences worth stating explicitly:
+
+- The permutation null contains $\sigma_a^2/D$ where the truth has $\sigma_a^2$. It divides the
+  flow-year variance by the number of *deployments*, which is not a replication of flows at all.
+- **More replicates make the test worse.** As $D \to \infty$ the permutation sd $\to 0$ like
+  $D^{-1/2}$ while the true sd $\to \sqrt{(1+1/c)\,\sigma_a^2} > 0$. At $D = 750$ with Box B's
+  components the factor is $2.6$; at $D = 7500$ it would be $7.8$. Nothing about
+  increasing Monte-Carlo effort repairs it.
+
+## A.8 Standardization
+
+The boxes differ $3.3\times$ in field amplitude, so cross-box comparison uses $B/\sigma_k$ and
+$T_k/\sigma_k$ throughout. One caveat the audit surfaced: the $\mathrm{sd}_{\mathbb{P}}(Z)$ column of
+@tbl-truth is the **unweighted** spatial standard deviation carried in `domain_means_<box>.csv` from
+`build_residual_field`, not the $\mathbb{P}$-weighted $\sigma_k$ of §A.2. They differ by $0.1$–$0.3\%$
+in Box B and $1.0$–$1.4\%$ in Box A (row 2), always in the same direction. Every standardized number
+in this report inherits that much slop, which is far below the effects being discussed but is a
+definitional mismatch worth closing by writing the $\mathbb{P}$-weighted moments into the cache.
+
+## A.9 Numerical audit
+
+```{python}
+#| label: tbl-audit
+#| echo: false
+
+HTML(fmt(mm.variance_audit(), 4))
+```
+
+: Every relation derived above, evaluated on the actual ensembles. Each entry is the ratio of the
+directly measured quantity to the value the identity predicts, minimised and maximised over the ten
+analysis years; all should be $1$. Rows 1 and 2 are exact identities and hold to machine precision
+and to the stated definitional gap respectively; the rest are approximations whose residuals are
+finite-sample noise. {#tbl-audit}
+
+## A.10 Where each reported number comes from
+
+| reported as | symbol | formula | random over |
+|---|---|---|---|
+| `sd_P(Z)` (@tbl-truth) | $\sigma_k$ | §A.2 | nothing — a field property |
+| `sd of B` (@tbl-ref) | — | spread of $B$ over 7,500 uniform designs | $x_i$, $n$ |
+| `iid prediction` (@tbl-ref) | — | $\sigma_k\sqrt{\mathbb{E}[1/n]}$ | $x_i$, $n$ |
+| `MC se` (@tbl-ref) | — | $\mathrm{sd}(B)/\sqrt{7500}$ | $x_i$, $n$ |
+| `median design effect` (@tbl-deff) | $\mathrm{deff}_k$ | §A.3 | within design |
+| `sd B advective` (@tbl-deff) | $\sigma_\varepsilon$ | mean within-flow-year sd of $\hat Z$ | $\omega$ |
+| `MC se`, `se_B`, `aligned MC se` | $\mathrm{se}_{\mathrm{MC}}$ | $\sigma_\varepsilon/\sqrt{D}$ | $\omega$ only |
+| `unaligned sd (9 flows)` (@tbl-aligned) | $s$ | sd of nine cell means | $\omega$ and $l$ |
+| `implied between-flow sd` (@tbl-aligned) | $\hat\sigma_a$ | $\sqrt{\max(0, s^2 - \overline{\mathrm{se}}^2)}$ | $l$ |
+| `between-flow sd` (companion, `tbl-d1`) | $\hat\sigma_a$ | $\sqrt{(\mathrm{MS}_b-\mathrm{MS}_w)/D}$ | $l$ |
+| `across-year se` (@tbl-density) | — | $\mathrm{sd}(\{T_k\})/\sqrt{m}$ | $k$, assuming independence |
+| `perm sd` (companion, `tbl-perm`) | — | $\sqrt{(1+1/c)S^2/D}$ | relabelling only |
+| `flow-inflated sd` (companion) | — | $\sqrt{(\sigma_a^2 + \sigma_\varepsilon^2/D)(1+1/c)}$ | $\omega$ and $l$ |

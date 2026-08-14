@@ -1019,6 +1019,55 @@ def decomp_table(grid):
     })
 
 
+def variance_audit(boxes=("boxB", "boxA"), arm="_steady", n_perm=4000, D=750):
+    """Every variance identity the report relies on, observed against predicted.
+
+    Each row is a ratio that should be 1. Kept as a rendered check rather than a
+    one-off script so the identities are re-verified whenever the ensembles move.
+    """
+    rows = []
+    for b in boxes:
+        adv, unif, grid, zbar = load_arm(b, arm)
+        Y = list(YEARS)
+        Ba, Bu = bias_frame(adv, zbar), bias_frame(unif, zbar)
+        n, sig = adv["n"].to_numpy(), zbar["sd_Z"].to_numpy()
+
+        zf, wet, w = load_field(b)
+        dm, by_doy = domain_means(zf, wet, w)
+        sig_P = dm["sd_Z"].to_numpy()          # under P; `sig` is the cached unweighted one
+        sv = np.empty_like(by_doy)
+        for i in range(zf.shape[0]):
+            zw = zf[i][:, wet].astype(np.float64)
+            sv[i] = (zw * zw) @ w - (zw @ w) ** 2
+        idy = (sv.mean(axis=1) + by_doy.var(axis=1)) / sig_P**2
+
+        sa = np.array([adv.groupby("vel_year")[f"zhat_{k}"].std(ddof=1).mean() for k in Y])
+        su = np.array([unif.groupby("vel_year")[f"zhat_{k}"].std(ddof=1).mean() for k in Y])
+        dz = adv[[f"deff_{k}" for k in Y]].median().to_numpy()
+
+        an = design_invariance_test(b, arm)
+        c = an["flows in C_k"].to_numpy()
+        tab, _ = permutation_test(b, arm, n_perm=n_perm)
+        o, _ = null_sensitivity(b, arm, n_perm=n_perm)
+        va, ve = (an["between-flow sd"].to_numpy() / J_TO_GJ) ** 2, \
+                 (an["within-flow sd"].to_numpy() / J_TO_GJ) ** 2
+
+        for name, r in (
+            ("sigma_k^2 = E_d[spatial var] + Var_d[Zbar(d)]", idy),
+            ("reported sigma_k / sigma_k under P", sig / sig_P),
+            ("sd(B) uniform = sigma_k sqrt(E[1/n])",
+             Bu.std(ddof=1).to_numpy() / (sig_P * np.sqrt(np.mean(1 / n)))),
+            ("sd(B) advective / uniform = sqrt(deff)", sa / su / np.sqrt(dz)),
+            ("perm sd of T_k = sqrt((1+1/|C_k|) S^2/D)",
+             tab["perm sd"].to_numpy() / J_TO_GJ / np.sqrt((1 + 1 / c) * Ba.var(ddof=1).to_numpy() / D)),
+            ("null inflation = sqrt((D va + ve)/(va + ve))",
+             o["sd inflation"].to_numpy() / np.sqrt((D * va + ve) / (va + ve))),
+        ):
+            rows.append({"box": b, "identity": name, "min ratio": r.min(),
+                         "median ratio": float(np.median(r)), "max ratio": r.max()})
+    return pd.DataFrame(rows)
+
+
 def density_sensitivity(boxes=("boxB", "boxA"), arms=(("_steady", "full"),
                                                       ("_thin", "Argo-density"))):
     """Array size, resolution and the aligned contrast, full against thinned."""

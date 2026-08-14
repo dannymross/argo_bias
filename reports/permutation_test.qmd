@@ -40,6 +40,11 @@ bias incurred when floats advected by velocity year $l$ under deployment replica
 residual OHC field of analysis year $k$; there are $M = 10$ velocity years, $m = 10$ analysis years
 and $D = 750$ replicates per velocity year, in each of two boxes.
 
+Every standard deviation and standard error used here is defined and derived in that report's
+[appendix](mean_estimation_mc.html#appendix-every-standard-deviation-and-standard-error-derived),
+including the permutation variance of $T_k$ and the inflation factor of @tbl-perm-sens, each verified
+numerically against the ensembles.
+
 The short version of the result: the test rejects the null in **both** boxes, including the one in
 which every assumption-light summary in the companion report found nothing; two of its four
 assumptions are then rejected by the data at essentially every analysis year in both boxes; and
