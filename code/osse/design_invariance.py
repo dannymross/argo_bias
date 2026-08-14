@@ -398,7 +398,10 @@ def monthly_stock(path, box, year, life, reps, run_days=360, spin_days=0):
     g = prof.groupby("ym", observed=True)
     tab = pd.DataFrame({"in_domain": g["fid"].nunique(),
                         "prof_seed": g["in_seed"].sum(),
-                        "prof_box": g["in_box"].sum()})
+                        "prof_box": g["in_box"].sum(),
+                        "float_box": (prof[prof["in_box"]].groupby("ym", observed=True)
+                                      ["fid"].nunique())})
+    tab["float_box"] = tab["float_box"].fillna(0)
 
     span = prof.groupby("fid")["ym"].agg(["min", "max"])
     last_t = pd.Series(pd.to_datetime(t[ok])).groupby(fid).max()
@@ -419,8 +422,12 @@ def monthly_stock(path, box, year, life, reps, run_days=360, spin_days=0):
     if bal.max() > 1e-6:
         raise ValueError(f"stock budget off by {bal.max():.4f} floats/month")
 
+    # Capped at the last profile actually written: the nominal grid runs one tick
+    # past the end of the record, which would understate the final month's
+    # per-epoch stock by counting an epoch that produced no profiles.
     ticks = pd.date_range(pd.Timestamp(f"{year}-01-01") - pd.Timedelta(days=spin_days),
-                          pd.Timestamp(f"{year}-01-01") + pd.Timedelta(days=run_days),
+                          min(pd.Timestamp(f"{year}-01-01") + pd.Timedelta(days=run_days),
+                              pd.to_datetime(t[ok]).max()),
                           freq=f"{CYCLE_DAYS}D")
     tab["epochs"] = (pd.PeriodIndex(ticks, freq="M").value_counts()
                      .reindex(tab.index).fillna(0.0))

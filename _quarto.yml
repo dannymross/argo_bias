@@ -15,6 +15,7 @@ project:
     - "reports/design_invariance.qmd"
     - "reports/uniform_deployment.qmd"
     - "reports/mean_estimation_mc.qmd"
+    - "reports/permutation_test.qmd"
 
 execute:
   freeze: auto
@@ -48,6 +49,7 @@ website:
           - reports/design_invariance.qmd
           - reports/uniform_deployment.qmd
           - reports/mean_estimation_mc.qmd
+          - reports/permutation_test.qmd
 
 
 format:

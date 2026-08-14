@@ -670,15 +670,19 @@ def stock_table(box="boxB", year=2015, tag="_spinup", reps=6, spin_days=None,
     per = ["deployed", "in_domain", "retired", "advected_out", "prof_seed", "prof_box"]
     tab = raw.set_index("ym")[per] / reps
     tab["epochs"] = raw.set_index("ym")["epochs"]
+    # Per-epoch, not per-month: a float profiles once an epoch, so this is the
+    # in-box standing stock and is what tbl-argo's "sim stock" compares against.
+    tab["stock_box"] = tab["prof_box"] / tab["epochs"]
     tab.index = tab.index.astype(str)
     return tab.rename(columns={
         "deployed": "new floats deployed", "in_domain": "floats in domain",
         "retired": "floats retired", "advected_out": "floats advected out",
         "epochs": "10-day epochs", "prof_seed": "profiles in seeding region",
-        "prof_box": "profiles in analysis region"})[
+        "prof_box": "profiles in analysis region",
+        "stock_box": "floats in analysis region"})[
         ["new floats deployed", "floats in domain", "floats retired",
          "floats advected out", "10-day epochs", "profiles in seeding region",
-         "profiles in analysis region"]]
+         "profiles in analysis region", "floats in analysis region"]]
 
 
 def plot_deployment_advection(box="boxB", year=2015, reps=3, traj_rep=1,
@@ -854,14 +858,15 @@ def plot_bathymetry(boxes=("boxA", "boxB"), threshold=2000.0, figsize=(13.5, 6.2
                                rasterized=True)
             ax.set_title(f"GLORYS deptho (capped at {cap * 1e-3:.0f} km)", fontsize=9)
         else:
-            ax.pcolormesh(dep["longitude"], dep["latitude"],
-                          np.isfinite(dep.values).astype(float), cmap=ListedColormap(["0.93"]),
-                          transform=pc, shading="nearest", rasterized=True)
-            ax.pcolormesh(shallow["longitude"], shallow["latitude"],
-                          np.isfinite(shallow.values).astype(float),
-                          cmap=ListedColormap(["tab:red"]), transform=pc,
-                          shading="nearest", antialiased=False, linewidth=0,
-                          rasterized=True, zorder=2)
+            # NaN, not 0, off the painted set: a one-colour ListedColormap maps
+            # every finite value to its single colour, so a 0/1 indicator paints
+            # the whole panel. Only NaN is left unpainted.
+            for m, col in ((np.isfinite(dep.values), "0.93"),
+                           (np.isfinite(shallow.values), "tab:red")):
+                ax.pcolormesh(dep["longitude"], dep["latitude"],
+                              np.where(m, 1.0, np.nan), cmap=ListedColormap([col]),
+                              transform=pc, shading="nearest", antialiased=False,
+                              linewidth=0, rasterized=True, zorder=2)
             ax.set_title(f"ocean shallower than {threshold:.0f} m (excluded)", fontsize=9)
             ax.legend(handles=[Patch(facecolor="tab:red", label=f"< {threshold:.0f} m"),
                                Patch(facecolor="0.93", label="analysis-eligible")],

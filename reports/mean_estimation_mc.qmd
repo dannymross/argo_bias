@@ -41,17 +41,15 @@ def fmt(df, dec=3):
 adv, unif, grid, zbar = use("boxB")
 ```
 
-This report is **descriptive through §8**. It measures the sampling distribution of the
-residual-field domain mean under two designs — sampling that is uniform with respect to the analysis
-measure, and sampling by advected virtual floats — and displays those distributions. Standard errors
-are given so the reader can judge what the Monte Carlo does and does not resolve.
+This report is **descriptive only**. It measures the sampling distribution of the residual-field
+domain mean under two designs — sampling that is uniform with respect to the analysis measure, and
+sampling by advected virtual floats — and displays those distributions. It constructs no test
+statistic and reports no $p$-value. Standard errors are given so the reader can judge what the Monte
+Carlo does and does not resolve.
 
-The final section departs from that and carries out the permutation test of `theory.tex`, stating
-the assumptions it needs, testing the ones that are testable, and reporting the $p$-values under
-them. It reaches a negative conclusion about the test rather than about the science: two of the four
-assumptions are rejected by the data at every analysis year in both boxes, and the resulting
-$p$-values are shown to be anti-conservative by a quantified amount. Read the descriptive sections
-as the report's findings and the last as an assessment of a procedure.
+The hypothesis test of `theory.tex` is built on these ensembles in a companion report,
+[A Permutation Test for Preferential Sampling](permutation_test.html), which states the assumptions
+it needs, tests the ones that are testable, and finds two of the four rejected by the data.
 
 Everything is run over **two analysis regions**: Box B, in the North Atlantic Current, and Box A, in
 the subtropical gyre. They are set up identically and reported side by side throughout, in
@@ -362,7 +360,7 @@ short and looping, so floats linger. That is the same difference the spin-up len
 #| label: tbl-stock
 #| echo: false
 
-s = mm.stock_table().reset_index().rename(columns={"index": "year-month"})
+s = mm.stock_table().reset_index().rename(columns={"ym": "year-month"})
 HTML(fmt(s, 1))
 ```
 
@@ -376,7 +374,7 @@ HTML(fmt(s, 1))
 #| echo: false
 
 s = mm.stock_table(box="boxA", n_floats=357, spin_days=720).reset_index().rename(
-    columns={"index": "year-month"})
+    columns={"ym": "year-month"})
 HTML(fmt(s, 1))
 ```
 
@@ -392,6 +390,13 @@ retained; the deployment RNG is keyed on (year, replicate), so this reproduces p
 Retirements are mortality from the Argo lifespan pool, domain exits are floats deleted on leaving the
 velocity region; both are keyed on a float's last profile, so they are mutually exclusive and satisfy
 exactly $\text{stock}_m - \text{stock}_{m-1} = \text{arrivals}_m - \text{departures}_{m-1}$.
+
+The last column, **floats in analysis region**, is the in-box standing stock: profiles in the
+analysis region divided by that month's sampling epochs. Every float profiles exactly once per epoch,
+so this is the number of distinct floats inside the box at a given moment — the same quantity, on the
+same definition, as the "sim" columns of @tbl-argo, and directly comparable to real Argo's occupancy.
+It is not the number of distinct floats that visit the box at some point during the month, which runs
+about $10\%$ higher because of turnover through the boundary.
 
 @tbl-stock is the spin-up doing its job. **2013-07 to 2014-09 is the build:** releases run $8$–$22$
 floats a month and the domain population climbs from $8$ to $193$. **From 2014-10 the array is at
@@ -411,11 +416,11 @@ Two readings common to both. **A quarter to a third of profiles are usable:** in
 profiles per replicate per month fall in Box B's seeding region and $130$ inside the box ($590$ and
 $212$ for Box A), the rest being floats sitting in the margin — the price of seeding wide enough to
 keep the box replenished. **The profile columns swing with cadence, not coverage:** output is written
-on a fixed $10$-day cadence from run start, so all floats profile on the same days and a month
-contains two, three or four sampling epochs. Dividing by the epoch column gives $42$–$48$ in-box
-floats throughout 2015 in Box B and $69$–$73$ in Box A. These are $6$ of the $750$ production
-replicates, so the within-year Box B decline carries replicate noise: the full ensemble resolves the
-same quantity as $46$–$50$ per epoch with a $-3\%$ drift.
+on a fixed $10$-day cadence from run start, so a month contains two, three or four sampling epochs
+and the raw profile counts swing with it. The standing-stock column removes that: it holds at
+$41$–$48$ floats throughout 2015 in Box B and $69$–$73$ in Box A. These are $6$ of the $750$
+production replicates, so the within-year Box B decline carries replicate noise; the full ensemble
+puts the 2015 figure at $44.1$ (@tbl-argo).
 
 ## How the synthetic array compares to real Argo
 
@@ -881,200 +886,6 @@ current speed is $14.1$ cm/s against $6.8$. The measured pattern is consistent w
 displacement requiring both a structured field and a flow energetic enough to concentrate floats
 within it — but this report measures two boxes, which cannot separate "gradient" from "speed" from
 anything else that differs between them. That attribution is not made here.
-
-# A permutation test, and what it would take to believe it
-
-Everything above is a measurement. This section constructs the hypothesis test of `theory.tex`,
-states precisely what it assumes beyond those measurements, tests the assumptions that are testable,
-and reports the $p$-values under them. The conclusion is about the test, not the ocean.
-
-## The statistic
-
-Index analysis years by $k$ and velocity years by $l$, both running over $2010,\dots,2019$, and let
-$\mathcal{C}_k = \{l : |l - k| \ge 2\}$ be the comparison set — the adjacent flow years are dropped
-because assumption D2 below is not claimed for them. With $D = 750$ designs per velocity year,
-
-$$T_k \;=\; \frac{1}{D}\sum_{d} B_k^{(k,d)} \;-\; \frac{1}{|\mathcal{C}_k| D}
-\sum_{l \in \mathcal{C}_k}\sum_{d} B_k^{(l,d)}, \qquad
-\bar T \;=\; \frac{1}{m}\sum_{k=1}^{m} T_k .$$
-
-This is not quite the "aligned $-$ column mean" contrast of @tbl-aligned, which averaged over all ten
-velocity years including the aligned one. The difference is immaterial here: $\bar T = -0.0644$
-GJ/m$^2$ at $\mathcal{C}_k$ gap $2$ against $-0.0655$ at gap $1$ in Box B, and $+0.0030$ against
-$+0.0033$ in Box A.
-
-## What the test assumes
-
-The permutation null is generated by relabelling designs with velocity years — drawing $\lambda$
-uniformly from the labellings that assign exactly $D$ designs to each of the $M$ velocity years, and
-recomputing $T_k$ under $\lambda$, one relabelling shared across all $k$ so the dependence among the
-$T_k$ is preserved. That is a valid null only if the $MD$ designs are exchangeable under $H_0$, which
-`theory.tex` obtains from four assumptions:
-
-- **D0 (deployment exogeneity).** The deployment law $\mathcal{D}$ — positions, mission parameters,
-  lifespans, failure times — does not depend on the ocean state $\tilde Z$.
-- **D1a (constant design mean).** There is a $\bar w \in \mathbb{R}^C$ with
-  $\mathbb{E}[w^{(l)}_j] = \bar w_j$ for every velocity year $l$ and cell $j$.
-- **D1b (design invariance).** $w^{(l)} \overset{d}{=} w^{(l')}$ for all $l, l'$.
-- **D2 (cross-year independence).** For $l \in \mathcal{C}_k$, $w^{(l)}$ is independent of
-  $\tilde Z_k$.
-
-Three further conditions are needed that are not on that list:
-
-- **Balance.** The relabelling group must be the group of permutations preserving $D$ designs per
-  velocity year. This holds by construction — exactly $750$ designs in each of the ten years, in
-  both boxes.
-- **Conditionality.** Lemma 1 of `theory.tex` conditions on the realized fields
-  $\{\tilde Z_k\}_{k=1}^{m}$. Any $p$-value below is therefore a statement about *this* decade of
-  GLORYS, with the velocity and residual fields held at their realized values. It is not a statement
-  about the ocean, and it does not generalize to another decade or another reanalysis.
-- **A pre-specified alternative.** `theory.tex` writes $\hat p_{\mathrm{pool}}$ as an upper-tail
-  probability, $\#\{\bar T(\lambda^{(r)}) \ge \bar T^{\mathrm{obs}}\}$. The Box B effect is
-  *negative*, so that one-sided test returns $p = 1.000$. Nothing in the physics fixes the sign of a
-  preferential-sampling bias in advance, so the two-sided version is reported as primary and the
-  one-sided values are given alongside.
-
-**D0 holds here by construction, and this is the one place the OSSE is strictly better than reality.**
-Seeds are drawn uniformly with respect to $\mathbb{P}$ from a law fixed before any field is read, and
-the release schedule is a deterministic deconvolution; nothing in the deployment depends on
-$\tilde Z$. Lifespans are resampled from the real regional Argo record, which is the only channel by
-which an ocean-state dependence could enter, and it is a weak one. For a test on *real* Argo, D0
-would be the first assumption to fail — real floats are deployed from ships of opportunity along
-routes that are not independent of the circulation.
-
-## The test under those assumptions
-
-```{python}
-#| label: tbl-perm
-#| echo: false
-
-perm = {b: mm.null_sensitivity(b) for b in BOXES}
-keep = ["T_k (GJ/m2)", "perm sd", "T_k / perm sd", "p_k (FWER, 2-sided)"]
-t = perm["boxB"][0][["year"] + keep].copy()
-for c in keep[::3] + keep[2:3]:
-    t[f"{c} A"] = perm["boxA"][0][c].to_numpy()
-t.columns = ["year", "T_k B", "perm sd B", "T_k/sd B", "p_k B",
-             "T_k A", "p_k A", "T_k/sd A"]
-HTML(fmt(t[["year", "T_k B", "perm sd B", "T_k/sd B", "p_k B",
-            "T_k A", "T_k/sd A", "p_k A"]], 4))
-```
-
-: Permutation test by analysis year, $N = 10{,}000$ relabellings, comparison-set gap $2$. $T_k$ and
-the permutation standard deviation are in GJ/m$^2$. $p_k$ is the two-sided familywise value using
-$\Lambda^{(r)} = \max_k |T_k(\lambda^{(r)})|/\hat\sigma_k$, so no further multiplicity correction is
-needed; $10^{-4}$ is the resolution floor $1/(1+N)$. {#tbl-perm}
-
-Pooled over the ten analysis years, **Box B** gives $\bar T = -0.0644$ GJ/m$^2$ against a
-permutation standard deviation of $0.0035$ — a standardized value of $-18.2$, with
-$\hat p_{\text{two-sided}} = \hat p_{\text{lower}} = 10^{-4}$, the resolution floor. Seven of the ten
-per-year familywise values are also at the floor. **Box A** gives $\bar T = +0.0030$ against
-$0.0011$, standardized $+2.73$, $\hat p_{\text{two-sided}} = 0.0068$; four years reach $p_k < 0.05$.
-
-Taken at face value the procedure therefore rejects $H_0$ in **both** boxes — including the box in
-which every assumption-light summary in this report found nothing. That is the first sign that the
-null is too narrow.
-
-## Two of the four assumptions are rejected by the data
-
-D1a and D1b are testable here without assuming $H_0$, because they can be checked on the comparison
-flows alone. Under D1a/D1b (and D2, which licenses using $\mathcal{C}_k$), the designs
-$\{B_k^{(l,d)} : l \in \mathcal{C}_k\}$ are iid for a fixed $k$, so their per-velocity-year means
-differ only by deployment error. A one-way analysis of variance across the flows in $\mathcal{C}_k$
-tests exactly that, and it excludes the aligned cell, so it is not circular with the statistic above.
-
-```{python}
-#| label: tbl-d1
-#| echo: false
-
-d = {b: mm.design_invariance_test(b) for b in BOXES}
-t = d["boxB"][["year", "F", "df1", "df2", "p", "between-flow sd", "sd ratio"]].copy()
-for c in ("F", "p", "between-flow sd", "sd ratio"):
-    t[f"{c} boxA"] = d["boxA"][c].to_numpy()
-HTML(fmt(t, 5))
-```
-
-: Test of D1a/D1b on the comparison flows only, per analysis year. "Between-flow sd" is the
-variance-component estimate $\sqrt{\max(0, (\mathrm{MS}_b - \mathrm{MS}_w)/D)}$ in GJ/m$^2$; "sd
-ratio" expresses it as a multiple of the standard error of a single velocity year's mean,
-$\mathrm{sd}_w/\sqrt{D}$, which is the only source of spread the permutation null has. {#tbl-d1}
-
-**D1a and D1b fail decisively.** In Box B the $F$-test rejects at every one of the ten analysis
-years, $p < 10^{-4}$ in nine of them and $p = 0.005$ in the tenth; in Box A it rejects in nine of ten
-(2018 is the exception at $p = 0.35$). The velocity year demonstrably moves the distribution of the
-sampling weights, which is precisely what D1b denies. The magnitude matters as much as the rejection:
-the between-flow standard deviation is $1.4$–$4.0$ times the standard error of a group mean in Box B
-and $0.3$–$3.6$ times in Box A. Every one of those multiples is variability the permutation null
-does not contain.
-
-D2, by contrast, survives what this design can throw at it. @fig-heat's deviations from the column
-mean show no structure in $|l-k|$ once lag $0$ is set aside: in Box B the correlation between lag and
-mean deviation over lags $1$–$9$ is $-0.04$, and the gap-$1$ and gap-$2$ versions of $\bar T$ differ
-by $2\%$. There is no sign of a contamination decaying with lag that would make $\mathcal{C}_k$
-unusable, so the failure is specifically D1a/D1b, not the comparison set.
-
-## What the failure costs
-
-The permutation resamples *designs*, so its null spread is the deployment component
-$\sigma^2_{\mathrm{MC}}/D$ and nothing else. If instead each velocity year carries its own effect
-with variance $\sigma^2_{\text{flow}}$ — which is what @tbl-d1 measures — then
-
-$$\mathrm{Var}(T_k) \;=\; \Big(\sigma^2_{\text{flow}} + \frac{\sigma^2_{\mathrm{MC}}}{D}\Big)
-\Big(1 + \frac{1}{|\mathcal{C}_k|}\Big),$$
-
-of which the permutation captures only the second term. Substituting the measured components gives
-the sensitivity below. It is a normal approximation, not a repaired test: with **one flow
-realization per velocity year** there is no exchangeable unit left to resample, and no resampling
-scheme on these data can manufacture one.
-
-```{python}
-#| label: tbl-perm-sens
-#| echo: false
-
-cols = ["year", "T_k / perm sd", "sd inflation", "T_k / inflated sd",
-        "p_k (normal, Bonferroni)"]
-t = perm["boxB"][0][cols].copy()
-for c in cols[1:]:
-    t[f"{c} boxA"] = perm["boxA"][0][c].to_numpy()
-t.columns = ["year", "z perm B", "inflation B", "z inflated B", "p B",
-             "z perm A", "inflation A", "z inflated A", "p A"]
-HTML(fmt(t, 4))
-```
-
-: Per-year standardized statistic under the permutation null and under a null that restores the
-measured between-flow variance. $p$ is the two-sided normal tail of the inflated statistic,
-Bonferroni-corrected over the ten analysis years. {#tbl-perm-sens}
-
-The inflation factor is $1.6$–$3.9$ in Box B and $1.0$–$3.7$ in Box A, so the permutation
-$z$-statistics are overstated by roughly a factor of two to four. What survives:
-
-- **Box B keeps a signal, but a much smaller one.** Per-year $|z|$ falls from $1.9$–$9.7$ to
-  $0.7$–$5.5$, and four of ten years survive Bonferroni correction ($2010$, $2015$, $2018$, $2019$)
-  where seven were at the permutation floor.
-- **Box A keeps nothing.** Every per-year Bonferroni $p$ becomes $1.00$; the largest inflated $|z|$
-  is $1.88$. The $p = 0.0068$ from the permutation test was an artefact of the narrow null, exactly
-  as the descriptive sections implied it must be.
-
-The pooled statistic cannot be rescued the same way, and it is worth being explicit about why: the
-ten $T_k$ share the same ten velocity years, so their flow-year errors are common rather than
-independent, and averaging over $k$ does not reduce them by $\sqrt{m}$. A pooled statement needs
-replication in *flows*, of which there are ten, one per year.
-
-The one assumption-light statement available is the sign of the contrast across analysis years.
-Treating the ten signs as exchangeable and independent — which requires the analysis years to be
-independent, itself doubtful for an autocorrelated ocean, but which needs neither D1a nor D1b —
-Box B's $10$ of $10$ negative gives a two-sided sign-test $p = 2^{-9} = 0.0020$, and Box A's $4$ of
-$10$ gives $p = 0.75$. These are the numbers to quote if any are quoted.
-
-## Verdict
-
-Under D0, D1a, D1b, D2 and the three further conditions above, the test rejects $H_0$ in Box B at
-$p \le 10^{-4}$ and in Box A at $p = 0.0068$. **D1a and D1b are rejected by the data at essentially
-every analysis year in both boxes**, and the resulting anti-conservatism is large enough to reverse
-the Box A conclusion entirely and to reduce the Box B one from ten significant years to four. The
-honest summary is that the permutation test as specified is not usable on this design, that the
-descriptive contrast of @tbl-contrast and the sign test are what the data support, and that a valid
-test needs a null which treats the velocity year as the sampling unit — which in turn needs more
-than one flow realization per year.
 
 # Caveats
 
