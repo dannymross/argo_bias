@@ -1133,7 +1133,69 @@ $0.0063$ in Box A); they differ only in which flows enter. Both can go negative 
 zero, and both degenerate when $D\sigma_a^2 \lesssim \sigma_\varepsilon^2$ — Box A's 2018, where the
 netting leaves $0.0005$ GJ/m$^2$ and the resulting ratio is meaningless.
 
-## A.5 The contrast, and the $(1 + 1/|\mathcal{C}_k|)$ factor
+## A.5 Monte-Carlo error itself
+
+Every "se" in these reports is a **Monte-Carlo** error: the uncertainty in a quantity from having
+simulated finitely many replicates, not sampling uncertainty about a population. The generic result
+is one line. If $\hat\theta = R^{-1}\sum_{r} \theta_r$ averages $R$ iid replicates of a quantity with
+variance $\tau^2$, then $\mathrm{Var}(\hat\theta) = \tau^2/R$ and the reported se is the plug-in
+
+$$\widehat{\mathrm{se}} \;=\; \frac{1}{\sqrt{R}}\sqrt{\frac{1}{R-1}\sum_r (\theta_r - \hat\theta)^2} .$$
+
+What changes between the tables is only $R$ and what a "replicate" is:
+
+| se | replicate | $R$ |
+|---|---|---|
+| `se_B`, `MC se`, `aligned MC se` (per grid cell) | one deployment $\omega$, flow year fixed | $D = 750$ |
+| `MC se` (@tbl-ref, whole uniform ensemble) | one uniform design, flows pooled | $N = MD = 7500$ |
+| permutation $p$-value | one relabelling $\lambda$ | $N_{\mathrm{perm}} = 10{,}000$ |
+
+The per-cell se uses $D = 750$ because it is deliberately *conditional on the flow year* — pooling to
+$7500$ would mix in the between-flow variation the report is trying to isolate. The uniform-ensemble
+se legitimately uses all $7500$ because under U-full there is no flow-year effect to preserve: the
+designs are iid draws from $\mathbb{P}$ regardless of which advective design supplied their $n$.
+
+**The error on the error.** A plug-in se is itself estimated. For roughly Gaussian replicates its
+relative standard deviation is $1/\sqrt{2(R-1)}$: $2.6\%$ at $R = 750$, $0.8\%$ at $R = 7500$,
+$0.7\%$ at $R = 10{,}000$. So the per-cell standard errors quoted to three decimals are meaningful in
+their first two digits and no further.
+
+**Monte-Carlo error of a $p$-value.** A permutation $p$-value is a binomial proportion over
+$N_{\mathrm{perm}}$ relabellings, so $\widehat{\mathrm{se}}(\hat p) = \sqrt{\hat p(1-\hat p)/N_{\mathrm{perm}}}$:
+$0.0008$ at $\hat p = 0.0068$ (Box A) and $0.004$ at $\hat p = 0.23$ (Box A thinned). The $+1$ in
+$(1 + \#\{\cdot\})/(1 + N_{\mathrm{perm}})$ is the Davison–Hinkley correction, which keeps the test
+exact by counting the observed labelling as one of its own null replicates; it also fixes the
+attainable minimum at $1/(1+N_{\mathrm{perm}}) = 10^{-4}$. A $p$-value *at* that floor should be read
+as "$< 10^{-4}$, unresolved", never as a point estimate.
+
+**Monte-Carlo error of the variance components.** This is the loosest link in the chain and deserves
+stating plainly. For a balanced one-way layout with $a$ groups of $D$,
+
+$$\mathrm{Var}(\hat\sigma_a^2) \;=\; \frac{1}{D^2}\left[\frac{2\,\mathbb{E}[\mathrm{MS}_b]^2}{a-1}
+\;+\; \frac{2\,\mathbb{E}[\mathrm{MS}_w]^2}{a(D-1)}\right],
+\qquad \mathbb{E}[\mathrm{MS}_b] = \sigma_\varepsilon^2 + D\sigma_a^2 .$$
+
+The first term dominates completely, and it is divided by $a - 1 \in \{6, 7\}$ — **the precision of
+$\hat\sigma_a$ is set by the number of flow years, not by the $750$ deployments inside each.**
+Evaluating at the measured components gives a relative standard deviation on $\hat\sigma_a$ of
+$31$–$41\%$ in Box B (median $34\%$) and $31$–$290\%$ in Box A, the upper end being the degenerate
+2018 cell. The observed across-year scatter of $\hat\sigma_a$ — $26\%$ and $43\%$ — is consistent
+with that, the Box B value running lower because the ten analysis years share the same flows and so
+their estimates are correlated.
+
+This propagates. The inflation factor of §A.8 is roughly proportional to $\hat\sigma_a$ once
+$D\sigma_a^2 \gg \sigma_\varepsilon^2$, so a $34\%$ uncertainty on $\hat\sigma_a$ carries through
+nearly one-for-one. Read "inflation $1.6$–$3.9$" as a factor of roughly $2.5$ known to within about a
+third, not as six significant figures — which is enough to establish that the permutation null is
+materially too narrow, and not enough to correct it to a specific number. That is exactly why §A.8 is
+presented as a sensitivity and not as a repaired test.
+
+**What carries no Monte-Carlo error.** $\bar Z_k$, $\sigma_k$ and the daily spreads are exhaustive
+computations over the whole field, not simulations; the quantile-day selection in @fig-days is a
+lookup over all $3{,}650$ days; and the sign test is exact combinatorics. None of these have an se,
+and none is quoted with one.
+
+## A.6 The contrast, and the $(1 + 1/|\mathcal{C}_k|)$ factor
 
 The aligned-minus-comparison contrast is
 $T_k = \bar G_{kk} - |\mathcal{C}_k|^{-1}\sum_{l \in \mathcal{C}_k} \bar G_{kl}$. If the cell means are
@@ -1146,7 +1208,7 @@ With $c \in \{7, 8\}$ the factor is $1.14$–$1.13$, i.e. the contrast is only $
 a single cell mean. The report's earlier "aligned $-$ column mean" uses all ten velocity years
 including the aligned one, which changes the coefficients slightly and the numbers negligibly.
 
-## A.6 Pooling across analysis years
+## A.7 Pooling across analysis years
 
 $\bar T = m^{-1}\sum_k T_k$ is reported with the **empirical across-year standard error**
 $\mathrm{sd}(\{T_k\})/\sqrt{m}$, not with a Monte-Carlo error propagated through §A.4. That choice is
@@ -1157,7 +1219,7 @@ empirical version at least contains the flow variance, whereas the MC-propagated
 entirely and would be far too small; neither is exact. This is the same limitation that blocks a
 valid pooled test, and it is why the report treats $\bar T$ descriptively.
 
-## A.7 The permutation null, and why it is narrow
+## A.8 The permutation null, and why it is narrow
 
 Relabelling assigns the $N = MD$ designs at random to $M$ groups of $D$. Because
 $\sum_g \bar G_g$ is then a fixed constant, $\mathrm{Var}(\sum_g \bar G_g) = 0$ forces
@@ -1169,7 +1231,7 @@ $M$-dependence cancels exactly:
 $$\mathrm{Var}_{\mathrm{perm}}(T_k) \;=\; \Big(1 + \frac{1}{c}\Big)\frac{S^2}{D}\cdot\frac{N}{N-1} .$$
 
 Verified to $3\%$ (row 5). Now the crux. The pooled $S^2$ *mixes* flow years, so
-$S^2 \approx \sigma_a^2 + \sigma_\varepsilon^2$, whereas §A.5 gives the true variance as
+$S^2 \approx \sigma_a^2 + \sigma_\varepsilon^2$, whereas §A.6 gives the true variance as
 $(1 + 1/c)(\sigma_a^2 + \sigma_\varepsilon^2/D)$. The ratio is
 
 $$\frac{\mathrm{sd}_{\text{true}}(T_k)}{\mathrm{sd}_{\mathrm{perm}}(T_k)}
@@ -1185,7 +1247,7 @@ consequences worth stating explicitly:
   components the factor is $2.6$; at $D = 7500$ it would be $7.8$. Nothing about
   increasing Monte-Carlo effort repairs it.
 
-## A.8 Standardization
+## A.9 Standardization
 
 The boxes differ $3.3\times$ in field amplitude, so cross-box comparison uses $B/\sigma_k$ and
 $T_k/\sigma_k$ throughout. One caveat the audit surfaced: the $\mathrm{sd}_{\mathbb{P}}(Z)$ column of
@@ -1195,7 +1257,7 @@ in Box B and $1.0$–$1.4\%$ in Box A (row 2), always in the same direction. Eve
 in this report inherits that much slop, which is far below the effects being discussed but is a
 definitional mismatch worth closing by writing the $\mathbb{P}$-weighted moments into the cache.
 
-## A.9 Numerical audit
+## A.10 Numerical audit
 
 ```{python}
 #| label: tbl-audit
@@ -1210,7 +1272,7 @@ analysis years; all should be $1$. Rows 1 and 2 are exact identities and hold to
 and to the stated definitional gap respectively; the rest are approximations whose residuals are
 finite-sample noise. {#tbl-audit}
 
-## A.10 Where each reported number comes from
+## A.11 Where each reported number comes from
 
 | reported as | symbol | formula | random over |
 |---|---|---|---|
@@ -1227,3 +1289,9 @@ finite-sample noise. {#tbl-audit}
 | `across-year se` (@tbl-density) | — | $\mathrm{sd}(\{T_k\})/\sqrt{m}$ | $k$, assuming independence |
 | `perm sd` (companion, `tbl-perm`) | — | $\sqrt{(1+1/c)S^2/D}$ | relabelling only |
 | `flow-inflated sd` (companion) | — | $\sqrt{(\sigma_a^2 + \sigma_\varepsilon^2/D)(1+1/c)}$ | $\omega$ and $l$ |
+| `p_k`, `p two-sided` (companion) | $\hat p$ | binomial over relabellings, $\mathrm{se} = \sqrt{\hat p(1-\hat p)/N_{\mathrm{perm}}}$ | relabelling only |
+| `sd inflation` (companion) | — | $\sqrt{(D\sigma_a^2+\sigma_\varepsilon^2)/(\sigma_a^2+\sigma_\varepsilon^2)}$, $\pm\!\sim\!34\%$ via $\hat\sigma_a$ | $l$ |
+
+Precision of each of these is set by its own $R$ (§A.5): three decimals are justified for the
+$D = 750$ cell errors only to their first two digits, $p$-values only to $\pm 0.001$ near $0.01$, and
+$\hat\sigma_a$ and anything derived from it only to about a third of its value.
