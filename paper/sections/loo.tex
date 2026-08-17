@@ -1,0 +1,334 @@
+% ============================================================
+%  Methods section: leave-one-out estimand and estimator.
+%
+%  Macros assumed:  \X  \R  \E  \Var  \Cov  \1  \D  \tZ  \tV
+%  Environments:    definition, proposition, remark, proof
+%  Index convention:  k, l = 1..M velocity/field years;  d = 1..D deployment
+%                     draws;  j = 1..C spacetime cells.
+% ============================================================
+
+\subsection{Notation and standing conventions}
+\label{sec:loo-setup}
+
+Throughout this section the velocity fields $\tV_1,\dots,\tV_M$ and the residual fields
+$\tZ_1,\dots,\tZ_M$ are \emph{fixed}: they are realised reanalysis output, and no distribution is
+placed over them. All randomness enters through the deployment draws
+$\omega_{l,d} \overset{iid}{\sim} \D$, and every expectation and variance below is taken with
+respect to $\D$ alone, conditional on the realised fields.
+
+For a design $X = \{x_1,\dots,x_n\} \subset \X$ write
+\begin{equation}
+  \label{eq:mu-def}
+  \mu_X \;:=\; \hat{\mathbb{P}}_X - \mathbb{P},
+  \qquad
+  \hat{\mathbb{P}}_X \;=\; \frac1n \sum_{i=1}^{n}\delta_{x_i},
+\end{equation}
+a signed measure of total mass zero, whose restriction to the partition $\{c_j\}_{j=1}^{C}$ is the
+vector $\big(w_1 - p_1, \dots, w_C - p_C\big)$. Because $\tZ_k$ is constant within cells, the
+sampling bias against field year $k$ is the bilinear pairing
+\begin{equation}
+  \label{eq:pairing}
+  B_k(X) \;=\; \int_{\X} \tZ_k \, d\mu_X
+  \;=\; \big\langle \mu_X,\, \tZ_k \big\rangle
+  \;=\; \sum_{j=1}^{C}\big(w_j - p_j\big)\,\tZ_{k,j},
+\end{equation}
+an identity rather than an approximation: $\tZ_k$ is a bounded simple function and $\mu_X$ a finite
+signed measure. We abbreviate $\mu^{(l,d)} := \mu_{X^{(l,d)}}$ and
+$B_k^{(l,d)} := \langle \mu^{(l,d)}, \tZ_k\rangle$.
+
+\begin{definition}[Mean footprint of a velocity year]
+\label{def:footprint}
+For each velocity year $l$,
+\begin{equation}
+  m^{(l)} \;:=\; \E_{\omega \sim \D}\big[\mu_{\G(\omega,\, \tV_l)}\big],
+\end{equation}
+the deployment-averaged design deviation induced by $\tV_l$. Since $\D$ and $\tV_l$ are fixed,
+$m^{(l)}$ is a deterministic zero-mass signed measure.
+\end{definition}
+
+\noindent
+Existence is immediate: the cellwise weights satisfy $w_j \in [0,1]$ and $C < \infty$, so
+$\mu^{(l,d)}$ is uniformly bounded and $m^{(l)}$ is a finite average of bounded quantities.
+
+\subsection{The leave-one-out estimand}
+\label{sec:loo-estimand}
+
+\begin{definition}[Leave-one-out reference and estimand]
+\label{def:loo}
+For an analysis year $k$ define the \emph{leave-one-out reference footprint}
+\begin{equation}
+  \bar{m}^{(-k)} \;:=\; \frac{1}{M-1}\sum_{l \neq k} m^{(l)} ,
+\end{equation}
+and the \emph{leave-one-out preferential bias}
+\begin{equation}
+  \label{eq:loo-estimand}
+  \boxed{\;\Theta_k \;:=\; \big\langle\, m^{(k)} - \bar{m}^{(-k)},\;\; \tZ_k \,\big\rangle \;}
+\end{equation}
+\end{definition}
+
+\noindent
+In words: the excess sampling bias against field year $k$ produced by that year's own circulation,
+relative to the bias the remaining $M-1$ circulations would have produced against the \emph{same}
+field. Both terms in \eqref{eq:loo-estimand} are deterministic, so $\Theta_k$ is a fixed quantity
+attached to the realised record, in the units of $\tZ$ (J\,m$^{-2}$).
+
+\begin{remark}[Coverage bias cancels; preferential bias does not]
+\label{rem:coverage}
+Write the mean footprint of each velocity year as a common part plus a year-specific anomaly,
+\begin{equation}
+  \label{eq:mdecomp}
+  m^{(l)} \;=\; \bar{m} \;+\; \delta^{(l)},
+\end{equation}
+where $\bar{m}$ collects whatever is shared by every year --- the array's persistent
+non-uniformity, arising from deployment geography, the time-mean circulation, and bathymetry ---
+and $\delta^{(l)}$ is the departure induced by year $l$'s eddy field. Substituting
+\eqref{eq:mdecomp} into \eqref{eq:loo-estimand},
+\begin{equation}
+  \Theta_k
+  \;=\; \big\langle (\bar{m} + \delta^{(k)}) - (\bar{m} + \bar{\delta}^{(-k)}),\;\; \tZ_k\big\rangle
+  \;=\; \big\langle \delta^{(k)} - \bar{\delta}^{(-k)},\;\; \tZ_k \big\rangle ,
+\end{equation}
+so $\bar{m}$ cancels identically. The cancellation is exact, follows from linearity alone, and
+holds for any decomposition of the form \eqref{eq:mdecomp}: a quantity that does not vary with $l$
+cannot survive a difference taken across $l$.
+
+The structure responsible is that $\Theta_k$ differences two \emph{designs} against a
+\emph{single} field. Had the comparison instead held the design fixed and varied the field, as in
+$\langle m^{(k)}, \tZ_k - \tZ_{k'}\rangle$, the common footprint would multiply
+$\tZ_k - \tZ_{k'} \neq 0$ and would not cancel. Holding the field fixed while varying the
+circulation is therefore the load-bearing feature of the construction, not an incidental choice.
+
+The excluded term $\langle \bar{m}, \tZ_k\rangle$ is the \emph{coverage bias}: the persistent
+sampling footprint paired against field year $k$. It is typically the larger of the two
+contributions to the total bias $\langle m^{(k)}, \tZ_k\rangle$; it is excluded deliberately, for
+the reason given in Remark~\ref{rem:whycare}.
+\end{remark}
+
+\begin{remark}[Why the reference excludes $k$]
+\label{rem:whyloo}
+An alternative is to centre on the grand mean $\bar{m} = M^{-1}\sum_{l} m^{(l)}$ and target
+$\langle m^{(k)} - \bar{m}, \tZ_k\rangle$. That construction is less convenient because the
+identity $\sum_{l}(m^{(l)} - \bar{m}) = 0$ forces the reference to depend on year $k$ itself: any
+excess in $m^{(k)}$ is offset by a compensating deficit distributed across the remaining years, so
+a contrast against a strict subset of them acquires a multiplicative distortion and a residual
+depending on which years were excluded. Removing $k$ from its own reference eliminates the
+constraint, and with it both artefacts. The two estimands differ by a known factor,
+$\langle m^{(k)} - \bar m, \tZ_k\rangle = \tfrac{M-1}{M}\,\Theta_k$.
+\end{remark}
+
+\begin{remark}[What $\Theta_k$ does and does not isolate]
+\label{rem:interpretation}
+$\Theta_k$ is nonzero precisely when the design generated by $\tV_k$ is aligned with $\tZ_k$ to a
+greater degree than designs generated by other years' circulations. Because $\tV_k$ and $\tZ_k$
+arise from the same ocean state, such alignment is the signature of preferential sampling in the
+sense of $[S,X] \neq [S][X]$, restricted to the flow-anomaly component of the design.
+
+The reference $\bar{m}^{(-k)}$ includes the adjacent years $l = k \pm 1$, whose circulations retain
+dependence on $\tZ_k$ through ocean memory. Any such residual alignment inflates the reference and
+therefore \emph{attenuates} $\Theta_k$. The estimand is thus conservative: it understates the
+excess alignment by an amount governed by the persistence of the flow--field coupling, which
+Section~\ref{sec:XXX} quantifies through the dependence of $\langle m^{(l)}, \tZ_k\rangle$ on
+$|l-k|$. We prefer attenuation of a well-defined target to the alternative of excluding adjacent
+years, which reintroduces a reference depending on the excluded set.
+\end{remark}
+
+\begin{remark}[Why the preferential component is of interest even when small]
+\label{rem:whycare}
+Coverage bias is a deterministic function of position: given the profile locations and a
+climatology, $\langle \bar{m}, \tZ_k\rangle$ can be computed and removed, or equivalently
+suppressed by inverse-intensity weighting of the observations. Preferential bias admits no such
+correction. It is a covariance between the sampling design and the component of the field that
+position does not predict, so reweighting by position --- which is all an estimated sampling
+intensity supplies --- cannot reach it. The two components differ in kind and not merely in
+magnitude, and $\Theta_k$ isolates the one that survives the standard corrections.
+
+The mechanism is intrinsic to the platform. Floats are advected by geostrophic currents, and
+those currents are related through thermal wind to the density structure that determines heat
+content; the instrument is transported by the field it measures. This is a property of Lagrangian
+sampling as such --- shared with surface drifters and with any platform whose position is set by
+the flow, and absent from moored or ship-based observation --- rather than a defect of the Argo
+design.
+
+Two further points bear on interpretation. First, if the underlying mechanism is sign-definite,
+for instance if warm-core anticyclones retain floats more effectively than cold-core cyclones,
+the bias does not average away as the array grows: it is a floor rather than an error term.
+Second, and more consequentially, \textbf{the threat to climate applications is drift rather than
+level}. A preferential offset constant in time affects the estimated mean state but cancels in
+anomalies and trends, which are the quantities used in ocean heat uptake and Earth energy
+imbalance assessments; a \emph{time-varying} offset does not. The Argo array roughly tripled in
+size between 2004 and 2007, parking depths were standardised, float models changed, and
+high-latitude coverage expanded. Any accompanying change in trapping propensity appears as a
+spurious heat flux
+\begin{equation}
+  \label{eq:flux}
+  \frac{\Delta\Theta}{\Delta t \times 3.15\times10^{7}\,\mathrm{s}} \quad \mathrm{W\,m^{-2}},
+\end{equation}
+with $\Delta t$ the span in years, so that a drift of $5\times10^{7}$ J\,m$^{-2}$ over a decade
+corresponds to $0.16$ W\,m$^{-2}$ --- of order a fifth of the present energy imbalance.
+Estimating $\Theta_k$ separately by year, rather than pooling alone, is therefore the more
+informative use of the construction.
+
+Finally, ``not correctable by reweighting'' should not be read as ``not correctable''. Because
+altimetry observes the mesoscale field independently of Argo, post-stratifying profiles by eddy
+class supplies the missing information and removes the class-driven component of the bias. The
+accurate statement is that preferential bias is invisible to position-based methods and can be
+addressed only using external information about the field itself.
+\end{remark}
+
+\subsection{Unbiased estimation}
+\label{sec:loo-estimator}
+
+Let $\bar{G}_{kl} := D^{-1}\sum_{d=1}^{D} B_k^{(l,d)}$ denote the cell mean of the simulation
+array.
+
+\begin{definition}[Leave-one-out estimator]
+\label{def:loo-est}
+\begin{equation}
+  \label{eq:loo-est}
+  \boxed{\;\widehat{\Theta}_k \;:=\; \bar{G}_{kk} \;-\; \frac{1}{M-1}\sum_{l \neq k} \bar{G}_{kl}\;}
+\end{equation}
+\end{definition}
+
+\begin{proposition}[Exact unbiasedness]
+\label{prop:unbiased}
+For every $k$,
+\begin{equation}
+  \E\big[\widehat{\Theta}_k\big] \;=\; \Theta_k ,
+\end{equation}
+with no assumption on the velocity fields, the residual fields, or their relationship beyond the
+existence of $m^{(l)}$.
+\end{proposition}
+
+\begin{proof}
+Each $\mu^{(l,d)}$ is bounded and $C < \infty$, so $B_k^{(l,d)}$ is integrable and expectation
+commutes with the finite sums below. For any $l$, by linearity of the pairing in its first
+argument and Definition~\ref{def:footprint},
+\begin{equation}
+  \label{eq:cellmean}
+  \E\big[\bar{G}_{kl}\big]
+  \;=\; \frac{1}{D}\sum_{d=1}^{D} \E\big[\langle \mu^{(l,d)},\, \tZ_k\rangle\big]
+  \;=\; \frac{1}{D}\sum_{d=1}^{D} \big\langle \E\big[\mu^{(l,d)}\big],\, \tZ_k\big\rangle
+  \;=\; \big\langle m^{(l)},\, \tZ_k \big\rangle ,
+\end{equation}
+the last step because the $\omega_{l,d}$ are identically distributed across $d$. Applying
+\eqref{eq:cellmean} to \eqref{eq:loo-est} and using linearity once more,
+\begin{equation}
+  \E\big[\widehat{\Theta}_k\big]
+  \;=\; \big\langle m^{(k)}, \tZ_k\big\rangle - \frac{1}{M-1}\sum_{l\neq k}\big\langle m^{(l)}, \tZ_k\big\rangle
+  \;=\; \Big\langle m^{(k)} - \frac{1}{M-1}\sum_{l\neq k} m^{(l)},\;\tZ_k\Big\rangle
+  \;=\; \Theta_k . \qedhere
+\end{equation}
+\end{proof}
+
+\begin{remark}
+\label{rem:noassumption}
+The proof uses only linearity of \eqref{eq:pairing}, boundedness, and the fact that deployment
+draws are identically distributed within a cell. In particular it does not require the designs to
+be identically distributed across velocity years, nor the residual fields to be exchangeable across
+years, nor any distributional form for $B$. Those conditions are needed to attach a $p$-value to
+$\widehat{\Theta}_k$ (Section~\ref{sec:XXX}), not to estimate $\Theta_k$. Estimation and inference
+are therefore separable: $\widehat{\Theta}_k$ may be reported with its standard error even where
+the randomisation hypothesis underlying the permutation test is in doubt.
+\end{remark}
+
+\subsection{Variance}
+\label{sec:loo-var}
+
+Write, for each cell,
+\begin{equation}
+  \sigma^2_{kl} \;:=\; \Var_{\omega\sim\D}\Big(\big\langle \mu_{\G(\omega,\tV_l)},\, \tZ_k\big\rangle\Big) ,
+\end{equation}
+the deployment variance of the single-design bias. Finiteness again follows from boundedness of
+$\mu$ and $C < \infty$.
+
+\begin{proposition}[Variance of the estimator]
+\label{prop:var}
+If the deployment draws $\{\omega_{l,d}\}$ are mutually independent across all pairs $(l,d)$, then
+\begin{equation}
+  \label{eq:var-general}
+  \Var\big(\widehat{\Theta}_k\big)
+  \;=\; \frac{1}{D}\left[\, \sigma^2_{kk} \;+\; \frac{1}{(M-1)^2}\sum_{l \neq k} \sigma^2_{kl} \,\right] .
+\end{equation}
+If in addition $\sigma^2_{kl} \equiv \sigma^2_k$ for all $l$, this reduces to
+\begin{equation}
+  \label{eq:var-homo}
+  \Var\big(\widehat{\Theta}_k\big) \;=\; \frac{\sigma_k^{2}}{D}\left(1 + \frac{1}{M-1}\right),
+  \qquad
+  \mathrm{sd}\big(\widehat{\Theta}_k\big) \;=\; \sigma_k\sqrt{\frac{M}{(M-1)D}} .
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+Within cell $(k,l)$ the summands $B_k^{(l,d)}$, $d = 1,\dots,D$, are i.i.d.\ with variance
+$\sigma^2_{kl}$, so $\Var(\bar{G}_{kl}) = \sigma^2_{kl}/D$. Independence across pairs $(l,d)$
+makes the cell means $\{\bar{G}_{kl}\}_{l}$ mutually independent, so the variance of the linear
+combination \eqref{eq:loo-est} is the weighted sum of variances with squared coefficients $1$ and
+$(M-1)^{-2}$:
+\begin{equation}
+  \Var\big(\widehat{\Theta}_k\big)
+  \;=\; \Var\big(\bar{G}_{kk}\big) + \frac{1}{(M-1)^2}\sum_{l\neq k}\Var\big(\bar{G}_{kl}\big) ,
+\end{equation}
+which is \eqref{eq:var-general}. Substituting $\sigma^2_{kl} \equiv \sigma^2_k$ and using
+$\sum_{l\neq k} 1 = M-1$ gives \eqref{eq:var-homo}.
+\end{proof}
+
+\begin{remark}[Estimating $\sigma^2_{kl}$, and the effective sample size]
+\label{rem:sigma}
+$\sigma^2_{kl}$ is estimated by the within-cell sample variance of $\{B_k^{(l,d)}\}_{d=1}^{D}$,
+which requires no model. It is worth noting what it is not: for a design consisting of $n$
+independent draws from $\mathbb{P}$ one would have
+$\sigma^2_{kl} = \Var_{\mathbb{P}}(\tZ_k)\,\E[1/n]$, but advected floats are strongly clustered
+along trajectories, so consecutive profiles are near-replicates and the effective sample size is
+far below $n$. The empirical within-cell variance captures this automatically; the i.i.d.\ formula
+would understate it substantially and should not be substituted.
+\end{remark}
+
+\begin{remark}[Common random numbers]
+\label{rem:crn}
+If a single deployment realisation $\omega_d$ is reused across velocity years, the cell means
+$\{\bar{G}_{kl}\}_l$ are no longer independent and \eqref{eq:var-general} requires a covariance
+term. Writing $\rho$ for the common correlation between $\bar{G}_{kl}$ and $\bar{G}_{kl'}$,
+$l \neq l'$, under the homoscedastic model,
+\begin{equation}
+  \Var\big(\widehat{\Theta}_k\big)
+  \;=\; \frac{\sigma_k^2}{D}\left(1 + \frac{1}{M-1}\right)(1-\rho) ,
+\end{equation}
+a variance reduction when $\rho > 0$. Proposition~\ref{prop:unbiased} is unaffected, since it uses
+only marginal first moments. We nonetheless draw $\omega_{l,d}$ independently for each pair: the
+dependence induced by shared seeds decays with $|l - l'|$, which would render the velocity-year
+labels non-exchangeable and invalidate the permutation reference distribution of
+Section~\ref{sec:XXX}, and the achievable reduction is small because trajectories from common seeds
+separate over a Lyapunov time short relative to the simulation length.
+\end{remark}
+
+\begin{remark}[Comparison with a gapped contrast]
+\label{rem:gap}
+A contrast that omits adjacent years, using $\mathcal{C}_k = \{l : |l-k| \ge 2\}$ with
+$c = |\mathcal{C}_k|$, has variance $\sigma_k^2 D^{-1}(1 + c^{-1})$ under the same homoscedastic
+model. Since $c < M-1$, the gapped contrast has strictly larger variance than
+\eqref{eq:var-homo} \emph{and} is biased for $\Theta_k$ unless the omitted years satisfy an
+additional condition. The leave-one-out form is therefore preferable on both counts, and any
+gapped variant is best reported as a sensitivity analysis for Remark~\ref{rem:interpretation}
+rather than as the primary estimate.
+\end{remark}
+
+\subsection{Pooled estimator}
+\label{sec:loo-pooled}
+
+\begin{definition}
+\begin{equation}
+  \bar{\Theta} \;:=\; \frac{1}{m}\sum_{k=1}^{m} \Theta_k ,
+  \qquad
+  \widehat{\bar{\Theta}} \;:=\; \frac{1}{m}\sum_{k=1}^{m} \widehat{\Theta}_k ,
+\end{equation}
+where $k$ ranges over the $m \le M$ analysis years.
+\end{definition}
+
+\noindent
+Unbiasedness is immediate from Proposition~\ref{prop:unbiased} and linearity:
+$\E[\widehat{\bar{\Theta}}] = \bar{\Theta}$, again without assumption. The variance does not
+factorise so simply, because $\widehat{\Theta}_k$ and $\widehat{\Theta}_{k'}$ share cell means
+computed from the same simulations; it is therefore estimated directly from the empirical
+covariance of $\{\widehat{\Theta}_k\}$ across replicate subsamples, or bounded above by
+$m^{-1}\max_k \Var(\widehat{\Theta}_k) \cdot m = \max_k \Var(\widehat{\Theta}_k)$ in the worst case
+of perfect correlation.
