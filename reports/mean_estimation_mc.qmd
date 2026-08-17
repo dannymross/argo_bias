@@ -2,6 +2,7 @@
 title: "Monte-Carlo Sampling Distributions of the Residual-Field Mean"
 jupyter: python3
 fig-dpi: 300
+bibliography: references.bib
 ---
 
 ```{=html}
@@ -47,6 +48,20 @@ sampling by advected virtual floats — and displays those distributions. It con
 statistic and reports no $p$-value. Standard errors are given so the reader can judge what the Monte
 Carlo does and does not resolve.
 
+It is organized so that the assumptions enter in one place and as late as possible.
+
+1. **The bias and its distribution**, from the aligned cells alone — the array advected by the same
+   calendar year's flow as the field it samples. This is a direct Monte Carlo summary of realized
+   designs and rests on no assumption whatever. It answers what the bias of an advectively sampled
+   OHC estimate *is*, and stops there.
+2. **Separating coverage bias from preferential sampling.** An advected array is non-representative
+   for reasons unrelated to the field — retention, shelf thinning, a finite footprint — and would be
+   biased against a field it was statistically independent of. Pairing each field year against nine
+   *unaligned* flow years cancels that generic component exactly, by a zero-sum contrast along the
+   flow-year axis, leaving the part attributable to flow and field sharing an ocean state. The
+   cancellation is exact; recovering preferential sampling from what remains costs exactly one
+   assumption, stated and probed there.
+
 The hypothesis test of `theory.tex` is built on these ensembles in a companion report,
 [A Permutation Test for Preferential Sampling](permutation_test.html), which states the assumptions
 it needs, tests the ones that are testable, and finds two of the four rejected by the data.
@@ -54,8 +69,8 @@ it needs, tests the ones that are testable, and finds two of the four rejected b
 Everything is run over **two analysis regions**: Box B, in the North Atlantic Current, and Box A, in
 the subtropical gyre. They are set up identically and reported side by side throughout, in
 panel-tabsets on every figure and table, so the two can be compared under one construction. Because
-their fields differ $3.3\times$ in amplitude, the cross-box comparison is made on the standardized
-scale $B/\sigma_k$ and collected in a single section near the end.
+their fields differ $3.3\times$ in amplitude, every cross-box comparison is made on the standardized
+scale $B/\sigma_k$.
 
 # Data and models
 
@@ -474,7 +489,7 @@ What this does and does not affect. It does **not** move $\mathbb{E}[B]$: the es
 mean, and its bias under a given deployment law does not depend on how many floats realize that law.
 The aligned-minus-column contrasts are therefore unaffected. It *does* affect **width**. The
 per-design spread scales like $n^{-1/2}$, so at $2.6\times$ the real sampling density the histograms
-in @fig-grid are roughly $\sqrt{2.6} \approx 1.6$ times narrower than a real Argo array in this box
+in @fig-aligned are roughly $\sqrt{2.6} \approx 1.6$ times narrower than a real Argo array in this box
 would produce ($\sqrt{2.4} \approx 1.55$ in Box A). Read the spreads as a lower bound on what a real
 array would face, not as a forecast of it.
 
@@ -567,7 +582,15 @@ $\approx 0.003$ in Box A — but relative to each box's own $\sigma_k$ both are 
 two grids below therefore resolve standardized bias equally well, which is what makes them
 comparable at all.
 
-# Advective sampling
+# The bias of an advectively sampled array
+
+This section reports the sampling distribution of $B$ for the physically realizable case — the
+array advected by the *same* calendar year's flow as the field it samples, $l = k$ — and does
+nothing else. Every number in it is a direct Monte Carlo summary of $750$ realized designs per
+year. No comparison across flow years is made, no null is imposed, and no invariance or
+exchangeability assumption is used anywhere. Whether the bias can be attributed to preferential
+sampling as opposed to the array's generic geometry is a separate question, deferred to the next
+section; here the quantity is simply the total bias of the estimator.
 
 ::: {.panel-tabset}
 
@@ -584,13 +607,22 @@ plt.show()
 ```
 
 ```{python}
-#| label: fig-grid
+#| label: fig-aligned
 #| echo: false
-#| fig-cap: "Box B. Sampling distribution of the bias B = Zhat - Zbar_k for every (analysis year, velocity year) pairing. Rows are the analysis year of the field, columns the velocity year of the flow. Grey: advective designs. Dashed blue: the n-matched uniform reference for the same cell. Solid red vertical line: zero, the target. Dotted black line: that panel's ensemble mean. Aligned cells (flow year = field year) are outlined in red. One shared axis throughout, so panels are comparable across rows as well as within them."
+#| fig-cap: "Box B. Sampling distribution of the bias B = Zhat - Zbar_k in the aligned cells, one panel per analysis year, over 750 deployment replicates. Grey: advective designs. Dashed blue: the n-matched uniform reference for the same cell. Solid red vertical line: zero, the target. Dotted black line: the ensemble mean. Axis limits are set from the aligned cells alone."
 
-mm.plot_advective_grid(adv, unif, zbar)
+mm.plot_aligned_hists(adv, unif, zbar)
 plt.show()
 ```
+
+```{python}
+#| label: tbl-diag
+#| echo: false
+
+HTML(fmt(mm.diagonal_table(adv, zbar), 4))
+```
+
+: Box B aligned-cell bias distribution by analysis year. {#tbl-diag}
 
 ## Box A
 
@@ -605,124 +637,45 @@ plt.show()
 ```
 
 ```{python}
-#| label: fig-grid-a
+#| label: fig-aligned-a
 #| echo: false
-#| fig-cap: "Box A, same construction as the Box B grid. The axis is Box A's own: the shared limits are set from this box's own 1st and 99th percentiles, so panels are comparable within the figure but not across figures. Compare the two boxes through the standardized contrast table instead."
+#| fig-cap: "Box A, same construction as the Box B panel, on its own axis: the bias scale here is roughly a third of Box B's. Compare the two boxes through the standardized column of the tables, not across these two figures."
 
-mm.plot_advective_grid(advA, unifA, zbarA)
+mm.plot_aligned_hists(advA, unifA, zbarA)
 plt.show()
 ```
+
+```{python}
+#| label: tbl-diag-a
+#| echo: false
+
+HTML(fmt(mm.diagonal_table(advA, zbarA), 4))
+```
+
+: Box A aligned-cell bias distribution by analysis year. {#tbl-diag-a}
 
 :::
 
-@fig-grid is the report's main object. Read down a column to see one flow year applied to all ten
-fields; read across a row to see one field sampled by all ten flows. Everything in this figure is
-one estimator applied to one field — only the point locations change. The diagonal is the only place
-where flow and field are the same calendar year, and it carries **one flow realization per cell**,
-however many deployments are replicated within it.
+Panels show $B = \hat Z - \bar Z_k$ rather than $\hat Z$, so the target is zero throughout and one
+axis serves all ten years; the truth values themselves are in @tbl-truth, and since $\bar Z_k$ is a
+constant within each panel nothing is lost by the shift.
 
-Panels show $B = \hat Z - \bar Z_k$ rather than $\hat Z$, so the target is zero in every panel and a
-single axis serves the whole grid. The truth values themselves are in @tbl-truth, and nothing is
-lost by the shift, since $\bar Z_k$ is a constant within each row.
+**The distribution is wide and its mean is small.** In Box B the deployment standard deviation is
+$0.305$–$0.373$ GJ/m$^2$ while the mean sits at $-0.158$ to $+0.045$, so a *single* advective
+deployment misses $\bar Z_k$ by far more than the average displacement: the $5$–$95\%$ interval in
+2013, the most displaced year, runs $-0.698$ to $+0.375$ GJ/m$^2$ around a mean of $-0.158$.
+$\mathbb{P}(B < 0)$ ranges $0.44$–$0.68$. This is the practically relevant statement about a real
+array: the bias of the estimator is an order of magnitude smaller than the spread of a single
+realization of it, so the displacement is a property of the ensemble, invisible in any one
+deployment. Box A behaves the same way on a smaller scale — deployment sd $0.071$–$0.117$ against
+means of $-0.021$ to $+0.029$, $\mathbb{P}(B<0)$ in $0.39$–$0.63$.
 
-::: {.panel-tabset}
-
-## Box B
-
-```{python}
-#| label: fig-heat
-#| echo: false
-#| fig-cap: "Box B. Mean bias per cell in GJ per m2, with its Monte-Carlo standard error in parentheses. Aligned cells are bold. Averaged over 750 deployment replicates, so these resolve the deployment-averaged bias to about +/- 0.010 GJ/m2."
-
-adv, unif, grid, zbar = use("boxB")
-mm.plot_bias_heatmap(grid)
-plt.show()
-```
-
-```{python}
-#| label: tbl-aligned
-#| echo: false
-
-HTML(fmt(mm.aligned_table(grid)))
-```
-
-: Box B aligned cell against the nine unaligned flows, per analysis year. {#tbl-aligned}
-
-## Box A
-
-```{python}
-#| label: fig-heat-a
-#| echo: false
-#| fig-cap: "Box A, same construction. The colour scale is Box A's own and spans about a fifth of Box B's range; cell means resolve to about +/- 0.003 GJ/m2 here."
-
-advA, unifA, gridA, zbarA = use("boxA")
-mm.plot_bias_heatmap(gridA)
-plt.show()
-```
-
-```{python}
-#| label: tbl-aligned-a
-#| echo: false
-
-HTML(fmt(mm.aligned_table(gridA), 4))
-```
-
-: Box A aligned cell against the nine unaligned flows, per analysis year. {#tbl-aligned-a}
-
-:::
-
-In both tables "implied between-flow sd" is $\sqrt{\max(0,\,s^2 - \overline{\mathrm{se}}^2)}$, the
-part of the observed spread across the nine unaligned flows not accounted for by their own Monte
-Carlo error.
-
-Three features of @fig-heat and @tbl-aligned, stated as measurements:
-
-1. **Column structure remains, but it is now a property of the field.** Column means run from
-   $-0.114$ (2011) to $+0.069$ (2017) GJ/m$^2$. Every velocity year, including those five to nine
-   years removed from the field in question, puts a similar bias on a given $\tilde Z_k$. In the
-   earlier ramping experiment this column effect was almost entirely day-of-year coverage; with a
-   flat standing stock it is not (see @tbl-decomp), and what remains is a flow-independent spatial
-   effect — advected arrays under-sample the same parts of Box B whatever year's flow moves them.
-   $80$ of the $90$ unaligned cells carry the sign of their own column mean.
-2. **Every aligned cell sits below its own column mean.** The aligned entries are $-0.072$,
-   $-0.148$, $-0.040$, $-0.158$, $-0.093$, $-0.105$, $-0.014$, $+0.045$, $-0.074$, $-0.063$
-   GJ/m$^2$; subtracting each column's mean over the ten velocity years leaves $-0.091$, $-0.034$,
-   $-0.033$, $-0.060$, $-0.063$, $-0.072$, $-0.047$, $-0.024$, $-0.076$, $-0.090$. All ten are
-   negative, with a mean of $-0.059$ GJ/m$^2$. Note that 2017's aligned bias is *positive* and still
-   falls below its column: the contrast is not driven by the sign of the bias itself.
-3. **Two noise scales are in play, and they now differ by a factor of two.** Replication over $750$
-   deployments per cell puts the deployment component of the error at $0.011$–$0.014$ GJ/m$^2$.
-   The spread across the nine unaligned velocity years is $0.017$–$0.039$; removing each entry's own
-   Monte Carlo error leaves a between-flow standard deviation of $0.014$–$0.038$, mean $0.024$
-   GJ/m$^2$. Unlike the earlier experiment — where these two scales coincided and the between-flow
-   component came out at zero in two of five years — the flow year now demonstrably moves the
-   unaligned cells, and the between-flow scale is the larger of the two.
-
-**Box A shows the first and third of those features and not the second.** Its column means run
-$-0.021$ to $+0.026$ GJ/m$^2$ ($-0.010$ to $+0.011\,\sigma_k$, against Box B's $-0.018$ to
-$+0.010\,\sigma_k$), so column structure is present at a comparable standardized size, and $73$ of
-$90$ unaligned cells carry their column's sign. Its two noise scales separate the same way: the
-deployment component is $0.003$–$0.004$ GJ/m$^2$ and the implied between-flow sd $0.000$–$0.011$,
-mean $0.006$. But the aligned contrasts are $+0.004$, $-0.001$, $-0.008$, $+0.003$, $-0.002$,
-$-0.000$, $+0.007$, $+0.010$, $+0.006$, $+0.011$ GJ/m$^2$ — **four of ten negative**, mean
-$+0.0030$. The diagonal is not displaced in Box A.
-
-One Box A entry needs a caveat: in 2018 the observed spread across the nine unaligned flows
-($0.0031$ GJ/m$^2$) is essentially equal to their mean Monte Carlo error ($0.0031$), so the implied
-between-flow sd collapses to $0.0005$ and the ratio of that year's contrast to it ($12.9$) is a
-small-denominator artefact, not a signal. It is excluded from the ranges quoted below.
-
-**Which scale applies to the diagonal.** Measured against Monte Carlo error alone, Box B's ten
-contrasts are $-1.8$ to $-7.9$ standard errors. But that yardstick answers only "could this
-deployment ensemble have landed here by deployment randomness?", holding the flow fixed. The
-comparison being made is between one flow year and nine others, so the relevant scale is the
-between-flow spread, against which the same contrasts are $-0.9$ to $-6.4$, median $-2.5$. The
-second number is the honest per-year one. What the ten years add is a pattern no single year supplies: the contrast is
-negative in $10$ of $10$ years, and pooled across years it is $-0.059$ GJ/m$^2$ against a pooled
-standard error of $0.008$. Box A's contrasts on the same two yardsticks are $-3.2$ to $+3.1$ Monte
-Carlo se and $-1.4$ to $+2.4$ between-flow sd (2018 excluded), with no consistent sign. Converting
-either to a $p$-value would require an exchangeability assumption over velocity years that this Monte
-Carlo cannot supply, and is deliberately not done here.
+**The mean is nonetheless resolved.** Averaging $750$ deployments puts the Monte Carlo standard
+error at $0.011$–$0.014$ GJ/m$^2$ in Box B and $0.003$–$0.004$ in Box A — about $1/25$ of the
+deployment sd, and $0.0015$–$0.0020\,\sigma_k$ in *both* boxes, which is what makes the two
+comparable at all. On the standardized scale Box B's aligned means run $-0.0251$ to $+0.0064\,
+\sigma_k$ and are negative in $9$ of $10$ years; Box A's run $-0.0120$ to $+0.0121\,\sigma_k$ and
+are negative in $4$ of $10$.
 
 ::: {.panel-tabset}
 
@@ -757,31 +710,32 @@ $\sum_f \big(\sum_{i \in f} (\tilde Z_i - \hat Z)\big)^2 / \sum_i (\tilde Z_i - 
 over floats $f$; the ratio column is the advective ensemble's width against its $n$-matched uniform
 counterpart's.
 
-The advective histograms in @fig-grid are visibly wider than their uniform overlays, and @tbl-deff
-attributes that: consecutive cycles of one float are near-replicates, so a Box B design of $n$
-profiles from $\sim 93$ floats carries roughly $n/1.9$ to $n/3.2$ independent observations, and the
-advective ensemble runs $1.4$–$1.8$ times wider than its uniform counterpart. The width gap is
-dependence, not bias. The design effect is larger than under a ramping array because a spun-up float
-contributes a longer run of consecutive in-box cycles.
+The advective histograms in @fig-aligned are visibly wider than their uniform overlays, and
+@tbl-deff attributes that: consecutive cycles of one float are near-replicates, so a Box B design of
+$n$ profiles from $\sim 93$ floats carries roughly $n/1.9$ to $n/3.2$ independent observations, and
+the advective ensemble runs $1.4$–$1.8$ times wider than its uniform counterpart. **The width gap is
+dependence, not bias** — it inflates the spread of a single deployment without moving its mean, and
+the two must not be read as one effect. The design effect is larger than under a ramping array
+because a spun-up float contributes a longer run of consecutive in-box cycles.
 
 **Box A's designs are substantially more clustered:** median design effect $3.3$–$5.0$ against Box
 B's $1.9$–$3.2$, and a width ratio of $1.8$–$2.3$ against $1.4$–$1.8$. This is the same retention
 difference seen in @tbl-nsize and @fig-deploy from the other side — Box A floats stay in the box for
 many more consecutive cycles, so its $2{,}497$ profiles per design carry no more independent
-information than Box B's $1{,}532$. It matters for reading the two grids: Box A's larger $n$ does
-*not* buy proportionally more resolution, and the $\sigma_k$-relative Monte Carlo standard errors
-quoted above already account for it.
+information than Box B's $1{,}532$. Box A's larger $n$ does *not* buy proportionally more
+resolution, and the $\sigma_k$-relative Monte Carlo standard errors quoted above already account
+for it.
 
-# Temporal coverage versus spatial concentration
+## Temporal coverage versus spatial concentration
 
-Even with a flat standing stock, an advected array need not sample the year exactly uniformly, and
-the fitted mean field leaves a real seasonal residual: the spatial mean
+The aligned bias splits exactly, and still without any assumption, into the part attributable to
+*when* the array samples and the part attributable to *where*. Even with a flat standing stock an
+advected array need not sample the year uniformly, and the fitted mean field leaves a real seasonal
+residual: the spatial mean
 $\bar Z_k(d) = \int \tilde Z_k(\cdot, d)\, d\mathbb{P}_{\text{space}}$ varies over the year with a
 standard deviation of $0.41$–$1.26$ GJ/m$^2$ in Box B and $0.18$–$0.31$ in Box A. Any departure of
-the realized day-of-year marginal from
-uniform therefore biases $\hat Z$ without any spatial concentration whatever. Writing
-$\hat f^{(l,d)}$ for a design's empirical day-of-year distribution, the bias splits exactly in
-expectation as
+the realized day-of-year marginal from uniform therefore biases $\hat Z$ with no spatial
+concentration whatever. Writing $\hat f^{(l,d)}$ for a design's empirical day-of-year distribution,
 
 $$\mathbb{E}\big[B^{(l,d)}_k\big] \;=\;
 \underbrace{\sum_{d} \big(\hat f^{(l,d)}_d - \tfrac{1}{365}\big)\, \bar Z_k(d)}_{\text{temporal coverage}}
@@ -790,8 +744,7 @@ $$\mathbb{E}\big[B^{(l,d)}_k\big] \;=\;
 
 The first term is what a design would suffer if it kept its own sampling days but drew its positions
 iid from $\mathbb{P}$ in space; it has the closed form above and is computed exactly, not simulated.
-The second is the remainder, attributable to *where* in the box the floats are on the days they
-sample. The split requires no assumption.
+The second is the remainder. The identity is exact, so the split is a definition rather than a model.
 
 ::: {.panel-tabset}
 
@@ -800,7 +753,7 @@ sample. The split requires no assumption.
 ```{python}
 #| label: fig-decomp
 #| echo: false
-#| fig-cap: "Box B. Total bias split into temporal-coverage and spatial-given-time components, per analysis year (panels) and velocity year (bars). Black dots are the total. The aligned velocity year is shaded."
+#| fig-cap: "Box B. Total bias split into temporal-coverage and spatial-given-time components, per analysis year (panels) and velocity year (bars). Black dots are the total. The aligned velocity year is shaded. Unaligned columns are shown here for completeness; only the shaded bars belong to this section."
 
 adv, unif, grid, zbar = use("boxB")
 mm.plot_decomposition(grid)
@@ -814,8 +767,7 @@ plt.show()
 HTML(fmt(mm.decomp_table(grid), 4))
 ```
 
-: Box B decomposition of the aligned cells, and the variability of the temporal term across the ten
-velocity years. {#tbl-decomp}
+: Box B decomposition of the aligned cells. {#tbl-decomp}
 
 ## Box A
 
@@ -842,32 +794,225 @@ HTML(fmt(mm.decomp_table(gridA), 4))
 
 Two measurements, and they hold in both boxes:
 
-- **The temporal term is now small.** Across Box B's ten aligned cells it ranges $-0.066$ to
-  $+0.076$ GJ/m$^2$, r.m.s. $0.036$ — against $0.159$ r.m.s. in the earlier ramping experiment.
-  Holding the standing stock flat removed most, though not all, of the day-of-year artefact. Box A's
-  runs $-0.015$ to $+0.010$, r.m.s. $0.008$; standardized by $\sigma_k$ the two are $0.0054$ and
+- **The temporal term is small.** Across Box B's ten aligned cells it ranges $-0.066$ to $+0.076$
+  GJ/m$^2$, r.m.s. $0.036$ — against $0.159$ r.m.s. in the earlier ramping experiment. Holding the
+  standing stock flat removed most, though not all, of the day-of-year artefact. Box A's runs
+  $-0.015$ to $+0.010$, r.m.s. $0.008$; standardized by $\sigma_k$ the two are $0.0054$ and
   $0.0040$, so the residual temporal artefact is comparably small in both.
-- **The bias is therefore predominantly spatial.** The spatial-given-time component of Box B's
-  aligned cells runs $-0.172$ to $+0.060$ GJ/m$^2$ and carries the same sign as the total in all ten
-  years; Box A's runs $-0.009$ to $+0.020$ and likewise agrees in sign with the total in all ten.
-  This is the substantive change from the earlier experiment, where day-of-year coverage accounted
-  for $95\%$ of the 2016 aligned bias and $66\%$ of 2019; here the aligned bias is mostly about
-  *where* the floats are, not *when* they sample.
+- **The bias is predominantly spatial.** The spatial-given-time component of Box B's aligned cells
+  runs $-0.172$ to $+0.060$ GJ/m$^2$, r.m.s. $0.099$, and carries the same sign as the total in all
+  ten years; Box A's runs $-0.009$ to $+0.020$, r.m.s. $0.011$, and likewise agrees in sign with the
+  total in all ten. This is the substantive change from the earlier experiment, where day-of-year
+  coverage accounted for $95\%$ of the 2016 aligned bias and $66\%$ of 2019; here the aligned bias
+  is mostly about *where* the floats are, not *when* they sample.
 
-The temporal term also remains nearly constant down a column — its standard deviation across the
-ten velocity years is $0.0006$–$0.008$ GJ/m$^2$ in Box B and $0.0001$–$0.0005$ in Box A — confirming
-that what day-of-year coverage survives is a property of the release schedule rather than of which
-year's flow pushes the floats. It follows that the column structure in @fig-heat is not a temporal
-artefact, and that the aligned-minus-column contrast of @tbl-aligned is essentially a contrast in
-spatial sampling — in both boxes, whether or not that contrast turns out to be nonzero.
+That is the complete assumption-free result: the estimator is displaced, the displacement is
+predominantly spatial, and in Box B it is negative in nine of ten years at roughly
+$-0.01\,\sigma_k$. What it does **not** say is *why*. An advected array is non-representative for
+reasons that have nothing to do with $\tilde Z$ — it is retained in gyre interiors, thins over the
+shelf, and never samples some parts of the box at all — and such an array is biased against any
+field it is pointed at, including one it is statistically independent of. Separating that from
+sampling that responds to the field is the subject of the next section, and it costs an assumption.
 
-# Box A against Box B
+# Separating coverage bias from preferential sampling
 
-The two grids cannot be compared in GJ/m$^2$: Box B's field is $3.3\times$ the amplitude of Box A's
-(@tbl-truth), so every bias, every standard error and every between-flow spread scales with it. The
-comparison is made on $B/\sigma_k$, and the quantity compared is the aligned-minus-column contrast —
-the diagonal cell minus the mean of its own column — because subtracting the column removes exactly
-the flow-independent part of the bias that both boxes share.
+## The identity the separation rests on
+
+For a fixed design $X = \{x_i\}_{i=1}^n$ with empirical measure
+$\hat{\mathbb{P}}_X = n^{-1}\sum_i \delta_{x_i}$, the bias is *exactly* a bilinear pairing between
+the design and the field,
+
+$$B_k(X) \;=\; \int_{\mathcal{X}} \tilde Z_k \, d\big(\hat{\mathbb{P}}_X - \mathbb{P}\big)
+\;=\; \big\langle \mu_X, \, \tilde Z_k \big\rangle, \qquad
+\mu_X := \hat{\mathbb{P}}_X - \mathbb{P},$$
+
+where $\mu_X$ is a signed measure of total mass zero on $\mathcal{X}$. No approximation enters:
+$\tilde Z_k$ is a bounded simple function and $\mu_X$ a finite signed measure, so the pairing is a
+well-defined Lebesgue integral and the identity is definitional.
+
+Decompose the design deviation into a part common to all flow years, a flow-year effect, and
+deployment noise,
+
+$$\mu^{(l,d)} \;=\; \bar\mu \;+\; \delta^{(l)} \;+\; \eta^{(l,d)},
+\qquad \bar\mu := \mathbb{E}_{l,d}\big[\mu^{(l,d)}\big], \qquad
+\delta^{(l)} := \mathbb{E}_d\big[\mu^{(l,d)}\big] - \bar\mu,$$
+
+each again a zero-mass signed measure, with $\mathbb{E}_l[\delta^{(l)}] = 0$ and
+$\mathbb{E}_d[\eta^{(l,d)}] = 0$ by construction. Pairing against $\tilde Z_k$ and using linearity,
+
+$$B^{(l,d)}_k \;=\; \underbrace{\big\langle \bar\mu, \tilde Z_k \big\rangle}_{\text{coverage bias}}
+\;+\; \underbrace{\big\langle \delta^{(l)}, \tilde Z_k \big\rangle}_{\text{flow} \,\times\, \text{field}}
+\;+\; \big\langle \eta^{(l,d)}, \tilde Z_k \big\rangle .$$
+
+**The first term is coverage bias**: the array's climatological footprint — where an advected array
+sits and when it reports, averaged over flow years — paired against field year $k$. It depends on
+$k$, because $\tilde Z_k$ changes; it does **not** depend on $l$. That is not an assumption but a
+property of the simulation: $X^{(l,d)}$ is generated from velocity year $l$ and the deployment law
+alone and never sees any analysis field, so $\bar\mu$ is a single fixed signed measure, free of
+$k$ by construction. It is exactly what @fig-heat shows as column structure, and exactly what the
+previous section's diagonal cannot exclude.
+
+Now form the contrast used throughout: $+1$ on the aligned flow and $-1/|\mathcal{C}_k|$ on each
+member of a comparison set $\mathcal{C}_k = \{l : |l-k| \ge 2\}$, which are weights summing to zero
+along $l$. The coverage term is constant in $l$, so it **cancels identically**:
+
+$$T_k \;=\; \bar B^{(k)}_k - \frac{1}{|\mathcal{C}_k|}\sum_{l \in \mathcal{C}_k} \bar B^{(l)}_k
+\;=\; \big\langle \delta^{(k)}, \tilde Z_k \big\rangle
+\;-\; \frac{1}{|\mathcal{C}_k|}\sum_{l \in \mathcal{C}_k} \big\langle \delta^{(l)}, \tilde Z_k \big\rangle
+\;+\; O_p\!\big(\sigma_{\mathrm{MC}}\big),$$
+
+the remainder being the deployment noise, which averages to zero and whose scale is quantified
+below. Cancellation of the coverage term is exact and assumption-free; it is the reason the
+unaligned cells are computed at all.
+
+## The identifying assumption
+
+What survives is a difference of pairings between flow-year effects and the field. For $T_k$ to
+estimate preferential sampling, one assumption is required:
+
+> **(P)** For $l \in \mathcal{C}_k$, $\;\mathbb{E}\big[\langle \delta^{(l)}, \tilde Z_k\rangle\big] = 0$:
+> a *different* year's flow anomaly carries no information about year $k$'s field.
+
+Under (P) the unaligned cells estimate the same functional evaluated under independence of design
+and field, so their average is the null level of $\langle \delta^{(\cdot)}, \tilde Z_k \rangle$, and
+$T_k$ isolates the aligned pairing $\langle \delta^{(k)}, \tilde Z_k\rangle$ — a covariance between
+the design anomaly and the field, arising because in the aligned cell both are generated by the same
+ocean state. That is precisely $[S,X] \neq [S][X]$ in the sense of @diggle2010, restricted to the
+flow-anomaly component of the design.
+
+(P) is *not* implied by the simulation and is the one place this section is exposed. The threat is
+ocean memory: gyre state and the North Atlantic Oscillation persist over several years, so
+$\delta^{(l)}$ at small $|l-k|$ may retain dependence on $\tilde Z_k$. Contamination of that kind
+carries the sign of the aligned pairing and so **attenuates** $T_k$ toward zero, making it a
+conservative estimate rather than an unbiased one. The $|l-k| \ge 2$ gap in $\mathcal{C}_k$ is a
+guard against it, and @tbl-lag measures whether the guard is needed.
+
+Note what (P) does *not* require. It says nothing about the design being invariant across velocity
+years, nothing about exchangeability of flow years, and nothing about the distribution of $B$ — all
+of which are stronger conditions needed to convert $T_k$ into a $p$-value, and all of which fail
+here (see the companion report). (P) is a statement about a single expectation.
+
+## Measurement
+
+::: {.panel-tabset}
+
+## Box B
+
+```{python}
+#| label: fig-grid
+#| echo: false
+#| fig-cap: "Box B. Sampling distribution of the bias B = Zhat - Zbar_k for every (analysis year, velocity year) pairing. Rows are the analysis year of the field, columns the velocity year of the flow. Grey: advective designs. Dashed blue: the n-matched uniform reference for the same cell. Solid red vertical line: zero, the target. Dotted black line: that panel's ensemble mean. Aligned cells (flow year = field year) are outlined in red. One shared axis throughout, so panels are comparable across rows as well as within them."
+
+adv, unif, grid, zbar = use("boxB")
+mm.plot_advective_grid(adv, unif, zbar)
+plt.show()
+```
+
+```{python}
+#| label: fig-heat
+#| echo: false
+#| fig-cap: "Box B. Mean bias per cell in GJ per m2, with its Monte-Carlo standard error in parentheses. Aligned cells are bold. Averaged over 750 deployment replicates, so these resolve the deployment-averaged bias to about +/- 0.010 GJ/m2."
+
+mm.plot_bias_heatmap(grid)
+plt.show()
+```
+
+```{python}
+#| label: tbl-aligned
+#| echo: false
+
+HTML(fmt(mm.aligned_table(grid)))
+```
+
+: Box B aligned cell against the nine unaligned flows, per analysis year. {#tbl-aligned}
+
+## Box A
+
+```{python}
+#| label: fig-grid-a
+#| echo: false
+#| fig-cap: "Box A, same construction as the Box B grid. The axis is Box A's own: the shared limits are set from this box's own 1st and 99th percentiles, so panels are comparable within the figure but not across figures. Compare the two boxes through the standardized contrast table instead."
+
+advA, unifA, gridA, zbarA = use("boxA")
+mm.plot_advective_grid(advA, unifA, zbarA)
+plt.show()
+```
+
+```{python}
+#| label: fig-heat-a
+#| echo: false
+#| fig-cap: "Box A, same construction. The colour scale is Box A's own and spans about a fifth of Box B's range; cell means resolve to about +/- 0.003 GJ/m2 here."
+
+mm.plot_bias_heatmap(gridA)
+plt.show()
+```
+
+```{python}
+#| label: tbl-aligned-a
+#| echo: false
+
+HTML(fmt(mm.aligned_table(gridA), 4))
+```
+
+: Box A aligned cell against the nine unaligned flows, per analysis year. {#tbl-aligned-a}
+
+:::
+
+Read down a column of @fig-grid to see one flow year applied to all ten fields; read across a row to
+see one field sampled by all ten flows. Everything in the figure is one estimator applied to one
+field — only the point locations change. The diagonal is the previous section's object; the other
+ninety cells are what makes $\bar\mu$ estimable. In both aligned tables "implied between-flow sd" is
+$\sqrt{\max(0,\,s^2 - \overline{\mathrm{se}}^2)}$, the part of the observed spread across the nine
+unaligned flows not accounted for by their own Monte Carlo error.
+
+**Coverage bias is real and is the larger part of the diagonal.** Box B's column means run $-0.114$
+(2011) to $+0.069$ (2017) GJ/m$^2$, and $80$ of the $90$ unaligned cells carry the sign of their own
+column mean: every velocity year, including those five to nine years removed from the field in
+question, puts a similar bias on a given $\tilde Z_k$. Compare that to the aligned means of $-0.158$
+to $+0.045$ from @tbl-diag — for most years the column accounts for more of the diagonal than the
+alignment does. Box A's column means run $-0.021$ to $+0.026$ GJ/m$^2$ ($-0.010$ to
+$+0.011\,\sigma_k$ against Box B's $-0.018$ to $+0.010\,\sigma_k$), with $73$ of $90$ cells carrying
+their column's sign — **coverage bias is present at a comparable standardized size in both boxes**,
+which is what makes the boxes a usable pair.
+
+**Two noise scales are in play, and they differ by a factor of two.** Replication over $750$
+deployments puts the deployment component at $0.011$–$0.014$ GJ/m$^2$ (Box B). The spread across the
+nine unaligned velocity years is $0.017$–$0.039$; removing each entry's own Monte Carlo error leaves
+a between-flow standard deviation $\sigma_a$ of $0.014$–$0.038$, mean $0.024$ GJ/m$^2$. The flow year
+demonstrably moves the unaligned cells, and $\sigma_a$ — not $\sigma_{\mathrm{MC}}/\sqrt{D}$ — is the
+scale a single year's contrast must be read against, because all $750$ deployments in a cell share
+one flow realization. Box A separates the same way: $0.003$–$0.004$ against $0.000$–$0.011$, mean
+$0.006$.
+
+One Box A entry needs a caveat: in 2018 the observed spread across the nine unaligned flows
+($0.0031$ GJ/m$^2$) is essentially equal to their mean Monte Carlo error ($0.0031$), so the implied
+between-flow sd collapses to $0.0005$ and the ratio of that year's contrast to it ($12.9$) is a
+small-denominator artefact, not a signal. It is excluded from the ranges quoted below.
+
+## Is the comparison set contaminated?
+
+```{python}
+#| label: tbl-lag
+#| echo: false
+
+HTML(fmt(mm.lag_table(), 5))
+```
+
+: Cell mean minus its column mean, averaged over cells at each lag $|l-k|$, in GJ/m$^2$, both boxes.
+Lag $0$ is the aligned diagonal. Under (P) the entries at lag $\ge 2$ should scatter about zero;
+under memory contamination they would carry the sign of lag $0$ and decay with distance.
+{#tbl-lag}
+
+They do not decay. In Box B lag $0$ is $-0.059$ GJ/m$^2$ against a standard error of $0.008$, while
+every lag from $1$ to $9$ is small, of mixed sign, and statistically indistinguishable from the
+others — the correlation between lag and mean deviation over lags $1$–$9$ is $-0.04$, and lag $1$
+($+0.011$) already looks like lag $9$ ($+0.022$) rather than like anything intermediate between lag
+$0$ and zero. The signal is a spike at lag $0$, not a decaying tail. Two consequences: (P) is
+supported empirically rather than merely asserted, and the $|l-k| \ge 2$ gap is conservative rather
+than load-bearing — recomputing $\bar T$ with a gap of $1$ instead of $2$ moves it by $2\%$. Box A's
+lag $0$ ($+0.0030 \pm 0.0019$) sits inside its own lag-$1$-to-$9$ scatter, as a null control should.
+
+## What survives the cancellation
 
 ```{python}
 #| label: tbl-contrast
@@ -882,27 +1027,87 @@ both boxes. The "se" column changes meaning on the pooled row: per-year entries 
 of the mean across the ten years, which is the wider and the appropriate scale for a pooled
 statement. {#tbl-contrast}
 
-Read as a measurement, @tbl-contrast says three things.
+The two grids cannot be compared in GJ/m$^2$ — Box B's field is $3.3\times$ the amplitude of Box A's
+(@tbl-truth), so every bias, standard error and between-flow spread scales with it — so the
+comparison is made on $T_k/\sigma_k$.
 
-**The two boxes are matched on everything the comparison depends on.** Same seeding law, same
-$8^\circ$ margin, same $10$-day cadence, over-density against real Argo of $2.6\times$ and
-$2.4\times$, and — after standardizing — the same Monte Carlo resolution ($0.0015$–$0.0020\,\sigma_k$
-per cell) and comparable column structure ($-0.018$ to $+0.010\,\sigma_k$ in Box B, $-0.010$ to
-$+0.011$ in Box A). What differs is the field and the flow.
+**Every Box B aligned cell sits below its own column mean.** The aligned entries are $-0.072$,
+$-0.148$, $-0.040$, $-0.158$, $-0.093$, $-0.105$, $-0.014$, $+0.045$, $-0.074$, $-0.063$ GJ/m$^2$;
+subtracting each column's mean leaves $-0.091$, $-0.034$, $-0.033$, $-0.060$, $-0.063$, $-0.072$,
+$-0.047$, $-0.024$, $-0.076$, $-0.090$. All ten are negative, mean $-0.059$ GJ/m$^2$. 2017's aligned
+bias is *positive* and still falls below its column, so the contrast is not being driven by the sign
+of the bias itself — which is the clearest single demonstration that $T_k$ and the raw diagonal are
+different quantities.
 
 **The contrast is present in Box B and absent in Box A.** Pooled over the ten analysis years it is
 $-0.0086\,\sigma_k$ in Box B, negative in $10$ of $10$ years and $7.9$ across-year standard errors
 from zero; in Box A it is $+0.0013\,\sigma_k$, negative in $4$ of $10$ and $1.6$ across-year standard
 errors from zero, of the opposite sign. Box A is not a weaker version of the same effect — there is
-no displacement of the diagonal to speak of.
+no displacement of the diagonal to speak of. Per year the two yardsticks give different answers and
+the wider is the right one: Box B's contrasts are $-1.8$ to $-7.9$ Monte Carlo standard errors, but
+$-0.9$ to $-6.4$ between-flow standard deviations, median $-2.5$. What the ten years add is a
+pattern no single year supplies. Box A's are $-3.2$ to $+3.1$ Monte Carlo se and $-1.4$ to $+2.4$
+between-flow sd (2018 excluded), with no consistent sign.
 
-**The two boxes differ in exactly the way they were selected to.** Averaging over four days a year
+**The two boxes are matched on everything the comparison depends on.** Same seeding law, same
+$8^\circ$ margin, same $10$-day cadence, over-density against real Argo of $2.6\times$ and
+$2.4\times$, the same standardized Monte Carlo resolution ($0.0015$–$0.0020\,\sigma_k$ per cell) and
+comparable coverage bias. What differs is the field and the flow: averaging over four days a year
 across 2010–2019, Box B's OHC field has a spatial standard deviation of $13.9$ GJ/m$^2$ and a mean
 gradient magnitude of $12.7$ GJ/m$^2$ per degree, against $2.5$ and $3.6$ in Box A; mean park-depth
 current speed is $14.1$ cm/s against $6.8$. The measured pattern is consistent with the diagonal
 displacement requiring both a structured field and a flow energetic enough to concentrate floats
-within it — but this report measures two boxes, which cannot separate "gradient" from "speed" from
-anything else that differs between them. That attribution is not made here.
+within it — but two boxes cannot separate "gradient" from "speed" from anything else that differs
+between them, and that attribution is not made here.
+
+## The contrast is spatial
+
+The temporal/spatial split of the previous section applies to the contrast as well, and answers a
+question the diagonal alone cannot: the day-of-year ramp is a property of the release schedule, so
+it should live almost entirely in $\bar\mu$ and cancel.
+
+```{python}
+#| label: tbl-cdecomp
+#| echo: false
+
+HTML(fmt(mm.contrast_decomp_table(), 4))
+```
+
+: The aligned-minus-column contrast split into its temporal-coverage and spatial-given-time parts,
+both boxes, in GJ/m$^2$. The last column of each pair is the standard deviation of the temporal term
+down that analysis year's column — small means the temporal term is flow-independent and therefore
+cancels. {#tbl-cdecomp}
+
+It does cancel, and almost exactly. Box B's pooled contrast of $-0.0590$ GJ/m$^2$ decomposes into
+$+0.0007$ temporal and $-0.0596$ spatial: the temporal channel accounts for $1\%$ of it, despite
+carrying an r.m.s. of $0.036$ GJ/m$^2$ in the *diagonal* itself. The reason is visible in the last
+column — the temporal term's standard deviation down a column is $0.0006$–$0.0081$ GJ/m$^2$ in Box B
+and $0.0001$–$0.0005$ in Box A, so it is very nearly a constant of the analysis year, which is the
+condition for it to cancel in a zero-sum contrast along $l$. Box A's pooled contrast splits the same
+way ($+0.0003$ temporal, $+0.0027$ spatial), around a total consistent with zero.
+
+So the quantity that survives is unambiguously spatial: it is the pairing of the *flow year's own*
+spatial anomaly in where floats sit with that year's field, with the array's climatological
+footprint — spatial and temporal alike — differenced away.
+
+## What this does not separate
+
+- **Mechanism.** $T_k$ cannot distinguish floats accumulating where the water is warm from floats
+  and heat being redistributed together by the same eddies. Both satisfy $[S,X] \neq [S][X]$ and no
+  design-based contrast will split them; that requires a model-based lens of the kind @diggle2010
+  use.
+- **Flow-year variation in coverage.** If the footprint's non-representativeness itself varies by
+  year in a way uncorrelated with the field, it sits in $\delta^{(l)}$ and enters as noise — it is
+  part of $\sigma_a$, costing precision, not bias.
+- **Independence across analysis years.** Each velocity year serves as an aligned cell once and
+  populates other columns' comparison sets, so the ten $T_k$ are correlated. The pooled standard
+  error of $0.008$ is an across-year empirical standard deviation and absorbs this only roughly.
+- **One realization per year.** $\langle \delta^{(k)}, \tilde Z_k\rangle$ is a single draw of the
+  coupling; the ten analysis years are the actual replication, which is why the pooled row is the
+  defensible statement and no individual year is.
+- **A $p$-value.** Converting $T_k$ into one requires exchangeability over velocity years, which
+  this Monte Carlo cannot supply and which @tbl-aligned's between-flow component directly
+  contradicts. That is taken up, and shown to fail, in the companion permutation-test report.
 
 # Sensitivity: an array at real Argo density
 
@@ -985,6 +1190,13 @@ both ($1.00$ and $0.98$).
   design cannot test; that is deferred. In particular, Box A's null result is an absence of a
   measured displacement at this resolution ($0.0015$–$0.0020\,\sigma_k$ per cell), not a
   demonstration that no displacement exists.
+- **Assumption (P) is the one thing the separation cannot verify.** The cancellation of coverage
+  bias is exact and follows from how the designs are generated, but reading what remains as
+  preferential sampling needs $\mathbb{E}[\langle\delta^{(l)},\tilde Z_k\rangle] = 0$ for unaligned
+  $l$. @tbl-lag finds no lag structure that would indicate a violation, which is evidence against
+  contamination but not a proof of independence; multi-year ocean memory that is flat in $|l-k|$
+  over the observed range would be invisible to that check. Any such contamination carries the sign
+  of the aligned pairing, so $T_k$ is attenuated rather than inflated by it.
 - **The between-flow scale is estimated from nine numbers.** Each box's implied between-flow sd
   comes from the spread of nine unaligned cells net of their own Monte Carlo error, so it is itself
   noisy, and it degenerates when the two are comparable — as in Box A's 2018, where the netting
@@ -1282,10 +1494,12 @@ finite-sample noise. {#tbl-audit}
 | `MC se` (@tbl-ref) | — | $\mathrm{sd}(B)/\sqrt{7500}$ | $x_i$, $n$ |
 | `median design effect` (@tbl-deff) | $\mathrm{deff}_k$ | §A.3 | within design |
 | `sd B advective` (@tbl-deff) | $\sigma_\varepsilon$ | mean within-flow-year sd of $\hat Z$ | $\omega$ |
+| `sd over deployments` (@tbl-diag) | $\sigma_\varepsilon$ | spread of $B$ over the 750 aligned designs | $\omega$ |
 | `MC se`, `se_B`, `aligned MC se` | $\mathrm{se}_{\mathrm{MC}}$ | $\sigma_\varepsilon/\sqrt{D}$ | $\omega$ only |
 | `unaligned sd (9 flows)` (@tbl-aligned) | $s$ | sd of nine cell means | $\omega$ and $l$ |
 | `implied between-flow sd` (@tbl-aligned) | $\hat\sigma_a$ | $\sqrt{\max(0, s^2 - \overline{\mathrm{se}}^2)}$ | $l$ |
 | `between-flow sd` (companion, `tbl-d1`) | $\hat\sigma_a$ | $\sqrt{(\mathrm{MS}_b-\mathrm{MS}_w)/D}$ | $l$ |
+| `contrast` (@tbl-contrast, @tbl-cdecomp) | $T_k$ | §A.6 | $\omega$ and $l$ |
 | `across-year se` (@tbl-density) | — | $\mathrm{sd}(\{T_k\})/\sqrt{m}$ | $k$, assuming independence |
 | `perm sd` (companion, `tbl-perm`) | — | $\sqrt{(1+1/c)S^2/D}$ | relabelling only |
 | `flow-inflated sd` (companion) | — | $\sqrt{(\sigma_a^2 + \sigma_\varepsilon^2/D)(1+1/c)}$ | $\omega$ and $l$ |

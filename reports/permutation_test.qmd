@@ -179,13 +179,7 @@ unusable, so the failure is specifically D1a/D1b, not the comparison set.
 #| label: tbl-lag
 #| echo: false
 
-t = mm.lag_profile("boxB").rename(columns={"mean_dev": "mean dev B",
-                                           "se": "se B", "mean_dev_sd": "dev/sd B"})
-a = mm.lag_profile("boxA")
-t["mean dev A"] = a["mean_dev"].to_numpy()
-t["se A"] = a["se"].to_numpy()
-t["dev/sd A"] = a["mean_dev_sd"].to_numpy()
-HTML(fmt(t, 5))
+HTML(fmt(mm.lag_table(), 5))
 ```
 
 : Cell mean minus its column mean, averaged over cells at each lag $|l-k|$, in GJ/m$^2$. Lag $0$ is

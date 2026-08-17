@@ -967,6 +967,30 @@ def ref_table(unif, adv, zbar):
     })
 
 
+def diagonal_table(adv, zbar):
+    """Aligned-cell bias distribution: flow and field the same calendar year.
+
+    A direct Monte-Carlo summary of the realized designs, so no comparison
+    across flow years and no invariance assumption enters. The MC se describes
+    the mean; the deployment sd and the quantiles describe the distribution.
+    """
+    B = bias_frame(adv, zbar)
+    sd = zbar.set_index("year")["sd_Z"]
+    v = adv["vel_year"].to_numpy()
+    rows = []
+    for k in YEARS:
+        b = B.loc[v == k, k].to_numpy()
+        rows.append({"year": k, "designs": b.size,
+                     "mean B": b.mean() * J_TO_GJ,
+                     "MC se": b.std(ddof=1) / np.sqrt(b.size) * J_TO_GJ,
+                     "sd over deployments": b.std(ddof=1) * J_TO_GJ,
+                     "5%": np.percentile(b, 5) * J_TO_GJ,
+                     "95%": np.percentile(b, 95) * J_TO_GJ,
+                     "P(B < 0)": float((b < 0).mean()),
+                     "mean B / sd_k": b.mean() / sd[k]})
+    return pd.DataFrame(rows)
+
+
 def aligned_table(grid):
     """Aligned cell against the nine unaligned flows, per analysis year.
 
@@ -1005,8 +1029,7 @@ def deff_table(adv, unif):
 
 
 def decomp_table(grid):
-    """Temporal/spatial split of the aligned cells, and the temporal term's
-    variability down each column."""
+    """Temporal/spatial split of the aligned cells."""
     a = grid[grid["aligned"]].sort_values("analysis_year")
     return pd.DataFrame({
         "year": a["analysis_year"].to_numpy(),
@@ -1014,8 +1037,6 @@ def decomp_table(grid):
         "temporal": a["mean_temporal"].to_numpy() * J_TO_GJ,
         "spatial | time": a["mean_spatial"].to_numpy() * J_TO_GJ,
         "MC se": a["se_B"].to_numpy() * J_TO_GJ,
-        "column sd of temporal": (grid.groupby("analysis_year")["mean_temporal"]
-                                  .std(ddof=1).to_numpy()) * J_TO_GJ,
     })
 
 
@@ -1123,6 +1144,28 @@ def contrast_table(boxes=("boxB", "boxA"), arm="_steady"):
     for b in boxes:
         out.loc["pooled", f"se {b}"] = (
             out[f"contrast {b}"].iloc[:n].std(ddof=1) / np.sqrt(n))
+    return out
+
+
+def contrast_decomp_table(boxes=("boxB", "boxA"), arm="_steady"):
+    """The contrast split the same way the bias itself is, both boxes.
+
+    The temporal term is near-constant down a column, so it cancels in the
+    contrast; its column sd is carried so that is a measurement, not a claim.
+    """
+    out = None
+    for b in boxes:
+        _, _, grid, _ = load_arm(b, arm)
+        a = grid[grid["aligned"]].sort_values("analysis_year")
+        t = pd.DataFrame({"year": a["analysis_year"].to_numpy()})
+        for c, lab in (("mean_B", "contrast"), ("mean_temporal", "temporal"),
+                       ("mean_spatial", "spatial")):
+            col = grid.groupby("analysis_year")[c].mean().to_numpy()
+            t[f"{lab} {b}"] = (a[c].to_numpy() - col) * J_TO_GJ
+        t[f"col sd temporal {b}"] = (grid.groupby("analysis_year")["mean_temporal"]
+                                     .std(ddof=1).to_numpy()) * J_TO_GJ
+        out = t if out is None else out.merge(t, on="year")
+    out.loc["pooled"] = ["pooled", *out.iloc[:, 1:].mean()]
     return out
 
 
@@ -1287,6 +1330,17 @@ def lag_profile(box="boxB", arm="_steady"):
     return out
 
 
+def lag_table(boxes=("boxB", "boxA"), arm="_steady"):
+    """lag_profile for several boxes side by side, keyed on the shared lag."""
+    out = None
+    for b in boxes:
+        t = lag_profile(b, arm)[["lag", "cells", "mean_dev", "se", "mean_dev_sd"]].rename(
+            columns={"mean_dev": f"mean dev {b}", "se": f"se {b}",
+                     "mean_dev_sd": f"dev/sd {b}"})
+        out = t if out is None else out.merge(t.drop(columns="cells"), on="lag")
+    return out
+
+
 def plot_reference_hists(unif, zbar, figsize=(13, 3.0)):
     """Uniform-sampling bias, one panel per analysis year. Unbiased => centred on 0."""
     import matplotlib.pyplot as plt
@@ -1314,6 +1368,35 @@ def plot_sample_sizes(adv, figsize=(11, 3.4)):
                    tick_labels=[str(y) for y in years], showfliers=False)
         ax.set_ylabel(lab)
         ax.tick_params(axis="x", labelrotation=90, labelsize=8)
+    fig.tight_layout()
+    return fig
+
+
+def plot_aligned_hists(adv, unif, zbar, figsize=(13, 3.0)):
+    """Aligned-cell bias distribution, one panel per analysis year.
+
+    The diagonal of plot_advective_grid on its own, on axis limits set by the
+    aligned cells alone rather than by the whole grid.
+    """
+    import matplotlib.pyplot as plt
+    Ba, Bu = bias_frame(adv, zbar), bias_frame(unif, zbar)
+    va, vu = adv["vel_year"].to_numpy(), unif["vel_year"].to_numpy()
+    lo, hi = np.percentile(np.concatenate(
+        [Ba.loc[va == k, k].to_numpy() for k in YEARS]) * J_TO_GJ, [0.5, 99.5])
+    pad = 0.08 * (hi - lo)
+    bins = np.linspace(lo - pad, hi + pad, 30)
+
+    fig, axes = plt.subplots(1, len(YEARS), figsize=figsize, sharex=True, sharey=True)
+    for ax, k in zip(axes, YEARS):
+        ax.hist(Ba.loc[va == k, k] * J_TO_GJ, bins=bins, density=True, color="0.35")
+        ax.hist(Bu.loc[vu == k, k] * J_TO_GJ, bins=bins, density=True,
+                histtype="step", color="tab:blue", lw=1.2, ls="--")
+        ax.axvline(0.0, color="crimson", lw=1.6)
+        ax.axvline(Ba.loc[va == k, k].mean() * J_TO_GJ, color="k", lw=1.4, ls=":")
+        ax.set_title(str(k), fontsize=10)
+        ax.set_xlabel("B (GJ/m2)", fontsize=8)
+        ax.tick_params(labelsize=7)
+    axes[0].set_ylabel("density")
     fig.tight_layout()
     return fig
 
