@@ -1,5 +1,5 @@
 % ============================================================
-%  Methods section: leave-one-out estimand and estimator.
+%  Methods section: the unaligned-reference estimand and estimator.
 %
 %  Macros assumed:  \X  \R  \E  \Var  \Cov  \1  \D  \tZ  \tV
 %  Environments:    definition, proposition, remark, proof
@@ -8,7 +8,7 @@
 % ============================================================
 
 \subsection{Notation and standing conventions}
-\label{sec:loo-setup}
+\label{sec:align-setup}
 
 Throughout this section the velocity fields $\tV_1,\dots,\tV_M$ and the residual fields
 $\tZ_1,\dots,\tZ_M$ are \emph{fixed}: they are realised reanalysis output, and no distribution is
@@ -50,18 +50,18 @@ $m^{(l)}$ is a deterministic zero-mass signed measure.
 Existence is immediate: the cellwise weights satisfy $w_j \in [0,1]$ and $C < \infty$, so
 $\mu^{(l,d)}$ is uniformly bounded and $m^{(l)}$ is a finite average of bounded quantities.
 
-\subsection{The leave-one-out estimand}
-\label{sec:loo-estimand}
+\subsection{The unaligned-reference estimand}
+\label{sec:align-estimand}
 
-\begin{definition}[Leave-one-out reference and estimand]
-\label{def:loo}
-For an analysis year $k$ define the \emph{leave-one-out reference footprint}
+\begin{definition}[Unaligned reference and alignment contrast]
+\label{def:align}
+For an analysis year $k$ define the \emph{unaligned reference footprint}
 \begin{equation}
   \bar{m}^{(-k)} \;:=\; \frac{1}{M-1}\sum_{l \neq k} m^{(l)} ,
 \end{equation}
-and the \emph{leave-one-out preferential bias}
+and the \emph{alignment contrast}
 \begin{equation}
-  \label{eq:loo-estimand}
+  \label{eq:align-estimand}
   \boxed{\;\Theta_k \;:=\; \big\langle\, m^{(k)} - \bar{m}^{(-k)},\;\; \tZ_k \,\big\rangle \;}
 \end{equation}
 \end{definition}
@@ -69,7 +69,7 @@ and the \emph{leave-one-out preferential bias}
 \noindent
 In words: the excess sampling bias against field year $k$ produced by that year's own circulation,
 relative to the bias the remaining $M-1$ circulations would have produced against the \emph{same}
-field. Both terms in \eqref{eq:loo-estimand} are deterministic, so $\Theta_k$ is a fixed quantity
+field. Both terms in \eqref{eq:align-estimand} are deterministic, so $\Theta_k$ is a fixed quantity
 attached to the realised record, in the units of $\tZ$ (J\,m$^{-2}$).
 
 \begin{remark}[Coverage bias cancels; preferential bias does not]
@@ -82,7 +82,7 @@ Write the mean footprint of each velocity year as a common part plus a year-spec
 where $\bar{m}$ collects whatever is shared by every year --- the array's persistent
 non-uniformity, arising from deployment geography, the time-mean circulation, and bathymetry ---
 and $\delta^{(l)}$ is the departure induced by year $l$'s eddy field. Substituting
-\eqref{eq:mdecomp} into \eqref{eq:loo-estimand},
+\eqref{eq:mdecomp} into \eqref{eq:align-estimand},
 \begin{equation}
   \Theta_k
   \;=\; \big\langle (\bar{m} + \delta^{(k)}) - (\bar{m} + \bar{\delta}^{(-k)}),\;\; \tZ_k\big\rangle
@@ -105,7 +105,7 @@ the reason given in Remark~\ref{rem:whycare}.
 \end{remark}
 
 \begin{remark}[Why the reference excludes $k$]
-\label{rem:whyloo}
+\label{rem:whyexclude}
 An alternative is to centre on the grand mean $\bar{m} = M^{-1}\sum_{l} m^{(l)}$ and target
 $\langle m^{(k)} - \bar{m}, \tZ_k\rangle$. That construction is less convenient because the
 identity $\sum_{l}(m^{(l)} - \bar{m}) = 0$ forces the reference to depend on year $k$ itself: any
@@ -176,15 +176,15 @@ addressed only using external information about the field itself.
 \end{remark}
 
 \subsection{Unbiased estimation}
-\label{sec:loo-estimator}
+\label{sec:align-estimator}
 
 Let $\bar{G}_{kl} := D^{-1}\sum_{d=1}^{D} B_k^{(l,d)}$ denote the cell mean of the simulation
 array.
 
-\begin{definition}[Leave-one-out estimator]
-\label{def:loo-est}
+\begin{definition}[Unaligned-reference estimator]
+\label{def:align-est}
 \begin{equation}
-  \label{eq:loo-est}
+  \label{eq:align-est}
   \boxed{\;\widehat{\Theta}_k \;:=\; \bar{G}_{kk} \;-\; \frac{1}{M-1}\sum_{l \neq k} \bar{G}_{kl}\;}
 \end{equation}
 \end{definition}
@@ -211,7 +211,7 @@ argument and Definition~\ref{def:footprint},
   \;=\; \big\langle m^{(l)},\, \tZ_k \big\rangle ,
 \end{equation}
 the last step because the $\omega_{l,d}$ are identically distributed across $d$. Applying
-\eqref{eq:cellmean} to \eqref{eq:loo-est} and using linearity once more,
+\eqref{eq:cellmean} to \eqref{eq:align-est} and using linearity once more,
 \begin{equation}
   \E\big[\widehat{\Theta}_k\big]
   \;=\; \big\langle m^{(k)}, \tZ_k\big\rangle - \frac{1}{M-1}\sum_{l\neq k}\big\langle m^{(l)}, \tZ_k\big\rangle
@@ -232,7 +232,7 @@ the randomisation hypothesis underlying the permutation test is in doubt.
 \end{remark}
 
 \subsection{Variance}
-\label{sec:loo-var}
+\label{sec:align-var}
 
 Write, for each cell,
 \begin{equation}
@@ -262,7 +262,7 @@ If in addition $\sigma^2_{kl} \equiv \sigma^2_k$ for all $l$, this reduces to
 Within cell $(k,l)$ the summands $B_k^{(l,d)}$, $d = 1,\dots,D$, are i.i.d.\ with variance
 $\sigma^2_{kl}$, so $\Var(\bar{G}_{kl}) = \sigma^2_{kl}/D$. Independence across pairs $(l,d)$
 makes the cell means $\{\bar{G}_{kl}\}_{l}$ mutually independent, so the variance of the linear
-combination \eqref{eq:loo-est} is the weighted sum of variances with squared coefficients $1$ and
+combination \eqref{eq:align-est} is the weighted sum of variances with squared coefficients $1$ and
 $(M-1)^{-2}$:
 \begin{equation}
   \Var\big(\widehat{\Theta}_k\big)
@@ -307,13 +307,13 @@ A contrast that omits adjacent years, using $\mathcal{C}_k = \{l : |l-k| \ge 2\}
 $c = |\mathcal{C}_k|$, has variance $\sigma_k^2 D^{-1}(1 + c^{-1})$ under the same homoscedastic
 model. Since $c < M-1$, the gapped contrast has strictly larger variance than
 \eqref{eq:var-homo} \emph{and} is biased for $\Theta_k$ unless the omitted years satisfy an
-additional condition. The leave-one-out form is therefore preferable on both counts, and any
+additional condition. The unaligned-reference form is therefore preferable on both counts, and any
 gapped variant is best reported as a sensitivity analysis for Remark~\ref{rem:interpretation}
 rather than as the primary estimate.
 \end{remark}
 
 \subsection{Pooled estimator}
-\label{sec:loo-pooled}
+\label{sec:align-pooled}
 
 \begin{definition}
 \begin{equation}

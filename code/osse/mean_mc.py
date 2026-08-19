@@ -1169,6 +1169,161 @@ def contrast_decomp_table(boxes=("boxB", "boxA"), arm="_steady"):
     return out
 
 
+def alignment_estimates(box="boxB", arm="_steady", part=None, gap=1):
+    """Theta_k (alignment.tex eq:align-estimand), the cell-mean matrix, and Cov({Theta_k}).
+
+    gap=1 is the estimand itself, whose reference is every unaligned flow; gap=2
+    restricts the reference to |l - k| >= 2 and is the memory sensitivity only.
+    `part` selects the channel contrasted: None the bias, "temporal" its
+    closed-form doy-marginal component, "spatial" the remainder. The covariance
+    is exact under independence of the deployment draws across (l, d), which the
+    OSSE satisfies -- each velocity year is seeded from its own draw.
+    """
+    adv, _, _, zbar = load_arm(box, arm)
+    Y = list(YEARS)
+    B = bias_frame(adv, zbar).to_numpy()
+    T = adv[[f"temporal_{k}" for k in Y]].to_numpy()
+    Z = {None: B, "temporal": T, "spatial": B - T}[part]
+    v, C = adv["vel_year"].to_numpy(), _contrast_matrix(Y, gap)
+    G = np.array([[Z[v == l, k].mean() for l in Y] for k in range(len(Y))])
+    V = sum(np.cov(Z[v == l] * C[:, i], rowvar=False, ddof=1) / (v == l).sum()
+            for i, l in enumerate(Y))
+    return (C * G).sum(1), G, V, zbar
+
+
+def alignment_table(boxes=("boxB", "boxA"), arm="_steady"):
+    """Theta_k with the eq:var-general standard error, raw and standardized by sigma_k."""
+    out = None
+    for b in boxes:
+        th, _, V, zbar = alignment_estimates(b, arm)
+        se = np.sqrt(np.diag(V))
+        sd = zbar.set_index("year")["sd_Z"].reindex(YEARS).to_numpy()
+        t = pd.DataFrame({"year": list(YEARS), f"Theta {b}": th * J_TO_GJ,
+                          f"se {b}": se * J_TO_GJ, f"t {b}": th / se,
+                          f"Theta/sd_k {b}": th / sd})
+        out = t if out is None else out.merge(t, on="year")
+    return out
+
+
+def alignment_pooled(boxes=("boxB", "boxA"), arm="_steady"):
+    """Pooled Theta with its exact Monte-Carlo se, plus the year-to-year spread.
+
+    "between-year sd" nets the Monte-Carlo variance out of the observed spread of
+    Theta_k across years, so it is structure in the realized record rather than
+    error. The drift is GLS on the same covariance and describes these ten years;
+    it is not an inference to a wider population of years.
+    """
+    rows = []
+    for b in boxes:
+        th, _, V, _ = alignment_estimates(b, arm)
+        M = len(th)
+        se2 = np.diag(V)
+        x = np.asarray(YEARS, float) - np.mean(YEARS)
+        Vi = np.linalg.inv(V)
+        drift, dse = (x @ Vi @ th) / (x @ Vi @ x), 1.0 / np.sqrt(x @ Vi @ x)
+        rows.append({"box": b, "pooled Theta": th.mean() * J_TO_GJ,
+                     "MC se": np.sqrt(np.ones(M) @ V @ np.ones(M)) / M * J_TO_GJ,
+                     "t": th.mean() / (np.sqrt(np.ones(M) @ V @ np.ones(M)) / M),
+                     "across-year sd": th.std(ddof=1) * J_TO_GJ,
+                     "MC part": np.sqrt(se2.mean()) * J_TO_GJ,
+                     "between-year sd": np.sqrt(max(th.var(ddof=1) - se2.mean(), 0)) * J_TO_GJ,
+                     "drift per yr": drift * J_TO_GJ, "drift se": dse * J_TO_GJ,
+                     "drift t": drift / dse,
+                     "W/m2 per decade": drift * 10.0 / 3.1536e8})
+    return pd.DataFrame(rows)
+
+
+def alignment_decomp_table(boxes=("boxB", "boxA"), arm="_steady"):
+    """Theta split the way the bias is, into doy-marginal and spatial-given-time."""
+    out = None
+    for b in boxes:
+        t = pd.DataFrame({"year": list(YEARS)})
+        for p, lab in ((None, "Theta"), ("temporal", "temporal"), ("spatial", "spatial")):
+            t[f"{lab} {b}"] = alignment_estimates(b, arm, part=p)[0] * J_TO_GJ
+        out = t if out is None else out.merge(t, on="year")
+    out.loc["pooled"] = ["pooled", *out.iloc[:, 1:].mean()]
+    return out
+
+
+def alignment_variance_table(boxes=("boxB", "boxA"), arm="_steady"):
+    """What the homoscedastic reduction eq:var-homo costs against the general eq:var-general.
+
+    sigma^2_kl is the deployment variance of the single-design bias in cell (k,l);
+    the reduction assumes it constant in l.
+    """
+    rows = []
+    for b in boxes:
+        adv, _, _, zbar = load_arm(b, arm)
+        Y = list(YEARS)
+        B, v = bias_frame(adv, zbar).to_numpy(), adv["vel_year"].to_numpy()
+        S = np.array([[B[v == l, k].var(ddof=1) for l in Y] for k in range(len(Y))])
+        D = np.array([(v == l).sum() for l in Y])
+        M = len(Y)
+        gen = np.sqrt([S[k, k] / D[k] + (np.delete(S[k], k) / np.delete(D, k)).sum()
+                       / (M - 1) ** 2 for k in range(M)])
+        hom = np.sqrt(np.diag(S) / D * (1 + 1 / (M - 1)))
+        rows.append({"box": b,
+                     "max/min sigma^2_kl over l": float(np.median(S.max(1) / S.min(1))),
+                     "se general": gen.mean() * J_TO_GJ,
+                     "se homosc": hom.mean() * J_TO_GJ,
+                     "homosc/general": float(np.mean(hom / gen))})
+    return pd.DataFrame(rows)
+
+
+def alignment_contamination_table(boxes=("boxB", "boxA"), arm="_steady"):
+    """Whether ocean memory contaminates the reference, and what it costs Theta.
+
+    Flows one year off share eddy structure with Z_k, so lag-1 cells sitting in
+    the reference pull it toward the aligned cell and attenuate Theta. The first
+    block measures the deviation those cells carry against lag >= 2; the second
+    re-estimates Theta with the reference restricted to |l - k| >= 2, which is a
+    different estimand and is reported only as the implied attenuation.
+    """
+    rows = []
+    for b in boxes:
+        g = lag_cells(b, arm)
+        u = g[g["lag"] > 0]
+        s = u.groupby(u["lag"] == 1)["dev"].agg(["size", "mean", "sem"])
+        d = s.loc[True, "mean"] - s.loc[False, "mean"]
+        dse = float(np.hypot(s.loc[True, "sem"], s.loc[False, "sem"]))
+        th = [alignment_estimates(b, arm, gap=q)[0].mean() for q in (1, 2)]
+        rows.append({"box": b, "lag 1 cells": int(s.loc[True, "size"]),
+                     "lag 1 dev": s.loc[True, "mean"] * J_TO_GJ,
+                     "lag >=2 dev": s.loc[False, "mean"] * J_TO_GJ,
+                     "difference": d * J_TO_GJ, "se": dse * J_TO_GJ, "t": d / dse,
+                     "pooled Theta": th[0] * J_TO_GJ,
+                     "pooled gap 2": th[1] * J_TO_GJ,
+                     "attenuation": th[0] / th[1]})
+    return pd.DataFrame(rows)
+
+
+def alignment_audit_table(boxes=("boxB", "boxA"), arm="_steady"):
+    """Every identity the unaligned-reference construction leans on. Each ratio should be 1."""
+    rows = []
+    for b in boxes:
+        th, _, V, _ = alignment_estimates(b, arm)
+        M = len(th)
+        _, _, grid, _ = load_arm(b, arm)
+        a = grid[grid["aligned"]].sort_values("analysis_year")
+        gm = a["mean_B"].to_numpy() - grid.groupby("analysis_year")["mean_B"].mean().to_numpy()
+        tt = alignment_estimates(b, arm, part="temporal")[0]
+        ss = alignment_estimates(b, arm, part="spatial")[0]
+        adv, _, _, zbar = load_arm(b, arm)
+        B, v = bias_frame(adv, zbar).to_numpy(), adv["vel_year"].to_numpy()
+        C = _contrast_matrix(list(YEARS), 1)
+        ind = np.array([sum(C[k, i] ** 2 * B[v == l, k].var(ddof=1) / (v == l).sum()
+                            for i, l in enumerate(YEARS)) for k in range(M)])
+        U = [B[v == l] @ C[:, i] / M for i, l in enumerate(YEARS)]
+        pool = np.array([sum(u.var(ddof=1) / u.shape[0] for u in U)])
+        for name, r in (("grand-mean contrast = (M-1)/M Theta_k", gm / ((M - 1) / M * th)),
+                        ("Theta_k = temporal + spatial", th / (tt + ss)),
+                        ("Var eq:var-general = diag of the full covariance", ind / np.diag(V)),
+                        ("pooled Var = per-draw unit variance", pool / (np.ones(M) @ V @ np.ones(M) / M**2))):
+            rows.append({"box": b, "identity": name, "min ratio": r.min(),
+                         "median ratio": float(np.median(r)), "max ratio": r.max()})
+    return pd.DataFrame(rows)
+
+
 def _contrast_matrix(years, gap=2):
     """Rows of theory.tex eq (Tk): +1 on the aligned flow, -1/|C_k| on C_k.
 
@@ -1308,19 +1463,24 @@ def null_sensitivity(box="boxB", arm="_steady", gap=2, n_perm=10000, seed=7):
     return out, pooled
 
 
+def lag_cells(box="boxB", arm="_steady"):
+    """Grid cells carrying |l - k| and each cell's deviation from its own row mean."""
+    _, _, grid, zbar = load_arm(box, arm)
+    g = grid.copy()
+    g["lag"] = (g["vel_year"] - g["analysis_year"]).abs()
+    g["dev"] = g["mean_B"] - g.groupby("analysis_year")["mean_B"].transform("mean")
+    g["dev_sd"] = g["dev"] / g["analysis_year"].map(zbar.set_index("year")["sd_Z"])
+    return g
+
+
 def lag_profile(box="boxB", arm="_steady"):
-    """Cell mean minus its column mean, averaged by |l - k|.
+    """Cell mean minus its row mean, averaged by |l - k|.
 
     D2 asserts the comparison flows carry no dependence on Z_k. If the deviation
     at lag 1 and lag 2 is of the same sign as lag 0 rather than flat, the
     comparison set is contaminated and the contrast is attenuated, not clean.
     """
-    _, _, grid, zbar = load_arm(box, arm)
-    sd = zbar.set_index("year")["sd_Z"]
-    g = grid.copy()
-    g["lag"] = (g["vel_year"] - g["analysis_year"]).abs()
-    g["dev"] = g["mean_B"] - g.groupby("analysis_year")["mean_B"].transform("mean")
-    g["dev_sd"] = g["dev"] / g["analysis_year"].map(sd)
+    g = lag_cells(box, arm)
     out = g.groupby("lag").agg(cells=("dev", "size"),
                                mean_dev=("dev", "mean"),
                                se=("dev", "sem"),
@@ -1492,6 +1652,31 @@ def plot_decomposition(grid, figsize=(13, 3.4)):
         ax.set_title(str(k), fontsize=10)
     axes[0].set_ylabel("GJ/m2")
     axes[-1].legend(fontsize=7)
+    fig.tight_layout()
+    return fig
+
+
+def plot_alignment_years(boxes=("boxB", "boxA"), arm="_steady", figsize=(11, 3.6)):
+    """Theta_k by year with +/-1 and +/-2 se, the pooled level, and the GLS drift."""
+    import matplotlib.pyplot as plt
+    fig, axes = plt.subplots(1, len(boxes), figsize=figsize)
+    for ax, b in zip(np.atleast_1d(axes), boxes):
+        th, _, V, _ = alignment_estimates(b, arm)
+        y, se = np.asarray(YEARS, float), np.sqrt(np.diag(V))
+        x, Vi = y - y.mean(), np.linalg.inv(V)
+        drift = (x @ Vi @ th) / (x @ Vi @ x)
+        pse = np.sqrt(np.ones(len(th)) @ V @ np.ones(len(th))) / len(th)
+        ax.axhline(0, color="crimson", lw=1.0)
+        ax.fill_between(y, (th.mean() - pse) * J_TO_GJ, (th.mean() + pse) * J_TO_GJ,
+                        color="0.6", alpha=0.3, label="pooled +/- 1 se")
+        ax.plot(y, (th.mean() + drift * x) * J_TO_GJ, "--", color="tab:orange",
+                lw=1.2, label="GLS drift")
+        ax.errorbar(y, th * J_TO_GJ, yerr=2 * se * J_TO_GJ, fmt="none", ecolor="0.5", lw=1)
+        ax.errorbar(y, th * J_TO_GJ, yerr=se * J_TO_GJ, fmt="o", color="k", ms=4, lw=1.8)
+        ax.set_title(b, fontsize=10)
+        ax.set_xticks(y, [str(int(v)) for v in y], rotation=90, fontsize=7)
+    np.atleast_1d(axes)[0].set_ylabel("Theta_k (GJ/m2)")
+    np.atleast_1d(axes)[-1].legend(fontsize=7)
     fig.tight_layout()
     return fig
 

@@ -1,0 +1,536 @@
+---
+title: "An Unaligned-Reference Estimand for Preferential Sampling Bias"
+jupyter: python3
+fig-dpi: 300
+bibliography: references.bib
+---
+
+```{=html}
+<style>
+table.dataframe { width: auto; max-width: 90%; font-size: 0.85em; margin-left: auto; margin-right: auto; }
+</style>
+```
+
+```{python}
+#| label: setup
+#| include: false
+
+import os, sys
+sys.path.insert(0, os.path.abspath("../code"))
+
+import numpy as np, pandas as pd, matplotlib.pyplot as plt
+from IPython.display import HTML
+from osse import mean_mc as mm
+
+plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.alpha": 0.25})
+GJ = mm.J_TO_GJ
+
+def fmt(df, dec=3):
+    return df.round(dec).to_html(index=False, border=0)
+```
+
+This report defines a **reference counterfactual** for the preferential sampling bias and estimates
+it. The construction is: hold the field year fixed, and ask what sampling bias that field would have
+suffered had the array been advected by a *different* year's circulation. Averaging that over every
+unaligned circulation gives a reference; the aligned circulation's bias minus that reference is the
+estimand. Nothing is held out for validation and nothing is refit — the name that suggests otherwise
+is deliberately avoided.
+
+It reads the design ensembles produced and described in
+[Monte-Carlo Sampling Distributions of the Residual-Field Mean](mean_estimation_mc.html), which is
+the prerequisite: the analysis measure $\mathbb{P}$, the truth $\bar Z_k$, the residual field
+$\tilde Z_k$, the two analysis boxes, and the per-cell bias
+$B_k^{(l,d)} = \hat Z^{(l,d)}_k - \bar Z_k$ are all defined and measured there. In brief,
+$B_k^{(l,d)}$ is the bias incurred when floats advected by velocity year $l$ under deployment
+replicate $d$ sample the residual OHC field of analysis year $k$; there are $M = 10$ velocity years,
+$m = 10$ analysis years, and $D = 750$ deployment replicates per velocity year, in each of two boxes.
+
+**What is new here, and what is not.** That report's §7 forms a *gapped* contrast $T_k$ — the aligned
+cell against the flows at $|l-k| \ge 2$ — and identifies it with preferential sampling under an
+assumption (P). The construction below differs in three ways.
+
+1. The target is defined **first, as a functional of the realised record**, and the estimator is then
+   shown to be exactly unbiased for it — with no assumption on the velocity fields, the residual
+   fields, or their relationship. Assumption (P) is not required to *identify* $\Theta_k$; it is
+   required only to call $\Theta_k$ preferential sampling. That is a real gain in rigour, and it is
+   also less of a gain than it first appears: see @sec-caveats.
+2. The reference uses **every** unaligned flow, $l \ne k$, not a gapped subset. The gap becomes a
+   sensitivity analysis rather than part of the definition.
+3. The variance is exact rather than approximated by an across-year spread, including for the pooled
+   estimate, and the full covariance across analysis years is available — which is what makes the
+   drift statement in @sec-drift possible at all.
+
+The numbers are not new. The two estimands differ by the known factor $\tfrac{M-1}{M}$
+(@sec-relation), so this report *reframes and re-errors* quantities the companion already reported;
+it does not overturn them. The companion's hypothesis test is treated separately in
+[A Permutation Test for Preferential Sampling](permutation_test.html).
+
+# The estimand
+
+## Setup
+
+The velocity fields $\tilde V_1,\dots,\tilde V_M$ and residual fields $\tilde Z_1,\dots,\tilde Z_M$
+are **fixed**: they are realised reanalysis output, and no distribution is placed over them. All
+randomness enters through the deployment draws $\omega_{l,d} \overset{iid}{\sim} \mathcal{D}$, and
+every expectation and variance below is with respect to $\mathcal{D}$ alone, conditional on the
+realised fields.
+
+For a design $X = \{x_1,\dots,x_n\} \subset \mathcal{X}$ write
+
+$$\mu_X \;:=\; \hat{\mathbb{P}}_X - \mathbb{P}, \qquad
+\hat{\mathbb{P}}_X \;=\; \frac1n\sum_{i=1}^n \delta_{x_i},$$
+
+a signed measure of total mass zero on $\mathcal{X}$, whose restriction to the analysis partition
+$\{c_j\}_{j=1}^C$ is the vector $(w_1 - p_1,\dots,w_C - p_C)$. Because $\tilde Z_k$ is constant
+within cells, the bias is *exactly* the bilinear pairing
+
+$$B_k(X) \;=\; \int_{\mathcal{X}} \tilde Z_k \, d\mu_X \;=\; \langle \mu_X, \tilde Z_k\rangle
+\;=\; \sum_{j=1}^C (w_j - p_j)\,\tilde Z_{k,j},$$
+
+an identity rather than an approximation: $\tilde Z_k$ is a bounded simple function and $\mu_X$ a
+finite signed measure. Abbreviate $\mu^{(l,d)} := \mu_{X^{(l,d)}}$ and
+$B_k^{(l,d)} := \langle \mu^{(l,d)}, \tilde Z_k\rangle$.
+
+The object the construction is built on is the **mean footprint** of a velocity year,
+
+$$m^{(l)} \;:=\; \mathbb{E}_{\omega\sim\mathcal{D}}\big[\mu_{\mathcal{G}(\omega,\,\tilde V_l)}\big],$$
+
+the deployment-averaged design deviation induced by flow year $l$. Since $\mathcal{D}$ and
+$\tilde V_l$ are fixed, $m^{(l)}$ is a deterministic zero-mass signed measure; existence is immediate
+because $w_j \in [0,1]$ and $C < \infty$, so $\mu^{(l,d)}$ is uniformly bounded.
+
+## The reference counterfactual
+
+::: {.callout-note appearance="minimal"}
+For an analysis year $k$, the **unaligned reference footprint** is
+
+$$\bar m^{(-k)} \;:=\; \frac{1}{M-1}\sum_{l \ne k} m^{(l)},$$
+
+and the **alignment contrast** is
+
+$$\Theta_k \;:=\; \big\langle\, m^{(k)} - \bar m^{(-k)},\;\; \tilde Z_k \,\big\rangle .$$
+:::
+
+In words: the excess sampling bias against field year $k$ produced by that year's own circulation,
+relative to the bias the remaining $M-1$ circulations would have produced against the *same* field.
+Both terms are deterministic, so $\Theta_k$ is a **fixed quantity attached to the realised record**,
+in the units of $\tilde Z$ (J m$^{-2}$) — not a parameter of a population of oceans.
+
+**Coverage bias cancels identically.** Write $m^{(l)} = \bar m + \delta^{(l)}$, with $\bar m$
+collecting whatever is shared by every flow year — the array's persistent non-uniformity from
+deployment geography, the time-mean circulation, and bathymetry — and $\delta^{(l)}$ the departure
+induced by year $l$'s eddy field. Then
+
+$$\Theta_k \;=\; \big\langle (\bar m + \delta^{(k)}) - (\bar m + \bar\delta^{(-k)}),\; \tilde Z_k\big\rangle
+\;=\; \big\langle \delta^{(k)} - \bar\delta^{(-k)},\; \tilde Z_k\big\rangle,$$
+
+so $\bar m$ drops out. The cancellation follows from linearity alone and holds for *any*
+decomposition of that form: a quantity not varying with $l$ cannot survive a difference taken across
+$l$. The structure responsible is that $\Theta_k$ differences two **designs** against a **single**
+field. Had the comparison held the design fixed and varied the field, as in
+$\langle m^{(k)}, \tilde Z_k - \tilde Z_{k'}\rangle$, the common footprint would multiply
+$\tilde Z_k - \tilde Z_{k'} \ne 0$ and would not cancel. Holding the field fixed while varying the
+circulation is the load-bearing feature, not an incidental choice.
+
+The excluded term $\langle \bar m, \tilde Z_k\rangle$ is the **coverage bias**. It is typically the
+larger of the two contributions to the total $\langle m^{(k)}, \tilde Z_k\rangle$, and it is excluded
+deliberately: coverage bias is a deterministic function of position and can be computed and removed
+given the profile locations and a climatology, or suppressed by inverse-intensity weighting.
+Preferential bias admits no such correction — it is a covariance between the design and the component
+of the field that position does not predict, so reweighting by position cannot reach it. The two
+differ in kind, not merely in magnitude.
+
+**Why the reference excludes $k$.** The alternative is to centre on the grand mean
+$\bar m = M^{-1}\sum_l m^{(l)}$. That is less convenient because $\sum_l (m^{(l)} - \bar m) = 0$
+forces the reference to depend on year $k$ itself: any excess in $m^{(k)}$ is offset by a
+compensating deficit spread across the remaining years, so a contrast against a strict subset of them
+acquires a multiplicative distortion and a residual depending on which years were excluded. Removing
+$k$ from its own reference eliminates the constraint. The two differ by a known factor,
+$\langle m^{(k)} - \bar m, \tilde Z_k\rangle = \tfrac{M-1}{M}\Theta_k$, verified numerically in
+@tbl-audit.
+
+# The estimator
+
+Let $\bar G_{kl} := D^{-1}\sum_{d=1}^D B_k^{(l,d)}$ be the cell mean of the simulation array — the
+heatmap of the companion report, read one row at a time.
+
+::: {.callout-note appearance="minimal"}
+$$\widehat\Theta_k \;:=\; \bar G_{kk} \;-\; \frac{1}{M-1}\sum_{l \ne k} \bar G_{kl}.$$
+:::
+
+**Exact unbiasedness.** $\mathbb{E}[\widehat\Theta_k] = \Theta_k$ for every $k$. Each $\mu^{(l,d)}$
+is bounded and $C < \infty$, so $B_k^{(l,d)}$ is integrable and expectation commutes with the finite
+sums. By linearity of the pairing in its first argument, and because the $\omega_{l,d}$ are
+identically distributed across $d$,
+
+$$\mathbb{E}\big[\bar G_{kl}\big] \;=\; \frac1D \sum_d \big\langle \mathbb{E}[\mu^{(l,d)}], \tilde Z_k\big\rangle
+\;=\; \big\langle m^{(l)}, \tilde Z_k\big\rangle,$$
+
+and applying linearity once more to the definition gives $\Theta_k$.
+
+The proof uses only linearity of the pairing, boundedness, and identical distribution of deployment
+draws *within* a cell. It does **not** require the designs to be identically distributed across
+velocity years, the residual fields to be exchangeable, or any distributional form for $B$. Those are
+what it takes to attach a $p$-value, not to estimate $\Theta_k$. Estimation and inference are
+therefore separable, which matters here because the companion permutation-test report finds two of
+the four randomisation assumptions rejected by the data: $\widehat\Theta_k$ can be reported with a
+standard error even where the randomisation hypothesis is in doubt.
+
+# Variance
+
+Write $\sigma^2_{kl} := \operatorname{Var}_{\omega\sim\mathcal{D}}\big(\langle
+\mu_{\mathcal{G}(\omega,\tilde V_l)}, \tilde Z_k\rangle\big)$, the deployment variance of the
+single-design bias in cell $(k,l)$, again finite by boundedness. If the deployment draws are mutually
+independent across all pairs $(l,d)$ — which this OSSE satisfies, since every velocity year is seeded
+from its own draw and no common random numbers are used — the cell means $\{\bar G_{kl}\}_l$ are
+independent and
+
+$$\operatorname{Var}\big(\widehat\Theta_k\big) \;=\; \frac1D\left[\sigma^2_{kk}
++ \frac{1}{(M-1)^2}\sum_{l\ne k}\sigma^2_{kl}\right].
+$$ {#eq-var}
+
+$\sigma^2_{kl}$ is estimated by the within-cell sample variance of $\{B_k^{(l,d)}\}_{d}$, which
+requires no model. It is worth noting what it is *not*: for $n$ independent draws from $\mathbb{P}$
+one would have $\sigma^2_{kl} = \operatorname{Var}_\mathbb{P}(\tilde Z_k)\,\mathbb{E}[1/n]$, but
+advected floats are strongly clustered along trajectories, so consecutive profiles are near-replicates
+and the effective sample size is far below $n$. The empirical within-cell variance captures this
+automatically; the companion report measures the float-clustered design effect at $\approx 1.8$.
+
+## The homoscedastic reduction should not be used
+
+If $\sigma^2_{kl} \equiv \sigma^2_k$ for all $l$, @eq-var collapses to
+$\sigma_k^2 D^{-1}(1 + (M-1)^{-1})$. That reduction is tempting because it is the form in which the
+variance is comparable to a gapped contrast's, but it is not satisfied here.
+
+```{python}
+#| label: tbl-var
+#| echo: false
+
+HTML(fmt(mm.alignment_variance_table(), 4))
+```
+
+: How far $\sigma^2_{kl}$ is from constant in $l$, and what assuming otherwise costs. The first
+column is the median over $k$ of $\max_l \sigma^2_{kl} / \min_l \sigma^2_{kl}$; the last two compare
+the standard error from @eq-var against the homoscedastic reduction, averaged over analysis years.
+{#tbl-var}
+
+The within-row spread of $\sigma^2_{kl}$ is a factor of $1.8$ in Box B and $1.5$ in Box A, driven by
+genuinely different retention across flow years — a year that holds more floats inside the box yields
+a larger $n$ and a tighter $\hat Z$. The *consequence* for the standard error is small ($1.9\%$ and
+$1.1\%$), because the reduction misstates only the reference term, which carries weight
+$(M-1)^{-2} = 1/81$. Everything below nonetheless uses @eq-var: the reduction buys nothing and its
+premise is false as measured.
+
+## The pooled variance in closed form
+
+The pooled estimand is $\bar\Theta := m^{-1}\sum_k \Theta_k$, and unbiasedness of
+$\widehat{\bar\Theta} := m^{-1}\sum_k \widehat\Theta_k$ is immediate by linearity. Its variance does
+*not* factorise, because $\widehat\Theta_k$ and $\widehat\Theta_{k'}$ are built from the same
+simulations. A worst-case bound $\max_k \operatorname{Var}(\widehat\Theta_k)$ is available but is very
+loose — here it overstates the standard error by $3.4\times$ (Box B) and $3.8\times$ (Box A).
+
+The exact variance is available in closed form and no resampling is needed. Let
+$c_{kl} = \mathbb{1}\{k = l\} - \mathbb{1}\{k \ne l\}/(M-1)$ be the contrast weights, and define the
+per-draw unit statistic
+
+$$U^{(l,d)} \;:=\; \frac1m \sum_k c_{kl}\, B_k^{(l,d)},
+\qquad\text{so that}\qquad
+\widehat{\bar\Theta} \;=\; \sum_l \frac{1}{D_l}\sum_d U^{(l,d)} .$$
+
+The $U^{(l,d)}$ are independent across $(l,d)$ — every dependence among the $\widehat\Theta_k$ enters
+through their sharing a *draw*, which the reindexing collects into a single scalar — so
+
+$$\operatorname{Var}\big(\widehat{\bar\Theta}\big) \;=\; \sum_l \frac{\operatorname{Var}_d\big(U^{(l,\cdot)}\big)}{D_l}
+\;=\; \frac{\mathbf{1}^\top \Sigma\, \mathbf{1}}{m^2},$$
+
+with $\Sigma$ the exact covariance matrix of $\{\widehat\Theta_k\}$, assembled the same way. Both
+routes are computed and agreed in @tbl-audit. The same $\Sigma$ is what @sec-drift needs.
+
+Empirically the off-diagonal correlations of $\Sigma$ are tiny — mean $+0.006$, range $-0.03$ to
+$+0.04$ in both boxes — so pooling gains almost the full $\sqrt{m}$. That is a *measurement*, not an
+assumption: the estimator's weights are the only coupling, and they are small relative to the
+deployment noise at $D = 750$.
+
+# Results
+
+```{python}
+#| label: tbl-theta
+#| echo: false
+
+HTML(fmt(mm.alignment_table(), 4))
+```
+
+: $\widehat\Theta_k$ per analysis year with its @eq-var standard error, both boxes, in GJ/m$^2$, plus
+the $t$ ratio and the value standardized by that year's field dispersion $\sigma_k$. The boxes differ
+$3.3\times$ in field amplitude, so only the standardized column compares across them. {#tbl-theta}
+
+```{python}
+#| label: fig-theta
+#| echo: false
+#| fig-cap: "Alignment contrast by analysis year, both boxes, in GJ per m2. Thick bars are +/-1 standard error from eq-var, thin bars +/-2. Red line at zero. Grey band is the pooled level +/- 1 pooled standard error; dashed orange is the GLS drift fitted on the full covariance. Each panel carries its own vertical scale."
+
+mm.plot_alignment_years()
+plt.show()
+```
+
+**Box B: all ten years negative.** $\widehat\Theta_k$ runs from $-0.101$ to $-0.027$ GJ/m$^2$,
+$-1.9$ to $-8.4$ standard errors from zero, with no year of the opposite sign. Standardized, that is
+$-0.004$ to $-0.015\,\sigma_k$. The sign is what an advective array should produce if floats
+preferentially occupy anomalously cool water relative to the analysis measure, or equivalently if the
+warm anomalies of a given year are the ones the array under-visits.
+
+**Box A: small, mixed, and not zero.** Individual years run $-0.009$ to $+0.012$ GJ/m$^2$, six
+positive and four negative, and only four exceed two standard errors in absolute value. This is the subtropical-gyre
+control, and at the per-year level it behaves like one.
+
+```{python}
+#| label: tbl-pooled
+#| echo: false
+
+HTML(fmt(mm.alignment_pooled(), 4))
+```
+
+: Pooled $\widehat{\bar\Theta}$ with its exact Monte-Carlo standard error, the decomposition of the
+observed across-year spread, and the GLS drift. "MC part" is $\sqrt{\overline{\operatorname{Var}
+(\widehat\Theta_k)}}$; "between-year sd" nets that out of the observed across-year standard deviation
+and is therefore structure in the realised record rather than estimation error. {#tbl-pooled}
+
+Pooled, Box B is $-0.0655 \pm 0.0041$ GJ/m$^2$ ($t = -16.0$) and Box A is $+0.0033 \pm 0.0012$
+($t = +2.8$). Two things follow that the per-year table does not show.
+
+- **Box A's pooled level is not zero.** It is $20\times$ smaller than Box B's and of the opposite
+  sign, but the Monte Carlo resolves it. Box A is a *weak-and-opposite* control, not a null one. This
+  is a sharpening of the companion report's reading, and it comes entirely from the exact pooled
+  standard error: the across-year standard error used there is $0.0019$ GJ/m$^2$ on a contrast $0.9\times$
+  the size of this one, i.e. $0.0021$ in $\Theta$ units — nearly twice as wide, because it inherits
+  the between-year spread, which is real structure and not estimation error.
+- **Most of the across-year spread is real.** In Box B the observed across-year sd is $0.0265$
+  GJ/m$^2$ against a Monte Carlo part of $0.0126$, leaving a between-year sd of $0.0233$ — so year to
+  year, $\Theta_k$ genuinely moves by about a third of its own pooled magnitude. The same is true in
+  Box A ($0.0056$ against $0.0036$). $\Theta_k$ is a per-year quantity with per-year structure, not a
+  constant measured ten times.
+
+## Temporal coverage versus spatial concentration
+
+```{python}
+#| label: tbl-decomp
+#| echo: false
+
+HTML(fmt(mm.alignment_decomp_table(), 4))
+```
+
+: $\widehat\Theta_k$ split into its day-of-year-marginal component and the spatial remainder, both
+boxes, in GJ/m$^2$. The temporal term is computed in closed form from the domain mean's day-of-year
+series, not by simulation. {#tbl-decomp}
+
+The contrast is **spatial to within one per cent**. Box B's pooled $-0.0655$ is $+0.0007$ temporal and
+$-0.0663$ spatial; Box A's $+0.0033$ is $+0.0003$ and $+0.0030$. This is the expected result and it is
+worth saying why: the day-of-year ramp is a property of the release schedule, identical across flow
+years, so it sits almost entirely in $\bar m$ and cancels in a difference taken along $l$. It does
+*not* cancel from the aligned bias itself, where the companion report measures it carrying an r.m.s.
+of $0.036$ GJ/m$^2$. The cancellation is a property of the construction, and this table is the check
+that it happened.
+
+# Drift, not level {#sec-drift}
+
+A preferential offset constant in time affects the estimated mean state but **cancels in anomalies
+and trends**, which are the quantities used in ocean-heat-uptake and Earth-energy-imbalance
+assessments. A *time-varying* offset does not. Since the real Argo array roughly tripled between 2004
+and 2007, standardised parking depths, changed float models, and expanded to high latitudes, any
+accompanying change in trapping propensity appears as a spurious heat flux. Estimating $\Theta_k$
+separately by year is therefore the more informative use of the construction, and the exact covariance
+$\Sigma$ makes the drift a well-posed generalized-least-squares problem rather than an ordinary
+regression on correlated points.
+
+Writing $b$ for the GLS slope of $\{\widehat\Theta_k\}$ on year, the implied flux is
+$10b / (3.1536\times10^8)$ W m$^{-2}$ per decade, the denominator being seconds per decade.
+
+**The two boxes separate on exactly this axis**, and in the opposite direction to the levels.
+
+- **Box B** has a large level and **no drift**: $b = -0.0001 \pm 0.0013$ GJ/m$^2$/yr, $t = -0.07$,
+  i.e. $-0.003$ W m$^{-2}$ per decade. Over these ten years its preferential bias is a stable offset.
+- **Box A** has a level near zero and **a drift resolved at $t = +4.3$**: $b = +0.0018 \pm 0.0004$
+  GJ/m$^2$/yr, or $+0.056$ W m$^{-2}$ per decade against a present energy imbalance of order
+  $0.8$ W m$^{-2}$.
+
+Read carefully, this is the more consequential of the two findings, and it inverts the naive reading
+of @tbl-theta: the box whose pooled contrast looks like a null control is the one whose contrast is
+*moving*. Three qualifications belong immediately with it, and are not optional.
+
+1. **The drift is descriptive of these ten years.** It is a least-squares summary of ten correlated
+   numbers attached to a realised record, not an inference to a population of years. The standard
+   error is the Monte Carlo error of the ten $\widehat\Theta_k$; it does not include, and cannot
+   include, the variability of the ocean state that generated them. There is one realisation of each
+   year.
+2. **A ten-year window cannot separate trend from low-frequency variability.** Gyre state and the
+   North Atlantic Oscillation have decadal timescales, so a monotone $\Theta_k$ over 2010--2019 is
+   equally consistent with one phase of an oscillation.
+3. **The mechanism here is not the mechanism of concern.** The real-Argo drift threat is a *changing
+   array* — more floats, different parking, new regions. This OSSE holds the deployment law fixed by
+   construction and varies only the flow, so what it measures is drift in the flow--field coupling,
+   which is a different thing and a lower bound on nothing in particular. The OSSE demonstrates that
+   the quantity is estimable and moves; it does not estimate the historical Argo drift.
+
+# Relation to the gapped contrast {#sec-relation}
+
+The companion report's statistic is $T_k = \bar G_{kk} - |\mathcal{C}_k|^{-1}\sum_{l\in\mathcal{C}_k}
+\bar G_{kl}$ with $\mathcal{C}_k = \{l : |l-k| \ge 2\}$, and its per-year table is centred on the
+*grand* column mean. Two comparisons matter.
+
+**The grand-mean version is $\Theta_k$ up to a known factor.** Centring on $\bar m$ rather than
+$\bar m^{(-k)}$ gives exactly $\tfrac{M-1}{M}\Theta_k = 0.9\,\Theta_k$ here; the pooled $-0.0590$ and
+$+0.0030$ GJ/m$^2$ of the companion's contrast table are $0.9$ times the $-0.0655$ and $+0.0033$
+above, to machine precision (@tbl-audit). **This report changes the framing and the error bars, not
+the measurement.** That is worth stating plainly, because "an unbiased estimator with no assumptions"
+could otherwise be read as a claim to have measured something the earlier analysis could not.
+
+**The variance advantage over a gapped contrast is real and immaterial.** Under the homoscedastic
+model a gapped contrast with $c = |\mathcal{C}_k| < M-1$ has variance $\sigma_k^2 D^{-1}(1 + c^{-1})$
+against $\sigma_k^2 D^{-1}(1 + (M-1)^{-1})$, so the full reference is strictly tighter. With
+$M = 10$ and $c$ typically $8$, the ratio of standard errors is about $1.006$ — six parts in a
+thousand. The case for the full reference is that it defines a clean estimand, not that it is more
+efficient. Any claim resting on the efficiency gain should be dropped.
+
+# Is the reference contaminated? {#sec-contamination}
+
+The reference $\bar m^{(-k)}$ includes the adjacent years $l = k \pm 1$, whose circulations retain
+dependence on $\tilde Z_k$ through ocean memory. If such residual alignment exists it inflates the
+reference toward the aligned cell and shrinks $\Theta_k$ — which is why the companion report imposes
+the $|l-k| \ge 2$ gap in the first place. The gap is not needed here to *define* $\Theta_k$, so the
+question becomes a measurement.
+
+```{python}
+#| label: tbl-contam
+#| echo: false
+
+HTML(fmt(mm.alignment_contamination_table(), 4))
+```
+
+: Left block: the mean deviation of a reference cell from its own analysis year's row mean, split by
+whether the flow is one year off or two or more, in GJ/m$^2$, with the difference and its standard
+error. Right block: pooled $\widehat{\bar\Theta}$ with the full reference against a reference
+restricted to $|l-k| \ge 2$, and their ratio. The restricted version is a *different estimand*, shown
+only to size the effect. {#tbl-contam}
+
+**There is no evidence of memory contamination, and what evidence there is has the wrong sign.** In
+Box B the lag-$1$ reference cells sit $+0.0051 \pm 0.0073$ GJ/m$^2$ above the lag-$\ge 2$ cells
+($t = 0.70$); in Box A, $-0.0015 \pm 0.0016$ ($t = -0.90$). Neither is distinguishable from zero.
+More tellingly, the aligned cells in Box B deviate by $-0.059$ GJ/m$^2$ — strongly *negative* — while
+the lag-$1$ cells deviate *positively*. Contamination by ocean memory would put lag-$1$ cells on the
+same side as lag $0$ and have them decay toward zero with distance; the lag profile in the companion
+report shows instead a spike at lag $0$ and unstructured scatter at every lag from $1$ to $9$
+(correlation between lag and mean deviation over lags $1$--$9$: $-0.04$).
+
+Consistently, dropping the adjacent years moves the pooled estimate by $1.8\%$ in Box B and $10.8\%$
+in Box A, both *toward* zero rather than away — the opposite of attenuation. In Box A the $10.8\%$ is
+on a small number and is within the noise.
+
+This has a direct consequence for how the estimand should be described, taken up next.
+
+# Caveats and concerns {#sec-caveats}
+
+## The identification did not disappear; it moved into the estimand
+
+This is the central qualification, and it should be read before any of the numbers are used.
+
+$\widehat\Theta_k$ is unbiased for $\Theta_k$ **unconditionally** — that part of the claim is exactly
+true, and it is a genuine improvement over identifying a target only under an assumption. But
+$\Theta_k$ is defined as a contrast of mean footprints; calling it *the preferential sampling bias*
+is a separate step, and that step needs
+
+$$\big\langle \bar\delta^{(-k)}, \tilde Z_k \big\rangle \;=\; 0,$$
+
+i.e. that the *average* unaligned flow anomaly carries no alignment with year $k$'s field. That is
+assumption (P) of the companion report, in a slightly weakened form — it need only hold on average
+over the $M-1$ reference years, not year by year. It is weaker, it is testable in the same way, and
+@sec-contamination finds no evidence against it. It is not absent.
+
+The honest statement of what changed is therefore: **(P) has been demoted from an identification
+condition to an interpretation condition.** Under the old framing, if (P) fails there is no
+well-defined target and $T_k$ estimates nothing in particular. Under this one, $\widehat\Theta_k$
+still estimates $\Theta_k$ exactly; what fails is only the claim that $\Theta_k$ *is* preferential
+sampling. That is a real and useful separation — the estimate and its standard error survive
+independently of the interpretive assumption, which is what makes reporting them defensible even
+where the permutation test's assumptions are rejected. It is not the same as needing no assumption at
+all, and the report should not be cited as though it were.
+
+## The conservativeness claim is an assumption, not a theorem
+
+It is tempting to argue that any residual memory in the reference must *attenuate* $\Theta_k$, so
+that the estimand is conservative and the true preferential bias is larger. That argument is signed:
+it presumes the contamination carries the same sign as the aligned pairing. Nothing in the
+construction forces this — a lag-$1$ flow could as easily be anti-aligned with $\tilde Z_k$, in which
+case the reference is deflated and $\Theta_k$ is *inflated*.
+
+In these data the measured direction is the inflating one, weakly and insignificantly
+(@sec-contamination). So "conservative" should be recorded as an assumption about the sign of ocean
+memory that these ten years do not support, rather than as a property of the estimand. The defensible
+statement is the two-sided one: the reference may be contaminated in either direction, the measured
+contamination is consistent with zero, and dropping adjacent years moves the pooled estimate by less
+than $2\%$ where it is large.
+
+## What $\Theta_k$ cannot separate
+
+- **Mechanism.** $\Theta_k$ cannot distinguish floats accumulating where the water is warm from
+  floats and heat being redistributed together by the same eddies. Both satisfy $[S,X] \ne [S][X]$ in
+  the sense of @diggle2010, and no design-based contrast will split them; that needs a model-based
+  lens.
+- **A preferential design from a merely non-representative one, in general.** The cancellation
+  removes what is *common to all flow years*. A design feature that is non-representative and varies
+  by flow year, but is unrelated to the field, enters $\delta^{(l)}$ and is removed only in
+  expectation over the reference — it costs precision, and it is only the (P)-type condition that
+  makes it cost no bias.
+- **One realisation per year.** $\langle \delta^{(k)}, \tilde Z_k\rangle$ is a single draw of the
+  flow--field coupling. The ten analysis years are the replication, which is why the pooled row and
+  the drift are the defensible statements and no individual year is. Doubling $D$ shrinks the Monte
+  Carlo error but does not touch the between-year spread, which @tbl-pooled shows is the larger of
+  the two in both boxes.
+- **Two boxes.** Box B and Box A are matched on seeding law, margin, cadence, and over-density
+  against real Argo, and differ in field amplitude ($3.3\times$), gradient, and current speed
+  simultaneously. The pattern is consistent with the contrast requiring both a structured field and
+  an energetic flow, but two boxes cannot attribute it to either.
+
+## Inherited from the ensembles
+
+These carry over unchanged from the companion report and are not repaired by the new framing.
+
+- **Simulation, not observation.** GLORYS12 is a reanalysis; $\tilde Z$ is what remains after a
+  parametric mean field is removed, and inherits whatever that fit left behind. $\Theta_k$ is a
+  property of this simulated system.
+- **Density.** Both virtual arrays run $2.4$--$2.6\times$ denser than the real Argo record over the
+  same boxes. That leaves $\mathbb{E}[B]$ alone but narrows every sampling distribution, so the
+  standard errors here are optimistic relative to a real-density array by roughly $\sqrt{2.5}$.
+- **The seeding rectangle is not ocean-masked**, so about $3\%$ of Box B seeds land on land and never
+  move. Those floats never enter $\hat Z$; the effect is a reduction in effective $n$, common to every
+  flow year, and it cancels from $\Theta_k$ by the same argument as coverage bias.
+- **$n$ is endogenous.** Retentive flow years hold more floats, so $\hat Z$ is a ratio estimator and
+  the cells are matched only conditional on $n$. This is precisely the heteroscedasticity @tbl-var
+  measures.
+
+## Suggested change to the written method
+
+Section 5 of the method draft bounds the pooled variance by $\max_k \operatorname{Var}
+(\widehat\Theta_k)$, the worst case of perfect correlation, or proposes estimating it from replicate
+subsamples. Neither is necessary: the per-draw unit statistic $U^{(l,d)}$ of the variance section
+above gives the pooled variance in closed form, exactly and with no resampling, and the bound is
+loose by $3.4$--$3.8\times$ in these data. The same construction yields the full covariance $\Sigma$,
+without which the drift analysis is not available. The homoscedastic reduction should likewise be
+demoted to a remark, since its premise is measurably false.
+
+# Numerical audit
+
+```{python}
+#| label: tbl-audit
+#| echo: false
+
+HTML(fmt(mm.alignment_audit_table(), 6))
+```
+
+: Every identity this report relies on, computed two ways; each ratio should be $1$. Ranges are over
+the ten analysis years, except the pooled-variance row which is a single number per box. {#tbl-audit}
+
+The four identities are: that the companion report's grand-mean-centred contrast equals
+$\tfrac{M-1}{M}\Theta_k$; that the temporal and spatial components sum to $\Theta_k$; that the
+diagonal of the assembled covariance $\Sigma$ agrees with @eq-var computed directly from the
+within-cell variances; and that the pooled variance $\mathbf{1}^\top\Sigma\mathbf{1}/m^2$ agrees with
+the per-draw unit-statistic route. All four hold exactly in both boxes.

@@ -16,6 +16,7 @@ project:
     - "reports/uniform_deployment.qmd"
     - "reports/mean_estimation_mc.qmd"
     - "reports/permutation_test.qmd"
+    - "reports/alignment_contrast.qmd"
 
 execute:
   freeze: auto
@@ -50,6 +51,7 @@ website:
           - reports/uniform_deployment.qmd
           - reports/mean_estimation_mc.qmd
           - reports/permutation_test.qmd
+          - reports/alignment_contrast.qmd
 
 
 format:
