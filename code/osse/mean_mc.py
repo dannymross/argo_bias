@@ -1270,6 +1270,70 @@ def alignment_variance_table(boxes=("boxB", "boxA"), arm="_steady"):
     return pd.DataFrame(rows)
 
 
+def _reference_sd(box="boxB", arm="_steady"):
+    """s_k in J/m2, and how far the reference errors of different years are related.
+
+    s_k is the spread of the single-flow bias across the M-1 unaligned flows, net of
+    each cell's own Monte-Carlo error. The scalar returned with it is the mean
+    pairwise correlation, across analysis years, of the within-row deviations that
+    generate s_k: near zero means each year's reference misses independently.
+    """
+    _, _, grid, _ = load_arm(box, arm)
+    s = aligned_table(grid)["implied between-flow sd"].to_numpy() / J_TO_GJ
+    G, M = alignment_estimates(box, arm)[1], len(s)
+    off = ~np.eye(M, dtype=bool)
+    E = G - np.array([G[k, off[k]].mean() for k in range(M)])[:, None]
+    r = [np.corrcoef(E[k, off[k] & off[j]], E[j, off[k] & off[j]])[0, 1]
+         for k in range(M) for j in range(k + 1, M)]
+    return s, float(np.mean(r))
+
+
+def alignment_reference_noise_table(boxes=("boxB", "boxA"), arm="_steady"):
+    """What reading Theta_k as the preferential bias costs beyond Monte-Carlo error.
+
+    The reference averages M-1 unaligned flows, so even with every one of them
+    independent of Z_k it sits s_k/sqrt(M-1) away from the population footprint.
+    That is a superpopulation quantity -- conditional on the realized record the gap
+    is a fixed unknown, not a variance -- and it is absent from the eq:var-general se.
+    """
+    out = None
+    for b in boxes:
+        th, _, V, _ = alignment_estimates(b, arm)
+        s, _ = _reference_sd(b, arm)
+        f = s / np.sqrt(len(th) - 1)
+        c = np.hypot(np.sqrt(np.diag(V)), f)
+        t = pd.DataFrame({"year": list(YEARS), f"Theta {b}": th * J_TO_GJ,
+                          f"MC se {b}": np.sqrt(np.diag(V)) * J_TO_GJ,
+                          f"s_k {b}": s * J_TO_GJ, f"ref floor {b}": f * J_TO_GJ,
+                          f"combined se {b}": c * J_TO_GJ, f"t {b}": th / c})
+        out = t if out is None else out.merge(t, on="year")
+    return out
+
+
+def alignment_reference_pooling_table(boxes=("boxB", "boxA"), arm="_steady"):
+    """Whether the reference error pools away, and what it costs the pooled level and drift."""
+    rows = []
+    for b in boxes:
+        th, _, V, _ = alignment_estimates(b, arm)
+        s, rho = _reference_sd(b, arm)
+        M = len(th)
+        x = np.asarray(YEARS, float) - np.mean(YEARS)
+        r = {}
+        for lab, C in (("mc", V), ("ref", V + np.diag(s ** 2 / (M - 1)))):
+            Ci = np.linalg.inv(C)
+            r[lab] = (np.sqrt(np.ones(M) @ C @ np.ones(M)) / M,
+                      (x @ Ci @ th) / (x @ Ci @ x), 1.0 / np.sqrt(x @ Ci @ x))
+        rows.append({"box": b, "mean corr across years": rho,
+                     "pooled se MC": r["mc"][0] * J_TO_GJ,
+                     "pooled se +ref": r["ref"][0] * J_TO_GJ,
+                     "pooled t MC": th.mean() / r["mc"][0],
+                     "pooled t +ref": th.mean() / r["ref"][0],
+                     "drift t MC": r["mc"][1] / r["mc"][2],
+                     "drift t +ref": r["ref"][1] / r["ref"][2],
+                     "W/m2 per decade +ref": r["ref"][1] * 10.0 / 3.1536e8})
+    return pd.DataFrame(rows)
+
+
 def alignment_contamination_table(boxes=("boxB", "boxA"), arm="_steady"):
     """Whether ocean memory contaminates the reference, and what it costs Theta.
 
