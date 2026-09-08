@@ -1,0 +1,1124 @@
+\section{Introduction}
+\label{sec:intro}
+
+The goal of this work is to isolate, estimate, and bound the bias in ocean heat content (OHC) from preferential sampling of the OHC anomaly field.
+
+While current research has advanced estimation of ocean heat content anomaly from Argo data with reliable uncertainty quantification, there is an open question of whether Argo floats' advection-based sampling mechanism introduces a fundamental preferential sampling bias unaccounted for in existing models.
+
+Ideally, researchers interested OHC would have access to in situ temperature and salinity measurements taken independently, randomly, and uniformly over their spacetime domain of interest.
+Unbiased estimation of total OHC would then be achievable by simple averaging.
+While, Argo provides valuable in situ observations, the array's sampling design poses numerous challenges for valid OHC estimation. 
+[[Motivated by this data, researchers have advanced Guassian process regression techniques include local stationary but global non-stationary estimation and uncertainty quantification for accurate estimation.]]
+
+Recent research that has developed ``debiasing'' methods that are robust to model misspecification of the OHC mean-field.\cite{park2023} 
+
+%Existing studies have identified coverage bias in the Argo sampling array, such that historically floats do not sample the ocean uniformly over time.
+%or example, marginal seas and shallows have been historically under-sampled by Argo floats.
+%Yet, if non-uniform coverage is det
+However, Argo data is now prized for OHC estimation due to its ``unprecedented spatiotemporal coverage'' and ``near-uniform sampling every $3^{\circ} \times 3^{\circ} \times 10$ days in space and time.''\cite{park2023} 
+This near-uniform sampling has allowed researchers to develop methods to use Gaussain process interpolation methods to map the OHC mean field, OHC anomaly field, and its covariance parameters.
+
+A present concern is that Argo float trajectories and therefore profiling positions (sampling locations) are physically (therefore statistically) dependent 
+on the OHC anomaly field because the velocity field that advects floats is intrinsically tied to the anomaly field through physical properties of the ocean.
+Therefore, even if Argo floats uniformly sample the ocean, if there profiling locations covary with the OHC anomaly field the resulting measurements can reflect a fundamentally biased map of the anomaly field.
+
+
+%As such, persistent yearly preferential sampling that is constant over time would be absorbed into estimated background climatology and can be debiased from anomaly mapping; however, time varying sampling bias from transiet ocean features would not be resolved from the same debiasing procedures and distort such maps.
+
+First, we present a standard model for the OHC field and formalize the definition of preferential bias.
+Next we consider an idealized setting where the OHC field and velocity field are fully observable and use Lagrangian simulation of virtual Argo floats to quantify the scale of preferential bias produced by advection based sampling of ocean fields.
+Specifically, we use the GLORYS12V1 reanalysis product and Parcels simulation framework to isolate the effect of preferential bias on regional and global OHC anomaly trends, controlling for error channels in the real Argo data.
+We begin by estimating this sampling mechanisms effect on OHC estimates rather than testing for its existence, which test requires stronger assumptions on the physical fields at play.
+
+\subsection{Sampling Measures}
+\label{sec:measures}
+
+Consider a space-time domain, $\X = A \times \T \subset \mathbb{S}^2 \times \mathbb{R}$ with elements $x \in \X$, where $x = (s,t)$, for location 
+$s = (lat, lon) \in A$ and $t \in \T$. The spatial domain $A$ is a subset of the sphere $\mathbb{S}^2$, masked to observable ocean regions.
+[[For simplicity, let the time domain $\T$ be composed of an integer number of years $\t_1, \ldots, \t_m$.]] Argo floats sample a spatialtemporally continuous ocean heat content (OHC) field $S$ at a discrete set of spacetime points $x_i,\,i = 1,\ldots\,n$.
+
+%, where $S = \{S(x): x \in \X\}$ denotes the unobserved continuous OHC process on the domain.  
+
+A simple statistical model for sampling the OHC field is,
+\begin{equation}
+  Y_i \;=\; S(x_i) + \eta_i, \qquad i=1,\ldots,n, 
+\end{equation}
+where $Y_i$ denotes the Argo measured value of vertically integrated OHC at spacetime point $x_i$, and $\eta_i$ are mutually independent, zero-mean random variables with (nugget) variance $\tau^2$.
+
+Further, a common model for the true OHC field is, 
+\begin{equation}
+  \label{eq:fieldmodel} 
+  S(x) \;=\; \mu(x) + a(x) + \e(x), \qquad x \in \X,
+\end{equation}
+where $\mu$ is the climatological mean field, $a$ is a zero-mean Argo resolvable\footnote{OHC structure at scales larger than the spacing between float profiles.} anomaly field, and $\e$ is a zero-mean unresolvable field from fine-scale variation.\footnote{Variation at a scale that neighboring observations cannot predict.} The fine-scale effect $\e$ is assumed to be independent of the anomaly field $a$.
+
+Let $X$ be a random process on $\X$ that generates a set of random sampling points $\{X_1,\dots,X_n\}$,
+$S = \{S(x): x \in \X\}$ be the true unobserved continuous vertically integrated OHC field on the domain, $S(X) = (S(X_1),\ldots,S(X_n))$ the value of the field at the sampling points, and $Y=(Y_1,\ldots,Y_n)$ the measured values of the process at the sampling points.
+We consider the joint distribution of the process $S$, the measurement points $X$, and the measured values $Y$, $[S, X, Y]$, using $[\,\cdot\,]$ to denote the distribution of a random variable.
+In the notation and language of \cite{diggle2010}, if $X$ is not independent of $S$, i.e., $[S,X] \ne [S][X]$, the design is said to be \textbf{preferential}.
+The joint distribution then factorizes 
+\begin{equation}
+  \label{eq:preffac}
+  [S, X, Y] \;=\; [S]\,[X \mid S]\,[Y \mid X, S] \;=\; [S]\,[X \mid S]\,[Y \mid S(X)].
+\end{equation}
+
+where the final equality holds under the assumption that measurement error is conditionally independent of $X$.
+
+Consider now the data generated by Argo floats finitely sampling the domain $\X$ during an analysis period of finite time where we assume the number of observations collected to be known and fixed at $n$.
+We will define a collection of probability measures induced by the Argo sampling structure that will help formalize the notion of preferential sampling.
+For reference, we first define $\P$ as the uniform probability measure normalized over spacetime. Such that $\P(A)$ is the proportion of spacetime area measurable spacetime subsets $A$ occupies in $\X$.
+
+As such, the Argo observation system  $X$ induces an empirical sampling measure $\Q_n(A) = \frac1n\sum_{i=1}^n\1\{x_i \in A\}$ for measurable  subsets $A$.
+Since $X$ is a random sampling process on $\X$, the empirical sampling measure $\Q_n$ is a random probability measure on $\X$.
+Then let $\R_s$ be the conditional expectation of $\Q_n$ for a given OHC ocean state $S = s$. 
+
+Formally,
+\begin{equation}
+  \label{eq:Rdef}
+  \R_s(A) = \E[\Q_n(A)\,|\,S = s] = \E\left[\frac{1}{n}\sum_{i=1}^n\1\{X_i \in A\}\,\middle|\,S= s\right] = \frac1n\sum_{i=1}^n\Pr(X_i \in A\,|\,S = s) ,
+\end{equation}
+
+such that $\R_S$ is a random probability measure that can be interpreted as measuring the expected proportion of profiles in each measurable subset $A \subset \X$.
+
+Then by taking expectation over ocean states $S$, we can define the deterministic probability measure $\M$ that provides the average marginal probability that a profile is in subset $A$.
+
+Here,
+\begin{equation}
+  \label{eq:Mdef}
+  \M(A) = \E_{S}[\R_S(A)] = \E[\Q_n(A)] = \frac1n \sum_{i=1}^{n}\Pr(X_i \in A).
+\end{equation}
+
+In summary, $\P(A)$ is the proportion of spacetime area set $A$ occupies in $\X$, $\Q_n(A)$ is the realized proportion of profiles in $A$, $\R_S(A)$ is the expected proportion of profiles in $A$ conditional on the realized OHC state $S$, and $\M(A)$ is the expected proportion of profiles in $B$ marginalizing over ocean states and sampling mechanism randomness.
+
+From this description, non-preferential sampling $X \perp S$ implies that $\R_S \overset{\text{a.s.}}{=} \M$.
+Whereas, $\M = \P$ characterizes a sampling design that is coverage unbiased, which we will explain in more detail below.
+
+\subsection{Bias Decomposition}
+\label{sec:biasdecomp}
+
+Consider the estimand of average ocean heat content over the domain $\X$,
+\begin{equation}
+  \ohcbar = \int_{\X} S(x) \dd \P(x)
+\end{equation}
+
+and the naive sample average estimator for \begin{equation}
+  \ohchat = \frac1n \sum_{i=1}^{n} Y_i.
+\end{equation}
+
+The estimation error from the sample average is
+\begin{equation}
+  \ohchat - \ohcbar = \int_{\X} S(x) \dd (\Q_n - \P)(x) + \frac1n\sum_{i=1}^n \eta_i,
+\end{equation}
+where we define Argo sampling induced bias as 
+\begin{equation}
+  B = \int_{\X} S(x) \dd (\Q_n - \P)(x).
+\end{equation}
+Here $\E[\ohchat - \ohcbar] = \E[B]$, because $\E[\eta_i] = 0$.
+
+The bias is therefore random with respect to the OHC field $S$ and the random sampling process $X$, which induces the random sampling measure $\Q_n$.
+We will now analyze the expected bias with respect to the joint distribution of $[S,X]$.
+Note, this analysis of sampling bias can be extended to replace the naive estimator with any linear estimator of OHC, but to isolate the preferential sampling mechanism we first focus on the average estimator first.
+
+Now, consider the expected sampling bias through iterated expectation.
+Conditioning first on the ocean state and using \eqref{eq:Rdef},
+\begin{equation}
+  \label{eq:condbias}
+  \E[B \mid S]
+  \;=\; \E\!\left[\int_\X S(x)\dd\Q_n(x) \,\middle|\, S\right] - \int_\X S(x)\dd\P(x)
+  \;=\; \int_\X S(x) \dd(\R_S - \P)(x),
+\end{equation}
+a random variable, being a functional of the realized ocean. Splitting the signed measure
+$\R_S - \P$ through $\M$ and substituting the field model \eqref{eq:fieldmodel} gives
+\begin{equation}
+  \label{eq:condsplit}
+  \E[B \mid S]
+  \;=\; \int_\X \big(\mu(x) + a(x) + \e(x)\big) \dd(\M - \P)(x)
+  \;+\; \int_\X \big(\mu(x) + a(x) + \e(x)\big) \dd(\R_S - \M)(x).
+\end{equation}
+Then,
+\begin{equation}
+  \label{eq:biasdecomp}
+  \E[B] = \E_S[\E_{X|S}[B|S]]  
+  \;=\; \underbrace{\int_\X \mu(x) \dd(\M - \P)(x)}_{\textbf{coverage}}
+  \;+\; \underbrace{\E\!\left[\int_\X \big(a(x) + \e(x)\big) \dd(\R_S - \M)(x)\right]}_{\textbf{preferential}} .
+\end{equation}
+The simplification in the coverage bias occurs because $\M - \P$ is deterministic and $a$ and $\e$ are random and mean-zero. Further, $\mu$ does not contribute to the expected preferential bias because $\mu$ is deterministic and $\E[\R_S] = \M$. We have additionally assumed that $\sup_{x \in \X} \E|S(x)| < \infty$ for the invocation of Fubini's theorem above.
+
+%The two terms are distinct functionals of the joint distribution $[S,X]$, and the separation is
+%exact. \textbf{Coverage bias} is a statement about the first moment of the sampling
+%measure: it is the pairing of the climatological mean field with the departure of the
+%average sampling measure from uniformity, and it vanishes under coverage-unbiasedness.
+%\textbf{Preferential bias} is a statement about covariance: it is nonzero precisely when
+%the conditional sampling measure $\R_S$ departs from its mean in a manner that co-varies
+%with the realized anomaly field. It vanishes under non-preferentiality, since then
+%$\R_S = \M$ almost surely.
+
+%For illustration, consider a field that is constant on the cells of a finite partition
+%$\X = \bigcup_{j=1}^{C} c_j$, such that $a + \e = \sum_{j} (a_j + \e_j) \1_{c_j}$. For each cell, $\R_S(c_j)$ is a random variable and $\M(c_j)$ its mean,
+%so
+%\begin{equation}
+%  \label{eq:cellcov}
+%\E\!\left[\int_\X (a(x) + \e(x)) \dd(\R_S - \M)\right]
+%  \;=\; \sum_{j=1}^{C} \E\!\Big[(a_j + \e_j)\,\big(\R_S(c_j) - \M(c_j)\big)\Big]
+%  \;=\; \sum_{j=1}^{C} \Cov\!\big(a_j + \e_j,\, \R_S(c_j)\big).
+%\end{equation}
+
+Further, if $\R_S \ll \P$ almost surely, we can define the relative sampling density
+$w_S = \dd\R_S/\dd\P$ where $\E(w_S) = w = \dd\M/\dd\P$ and $\int_\X w_S \dd\P = \int_\X w \dd\P = 1$.
+
+Here, $w_S(x) > 1$ indicates that the array places more sampling intensity near $x$ than a uniform
+design would, conditionally on the realized ocean $S$. And $w(x) > 1$ indicates that the average sampling array places more sampling intensity near $x$ than a uniform
+design would.
+
+In this case we have the intuitive simplification that 
+\begin{equation}
+\E[B\,|\,S] = \int_\X S(x)(w_S(x) - 1)\dd\P(x) = \Cov_{\P}(S, w_S) .
+\end{equation}
+
+This equation expresses that conditional on a realized OHC field $S$, the sampling induced bias can be expressed as a covariance between the OHC field and the sampling density, such that positive/negative bias occurs if floats concentrate over spacetime where OHC is high/low.
+
+Similarly,
+\begin{equation}
+  \E[B] = \Cov_\P(\mu, w) + \int_\X \Cov\!\big(a(x) + \e(x),\, w_S(x)\big)\dd\P(x) .
+\end{equation}
+
+Where this equation expresses that coverage bias is a covariance between the average sampling density and the climatological mean field and preferential bias is a covariance between the sampling density and the anomaly field.
+
+In practice, to estimate total OHC, researchers estimate the OHC anomaly
+relative to a mean-field climatology and then add the climatology back to their
+anomaly estimates. Consider the estimand
+\begin{equation}
+  \ohcbar_a = \int_{\X} \big(S(x) - \mu(x)\big) \dd \P(x),
+\end{equation}
+and the sample average estimator
+\begin{equation}
+  \ohchat_a = \frac1n \sum_{i=1}^{n}\Big(Y_i - \hat m(X_i)\Big),
+\end{equation}
+where the estimated mean field is $\hat m = \mu + \Delta$. The anomaly
+estimation error is
+\begin{equation}
+  \ohchat_a - \ohcbar_a
+  = \int_\X \big(S(x) - \hat m(x)\big) \dd\big(\Q_n - \P\big)(x)
+  - \int_\X \Delta(x) \dd\P(x)
+  + \frac1n\sum_{i=1}^{n}\eta_i ,
+\end{equation}
+of which the first two terms constitute the sampling induced bias $B_a$.
+Substituting $S - \hat m = a + \e - \Delta$, the two integrals of $\Delta$
+against $\P$ cancel, leaving
+\begin{equation}
+  \label{eq:Bacollapse}
+  B_a = \int_\X \big(a(x) + \e(x)\big)\dd(\Q_n - \P)(x)
+        - \int_\X \Delta(x)\dd\Q_n(x) .
+\end{equation}
+Subtracting the estimated climatology at the sample points therefore already
+supplies the domain-average correction, and the two contributions of $\Delta$
+merge into a single integral against the sampling measure alone.
+
+Conditioning on the realized ocean state and using \eqref{eq:Rdef},
+\begin{equation}
+  \label{eq:condbiasanom}
+  \E[B_a \mid S]
+  = \underbrace{\int_\X \big(a(x) + \e(x) - \Delta(x)\big)\dd(\R_S - \M)(x)}_{\textbf{preferential}}
+  \;+\; \underbrace{\int_\X \big(a(x) + \e\big(x))\dd(\M - \P)(x)}_{\textbf{coverage}}
+  \;-\; \int_\X \Delta(x) \dd\M(x) ,
+\end{equation}
+a random variable, being a functional of the realized ocean. Taking a further
+expectation over ocean states, the anomaly fields are mean-zero and $\M - \P$ is
+deterministic, so the coverage term vanishes; and if the mean field is estimated
+without pointwise bias, $\E[\Delta(x)] = 0$ for all $x \in \X$, the final term
+vanishes also. Hence
+\begin{equation}
+  \label{eq:Baresidual}
+  \E[B_a]
+  = \E\!\left[\int_\X \big(a(x)+\e(x)-\Delta(x)\big)\dd(\R_S - \M)(x)\right] :
+\end{equation}
+all remaining expected bias is a covariance between sampling effort and the
+residual field $a + \e - \Delta$. Splitting this into its two contributions,
+\begin{equation}
+  \label{eq:biasdecompanom}
+  \E[B_a]
+  = \underbrace{\E\!\left[\int_\X \big(a(x)+\e(x)\big)\dd(\R_S - \M)(x)\right]}_{\textbf{preferential}}
+  - \underbrace{\E\!\left[\int_\X \Delta(x)\dd(\R_S - \M)(x)\right]}_{\textbf{climatology--sampling coupling}} .
+\end{equation}
+
+Anomaly estimation therefore eliminates coverage bias in expectation while
+leaving the preferential term identical, and replaces the coverage term with a
+second covariance against the conditional sampling measure. 
+
+
+\section{Simulation Study}
+
+In this section we will introduce fully-observable proxies for the ocean fields and sampling mechanism that determine the preferential sampling bias.
+In doing so we can isolate this particular form of bias and evaluate its effect on OHC anomaly trend estimates.
+
+First, as a companion to the OHC field $S$, let $V$ be the true continuous velocity field on the domain, from depth 0m-2000m that advects floats.
+
+%Indeed we can consider both the OHC field and the velocity field as deterministic functions of a random ocean state $\Psi$, such that $S = S(\Psi)$ and $V = V(\Psi)$ where there exists a physical dependence between the OHC and velocity fields through the general ocean state $\Psi$.
+
+Further, let $\D$ be a joint distribution of float deployment positions, profiling configuration, and life-spans, such that a draw $D \sim \D$ is a deployment realization for the entire fleet of floats that profile the domain $\X$.
+Note, individual floats are not $iid$ draws from $\D$ because floats are deployed in spacetime clusters, rather the deployment of the entire fleet is considered a draw from 
+$\D$.
+Let $g$ be a deterministic function that maps a deployment realization $d \sim \D$ and a velocity field $V$ to the sampling process $X$,
+\begin{equation}
+  g(D, V) = X
+\end{equation}
+such that the randomness in the sampling process $X$ is derived from the randomness in deployment and velocity field $V$. We assume that $D \perp V$.
+
+We then replace the unobservable ocean fields $S$ and $V$ with fully observable proxy fields, $\ts$ and $\tv$ from the GLORYS12V1 reanalysis product.\cite{glorys}
+This product supplies daily and monthly mean temperature, salinity, and velocity data at $1/12^{\circ}$ grid cells and 50 vertical levels, down to over $5000m$ for deep ocean areas. 
+Further, we use the Parcels Lagragian simulation framework to deploy floats according to a distribution $\D$ and advect them through the ocean velocity field $\tV$.
+Thus, Parcels acts as the function $g$ mapping a deployment configuration and velocity field to profile locations $X$.
+Using the full reanalysis data, we then estimate the climatological mean fields for temperature and salinity and use them to estimate the mean field $\mu$, denoting our estimate as $\hat{m}$.
+This estimation can be done with local polynomial regression as in \cite{rg}.
+In our framework we consider the climatological mean field $\mu$ to be known and fixed at $\hat{m}$ and define the OHC anomaly relative to this climatology:
+\begin{equation}
+  \tz = \ts - \hat{m}.
+\end{equation}
+This procedure matches the usage of climatological products where scientists take them as fixed and use them as inputs to models.
+
+Further, the reanalysis data provides $m$ years of anomaly and velocity fields. We will denote the random yearly fields as $\tZ_y$ and $\tV_y$ for years $y = 1,\ldots,m$ and consider each year's ocean state to be drawn from a common distribution of ocean states $\L$, i.e., $(\tZ_y, \tV_y)_{y=1}^{m} \sim \L_{\tZ,\tV}$, where $(\tz, \tv)$ is the realized proxy ocean.
+
+Because the reanalysis product is constant on a grid that partitions the domain $\X$ into $C$ spacetime cells, $\tz$ can be represented as a vector in $\mathbb{R}^C$. Yearly restrictions of the domain are denoted $\X_y$ that are composed of $C_y$ cells. Then reference measure has $\P(x) = |x|/|\X| > 0$ for every cell, and any sampling measure that assigns finite mass to each cell is absolutely continuous with
+respect to $\P$. Similarly we can consider the uniform measure restricted to year $y$ as $\P_y(x) = |x|/|\X_y|$.
+
+In the simulation setting, the empirical sampling measure a function of the random deployment $D \sim \D$ and velocity field $\tV$, defined as $\Q_n(D,\tV)$.
+If $D = d$ and $\tV = \tv$ are observed we denoted the realized empirical sampling measure as $\Q_n$.
+Then we define $\Q_{\tV} = \E[\Q_n(D,\tV)|\tV]$ as the conditional mean sampling measure. If $\tV = \tv$ is fixed then we consider the realized sampling measure that averages over deployment randomness, i.e., $\Q_{\tv} = \E[\Q_n(D,\tV)|\tV = \tv] = \E_D[\Q_n(D,\tv)]$. 
+Then $\Q = \E_{\tV}[\E_D[\Q_n | \tV]] = \E_{\tV}[\Q_{\tV}]$. 
+
+The relative sampling density or weight, conditional on the velocity field $\tV$ is $w_{\tV} = d\Q_{\tV}/d\P$ or for a fixed field $\tv$, $w_{\tv} = d\Q_{\tv}/d\P$.
+The expected sampling density over velocity and deployment randomness is $w = d\Q/d\P = \E_{\tV}[w_{\tV}]$.
+
+
+%If restricting to a single year $y$, we will denote the conditional mean sampling measure as $\R_y$. 
+%Further, we will denote the relative sampling density or weight, for a given year, conditional on the observed velocity field $\tv_y$, as 
+%\begin{equation}
+%  \label{eq:wdef}
+%  w_{y}(x) \;=\; \frac{\dd\R_y}{\dd\P_y}(x) \;=\; \frac{\R_{y}(x)}{\P_y(x)}, \qquad x = 1,\ldots,C_y,
+%\end{equation}
+%where $w_y \in \mathbb{R}^C_{\ge 0}$ with $\P_y$-weighted mean one,
+%$\sum_x w_y(x)\P_y(x) = \R_{y}(\X_y) = 1$.
+%Then, $\M = \E_{\tV}[\E_{D}[\Q_n|\tV_y]] = \E_{\tV}[\R_y]$. Because we are assuming that $(\tZ_y, \tV)_{y=1}^{m}$ are identically distributed according to the distribution $\L$ for all years $m$, the reference measure $\M$ is common to all years. Thus,  $w = \dd\M/\dd\P_y = \E_{\tV}[w_y]$ for all $y$ and $w(x)$ is the expected cell $x$ sampling weight averaged over deployment and ocean state randomness. Again $\sum_x w(x)P_y(x) = \M(\X_y) = 1$.
+%
+
+Our first goal is to estimate sampling induced bias for each year $B_a$ from the historical reanalysis record. In doing so we want to isolate the effect of advection rather than deployment structure or non-uniformity.
+Therefore, we deploy floats according to a fixed distribution $\D$ that is uniform over the spacetime domain, with float lifespans drawn from the empirical distribution of lifespans, and regular profiling intervals of 10 days.\footnote{[[Consider seeding floats before the analysis domain so that a steady state of sampling is reached and the beginning of the analysis period is not undercovered. Further, if the analysis domain is subset of the ocean then we would still deploy floats uniformly over the spatial domain.]]}
+
+Then, for each of $j = 1,\ldots,J$ deployment replicates we can independently draw $D_j \sim \D$, observe the deployments $(D_1 = d_1,\ldots,D_j = d_j)$, obtain  $X^{(j)} = g(d_j, \tv)$ by advecting the virtual floats through the velocity field $\tv$, and obtain the empirical sampling measure $\Q_n^{(j)} := \Q_n(d_j, \tv)$.
+
+Then, we can compute $J$ Monte Carlo estimates of $B$ as
+\begin{equation}
+B^{(j)} = \int_{\X} \tz(x)\dd(\Q_n^{(j)} - \P)(x) = \sum_{x \in \X}\tz(x)(w_n^{(j)}(x) - 1)\P(x) = \langle\tz,w_n^{(j)} - \mathbf 1\rangle_{\P}  
+\end{equation}
+where for cell $x$, $w_n^{(j)} = n_x^{(j)} / n^{(j)}$ where $n_x^{(j)}$ is the number of profiles in cell $x$ in iteration $j$ and $n_j$ is the total number of profiles. Thus, $w_n^{(j)} \in \mathbb{R}^C$ is the relative cell sampling weight for each of the $C$ cells in deployment iteration $j$.
+Then we can estimate $B$ as $\hat{B} = \frac1J\sum_{j = 1}^J B^{(j)}$.
+
+%Further, we can restrict the domain to spacetime subsets such as months, years, and/or regions $A \subset \X$ and estimate $B_a$ for the restricted domain.
+While these estimates are useful for evaluating the size of the sampling induced bias from advection based sampling of the OHC anomaly field, the estimand is limited as it cannot distinguish between preferential sampling bias and coverage bias. 
+
+Therefore, we define the realized preferential sampling bias for year $y$ as
+\begin{equation}
+  \theta_y = \int_{\X_y} \tz_y(x)\dd(\Q_{y} - \Q)(x) =  \sum_{x\in\X_y}\tz_y(x)(w_y(x) - w(x))\P(x) = \langle\tz_y,w_y - w\rangle_{\P} .
+\end{equation}
+
+$\theta_y$ therefore measures the alignment between the anomaly field in year $y$ and the conditional mean sampling weight relative to the overall mean sampling design. Intuitively, we are measuring whether deviations in OHC are aligned with deviations in sampling weight.
+
+Consider the estimator 
+\begin{equation}
+  \hat\theta_y = \bar{B}_y^{y} - \frac{1}{m-1}\sum_{y \ne y'}\bar{B}_y^{y'}
+\end{equation}
+where $\bar{B}_y^{y'} = \frac1J\sum_{j=1}^J B_y^{y'(j)}$ and $B_y^{y'(j)} = \langle\tz_y,w_n^{y'(j)} - 1 \rangle_{\P}$.
+We will show that $\hat\theta_y$ is conditionally unbiased for $\theta_y$ given the ocean states $\tZ_y = \tz_y$ and $\tV_y = \tv_y$, i.e., $\E[\hat\theta_y | \tZ_y = \tz_y, \tV_y = \tv_y] = \theta_y$ under the following assumptions.
+
+%Here, $\R_s(x) = \E[Q_n(x) | S = s]$ where $\R_s$ is a fixed measure but $\Q_n$ remains random from deployment variability. Further, $\M(x) = \E_S[\R_S(x)]$ where $\M$ marginalizes over ocean states $S$.
+%Intuitively, $w_n^{(j)}(x) - \P(x)$ is the relative cell $x$ sampling weight of one deployment realization compared to uniform cell sampling.
+%Whereas, for a fixed ocean state $s$, $w_s(x) - w(x)$ is the expected relative sampling weight of cell $x$ across deployments compared to the average sampling weight of cell $x$ across all deployments and ocean states.
+%In order to estimate $\theta_s$ we will need the density $w$ of $\M$, which is an expectation of $w_S$ over ocean states and cannot be computed from a single realization $\tS$.
+%$\theta_s$ then isolates the preferential bias term as it is a measurement of the alignment between the anomaly field and state specific preferential sampling design.
+%Our estimation strategy of $\theta$ is to estimate $\theta_k$ for each year $y = 1,\ldots,M$ by leveraging the assumption that conditional on the OHC and velocity fields in year $y$ the sampling, the expected sampling weight over deployment realizations in a different year $y' \ne y$ is unrelated to $\tS_y$ and $\tV_y$.
+%Accordingly, we will consider the realized sampling bias induced by a velocity field from year $y'$ advecting floats through the anomaly field from year $y$. The difference between the realized bias when the velocity year is aligned with the anomaly year compared to when the velocity year is unaligned with the anomaly field will allow us to unbiasedly estimate the realized preferential sampling bias in each year under reasonable assumptions.
+%Note, we will use $\Q_n^{y'}(j)$ to denote the empirical sampling measure induced by the velocity field from year $y'$, $\tV_{y'}$, and $B_y^{y'}$ to denote the realized sampling bias from OHC anomaly field $\S_{y}$ and velocity field $\tV_{y'}$.
+
+
+
+\begin{proposition}[Conditional unbiasedness]
+Under \textnormal{(A0)--(A2)}, $\ \E[\hat\theta_y \mid \tZ_y = \tz_y,\tV_y = \tv_y] = \theta_y$.
+\end{proposition}
+
+\begin{description}
+\item[(A0)] The deployment draws $D_{j} \sim \D$ are i.i.d.\ across $j$.
+\item[(A1)] The pairs $(\tZ_y,\tV_y)$ are identically distributed under $\L$.
+  Consequently $\Q = \E[\Q_{\tV_y}]$ and $w = \E[w_{\tV_y}]$ do not depend on $y$;
+  the marginal sampling measure and its density are common to all years.
+\item[(A2)] For every $y' \ne y$, $\ \E[\,w_{\tV_{y'}} \mid \tZ_y,\tV_y\,] = w$
+  almost surely.
+\end{description}
+
+\begin{proof}
+  Let $\F = \tZ_1,\ldots,\tZ_m,\tV_1,\ldots,\tV_m$ be the set of all $m$ observed field pairs. First, consider fixing the fields $\F$ and taking expectation with respect to $d \sim \D$ of the sampling induced bias. Namely, for each $d_j$
+  \begin{equation}
+    \E_d[B_y^{y'(j)} \,|\, \F] 
+    = \sum_{x\in\X_y}\tZ_y(x)(\E_d[w_n^{y'(j)}(x) | \F] - 1)\P_y(x)
+    = \sum_{x\in\X_y}\tZ_y(x)(w_{y'}(x) - 1)\P_y(x).
+  \end{equation}
+Then, 
+\begin{equation}
+  \E_d[\bar{B}_y^{y'} \,|\, \F]
+    = \frac1D\sum_{j=1}^{D} \E_d[B_y^{y'(j)} \,|\, \F]  
+    = \sum_{x\in\X_y}\tZ_y(x)(w_{y'} - 1)\P_y(x)
+    = \langle\tZ_y, w_{y'} - \mathbf{1}\rangle_{\P_y}.
+  \end{equation}
+Substituting into $\hat\theta_y = \bar B_y^{y} - \frac{1}{m-1}\sum_{y'\ne y}\bar B_y^{y'}$,
+\begin{equation}
+  \E_d\big[\hat\theta_y \mid \F\big]
+  = \Big\langle \tZ_y,\; w_y - \frac{1}{m-1}\sum_{y'\ne y} w_{y'}\Big\rangle_{\P_y}
+  = \big\langle \tZ_y,\; w_y - \bar w^{(-y)}\big\rangle_{\P_y},
+\end{equation}
+where $\bar w^{(-y)} = \frac{1}{m-1}\sum_{y'\ne y} w_{y'}$.
+Using (A1),
+\begin{equation}
+  \E_d\big[\hat\theta_y \mid \F\big]
+  = \big\langle \tZ_y,\; w_y - \bar w^{(-y)} - w + w\big\rangle_{\P_y}
+   = \underbrace{\big\langle \tZ_y,\, w_y - w\big\rangle_{\P_y}}_{\theta_y}
+  \;-\; \underbrace{\big\langle \tZ_y,\, \bar w^{(-y)} - w\big\rangle_{\P_y}}_{\xi_y}.
+\end{equation}
+By (A2),
+\begin{equation}
+  \E_{\tV}\big[\xi_y \mid \tZ_y,\tV_y\big]
+  = \Big\langle \tZ_y,\; \frac{1}{m-1}\sum_{y'\ne y}\E_{\tV}\big[w_{y'} \mid \tZ_y,\tV_y\big] - w\Big\rangle_{\P_y}
+  = \langle \tZ_y,\, w - w\rangle_{\P_y}
+  = 0.
+\end{equation}
+By the tower property,
+\begin{equation}
+  \E\big[\hat\theta_y \mid \tZ_y,\tV_y\big]
+  = \E_{\tV}\big[\, \E_d[\hat\theta_y \mid \F] \,\big|\, \tZ_y,\tV_y\big]
+  = \theta_y - \E_{\tV}\big[\xi_y \mid \tZ_y,\tV_y\big]
+  = \theta_y.
+\end{equation}
+\end{proof}
+
+\begin{proof}
+Fix the observed fields $(\tilde z_1, \tilde v_1), \ldots, (\tilde z_m, \tilde v_m)$
+and first average over the deployment draws $d \sim \D$; the fields being fixed,
+the only randomness is deployment.
+
+\emph{Inner expectation (deployments, fields observed).}
+By linearity and $\E_d[w_n^{y'(j)}] = w_{\tv_{y'}}$,
+\begin{equation}
+  \E_d\big[\bar B_y^{y'}\big]
+  = \big\langle \tilde z_y,\, w_{\tv_{y'}} - \mathbf 1\big\rangle_{\P_y},
+\end{equation}
+and substituting into
+$\hat\theta_y = \bar B_y^{y} - \frac{1}{m-1}\sum_{y'\ne y}\bar B_y^{y'}$ the
+constant $\mathbf 1$ cancels, giving
+\begin{equation}
+  \E_d\big[\hat\theta_y\big]
+  = \big\langle \tilde z_y,\, w_{\tv_y} - \bar w^{(-y)}\big\rangle_{\P_y}
+  = \underbrace{\big\langle \tilde z_y,\, w_{\tv_y} - w\big\rangle_{\P_y}}_{\theta_y}
+    - \underbrace{\big\langle \tilde z_y,\, \bar w^{(-y)} - w\big\rangle_{\P_y}}_{\xi_y},
+\end{equation}
+where $\bar w^{(-y)} = \frac{1}{m-1}\sum_{y'\ne y} w_{\tv_{y'}}$ and
+$w = \E[w_{\tV_y}]$ is the common marginal density (A1). Here $\theta_y$ is the
+realized bias for year $y$ and $\xi_y$ the reference error.
+
+\emph{Outer expectation (over the reference years).}
+The realized bias $\theta_y$ depends only on year $y$'s observed fields. The
+reference densities $w_{\tv_{y'}}$, $y'\ne y$, are realizations of the random
+$w_{\tV_{y'}}$; averaging over the law of the reference years while holding year
+$y$ fixed, (A2) gives $\E[w_{\tV_{y'}} \mid \tZ_y = \tilde z_y, \tV_y = \tilde v_y] = w$,
+so
+\begin{equation}
+  \E\big[\xi_y \mid \tZ_y = \tilde z_y, \tV_y = \tilde v_y\big]
+  = \Big\langle \tilde z_y,\;
+      \frac{1}{m-1}\sum_{y'\ne y}\E\big[w_{\tV_{y'}} \mid \tZ_y=\tilde z_y,\tV_y=\tilde v_y\big] - w
+    \Big\rangle_{\P_y} = 0.
+\end{equation}
+Combining the two expectations by the tower property,
+\begin{equation}
+  \E\big[\hat\theta_y \mid \tZ_y = \tilde z_y, \tV_y = \tilde v_y\big]
+  = \theta_y. \qquad\qedhere
+\end{equation}
+\end{proof}
+
+\subsection{Testing for preferential sampling}
+\label{sec:test}
+
+The estimates $\{\hat\theta_y\}_{y=1}^m$ measure, in each year, the covariance
+between the anomaly field and the sampling density. We ask whether this reflects
+a systematic relationship in the law $\mathcal L$ generating the ocean states, or
+is consistent with the anomaly and circulation being unrelated.
+
+\paragraph{Null hypothesis.}
+Recall $w_{\tV} = \dd\Q_{\tV}/\dd\P_y$ is the sampling density, a function of the
+circulation, and $w = \E[w_{\tV}]$ its marginal. The null asserts that the
+anomaly field and the sampling density are independent under $\mathcal L$,
+\begin{equation}
+  \label{eq:H0}
+  H_0:\quad \tZ \;\perp\; w_{\tV},
+\end{equation}
+implied by, but strictly weaker than, independence of the margins $\tZ\perp\tV$.
+This is the definition of preferential sampling of \S\ref{sec:measures},
+$[S,X]\neq[S][X]$, transported to the reanalysis: under $H_0$ the ocean state
+carries no information about where sampling concentrates, so $\Q_{\tV} = \Q$
+almost surely and $\theta = \langle\tZ, w_{\tV}-w\rangle_{\P_y} = 0$ for every
+state. Rejection is exact evidence that $\tZ$ and $w_{\tV}$ are dependent, i.e.\
+that preferential sampling is present.
+
+The test is first order: $w_{\tV}$ is a density of the conditional \emph{mean}
+sampling measure, so dependence carried solely by the clustering of profiles
+about $\Q_{\tV}$---the state modulating how tightly floats concentrate without
+shifting where---leaves $w_{\tV}$ unchanged and satisfies \eqref{eq:H0}. This is
+the bias-relevant channel: only first-order dependence enters $\E[B_a\mid\tZ,\tV]$.
+
+\paragraph{Test statistic.}
+The estimator contrasts each year's anomaly paired with its own circulation
+against its pairings with other years' circulations, so under $H_0$ the diagonal
+is exchangeable with the off-diagonals. Pooling and studentizing,
+\begin{equation}
+  \label{eq:teststat}
+  T = \frac{\bar\theta}{\widehat\se(\bar\theta)},
+  \qquad
+  \bar\theta = \frac{1}{m}\sum_{y=1}^m \hat\theta_y,
+  \qquad
+  \widehat\se(\bar\theta) = \frac{\sd_y(\hat\theta_y)}{\sqrt m}.
+\end{equation}
+Studentization does not affect exactness under $H_0$; it stabilizes the scale
+across permutations and improves power under year-to-year heteroskedasticity.
+
+\paragraph{Reference distribution.}
+A permutation $\pi \in \mathfrak S_m$ pairs anomaly $\tZ_y$ with circulation
+$\tV_{\pi(y)}$. With
+$\bar B_y^{y'} = \frac1D\sum_j \langle \tZ_y, w_n^{y'(j)} - \mathbf 1\rangle_{\P_y}$
+the precomputed array cell and $R_y = \sum_{y'} \bar B_y^{y'}$ its row total, the
+permuted estimate is
+\begin{equation}
+  \label{eq:permstat}
+  \hat\theta_y^{\pi}
+  = \frac{m}{m-1}\,\bar B_y^{\pi(y)} - \frac{1}{m-1}R_y,
+\end{equation}
+a re-indexing of the array requiring no re-simulation. Since $R_y$ is
+permutation-invariant, the row centering does not affect the $p$-value.
+
+\paragraph{$p$-value.}
+For permutations $\pi_1,\ldots,\pi_R$ drawn uniformly from $\mathfrak S_m$,
+\begin{equation}
+  \label{eq:pval}
+  p = \frac{1 + \#\{r: |T^{\pi_r}| \ge |T|\}}{1 + R},
+\end{equation}
+so $p_{\min} = (R+1)^{-1}$ is set by the number of permutations, not by $m$.
+
+\begin{assumption}[Conditional exchangeability]
+\label{ass:exch}
+Conditionally on the density sequence $\mathbf w = (w_{\tV_1},\ldots,w_{\tV_m})$,
+and under $H_0$, the anomaly sequence $(\tZ_1,\ldots,\tZ_m)$ is exchangeable.
+\end{assumption}
+
+\begin{proposition}[Exactness]
+\label{prop:exact}
+Under Assumption~\ref{ass:exch}, with $\pi_1,\ldots,\pi_R$ drawn uniformly from
+$\mathfrak S_m$ independently of the data, the test rejecting when $p\le\alpha$
+satisfies $\Pr(p\le\alpha)\le\alpha$.
+\end{proposition}
+
+\begin{proof}
+The statistic depends on the circulations only through their densities: each cell
+is $\bar B_y^{y'} = \langle \tz_y, w_{\tV_{y'}} - \mathbf 1\rangle_{\P_y}$ in
+expectation over deployments, so $T = \Phi(\mathbf Z, \mathbf w)$ with
+$\mathbf Z = (\tZ_1,\ldots,\tZ_m)$, and $T^\pi = \Phi(\pi\mathbf Z, \mathbf w)$
+permutes only the anomaly argument. $\Phi$ does not depend on $\pi$.
+
+\emph{Step 1 (condition on the densities).}
+Fix $\mathbf w$; all probabilities below are conditional on $\mathbf w$. Under
+$H_0$, $\mathbf Z \perp \mathbf w$, so the conditional law of $\mathbf Z$ equals
+its marginal law and the exchangeability of Assumption~\ref{ass:exch} holds
+conditionally.
+
+\emph{Step 2 (invariance).}
+Exchangeability gives $\pi\mathbf Z \overset{d}{=} \mathbf Z$ for every
+$\pi\in\mathfrak S_m$, and since $\Phi(\cdot,\mathbf w)$ is a fixed map,
+\begin{equation}
+  T^\pi = \Phi(\pi\mathbf Z,\mathbf w) \ \overset{d}{=}\ T,
+  \qquad \pi\in\mathfrak S_m .
+\end{equation}
+The observed statistic is $T = T^{\mathrm{id}}$, and every permuted statistic
+shares its distribution; call it $F$.
+
+\emph{Step 3 (exchangeability of the compared values).}
+A finite collection is \emph{exchangeable} if its joint law is invariant under
+reordering; identically distributed, conditionally independent variables are
+exchangeable in particular. Each reference $T^{\pi_r}$ is the image of an
+independent uniform draw $\pi_r$ under the fixed map
+$\Phi(\cdot\,\mathbf Z,\mathbf w)$, hence has law $F$ and is independent of the
+others given $\mathbf Z$; the observed $T$ has law $F$ also (Step 2). The $R+1$
+values $(T, T^{\pi_1},\ldots,T^{\pi_R})$ are therefore exchangeable.
+
+\emph{Step 4 (uniform rank).}
+Exchangeability makes each of the $R+1$ values equally likely to hold any
+position in the ordering, so the rank of $|T|$ is uniform on $\{1,\ldots,R+1\}$.
+Since $p = \mathrm{rank}/(R+1)$,
+\begin{equation}
+  \Pr(p\le\alpha \mid \mathbf w)
+  = \Pr\big(\mathrm{rank}\le\alpha(R+1) \mid \mathbf w\big)
+  = \frac{\lfloor\alpha(R+1)\rfloor}{R+1}
+  \le \alpha,
+\end{equation}
+ties counted against the observed value by the weak inequality, making the test
+conservative.
+
+\emph{Step 5 (remove the conditioning).}
+The bound holds for every $\mathbf w$ and does not depend on it, so
+$\Pr(p\le\alpha) = \E_{\mathbf w}[\Pr(p\le\alpha\mid\mathbf w)] \le \alpha$.
+\qedhere
+\end{proof}
+
+\begin{remark}[Persistence and a sensitivity check]
+\label{rem:persistence}
+Assumption~\ref{ass:exch} requires the anomaly sequence to be exchangeable given
+the densities. Removing the climatology, trend, and seasonal cycle secures this
+at low frequencies, but residual interannual persistence (e.g.\ ENSO, PDO) leaves
+neighbouring years correlated, so exchangeability holds only approximately. Under
+full permutation this contaminates the reference distribution through near-diagonal
+pairings, whose circulations still resemble the aligned one. As a sensitivity
+check we recompute the test over the restricted set
+$\Pi_\ell = \{\pi : |\pi(y)-y| \ge \ell\ \forall y\}$, which excludes pairings at
+displacement below $\ell$, for a range of $\ell$; stability of the $p$-value
+across $\ell$ indicates that persistence rather than genuine alignment is not
+driving the result. This restriction is a diagnostic, not a component of the exact
+test: Proposition~\ref{prop:exact} holds for any permutation set fixed
+independently of the data, and $\Pi_\ell$ mitigates a failure of
+Assumption~\ref{ass:exch} rather than being required by it.
+\end{remark}
+
+\newpage
+%\paragraph{Sampling densities on the grid.}
+%Because the reanalysis partitions $\X$ into $C$ cells of positive volume, the
+%reference measure has $\P(x) = |x|/|\X| > 0$ for every cell, and any sampling
+%measure that assigns finite mass to each cell is absolutely continuous with
+%respect to $\P$. We therefore need not assume $\R_s \ll \P$: on the grid it holds
+%automatically, and the \emph{relative sampling density}
+%\begin{equation}
+%  \label{eq:wdef}
+%  w_s(x) \;=\; \frac{\dd\R_s}{\dd\P}(x) \;=\; \frac{\R_s(x)}{\P(x)}, \qquad x = 1,\ldots,C,
+%\end{equation}
+%is a well-defined vector $w_s \in \mathbb{R}^C_{\ge 0}$ with $\P$-weighted mean one,
+%$\sum_x w_s(x)\P(x) = \R_s(\X) = 1$. (This is a statement about the
+%\emph{conditional-mean} measure $\R_s = \E_d[\Q_n \mid S=s]$, not about a single
+%realization: an individual $\Q_n$ is atomic on float tracks, but averaging over
+%deployments $d \sim \D$ fills every cell.) Write $w = \dd\M/\dd\P = \E_S[w_S]$ for
+%the density of the marginal measure, likewise with $\P$-weighted mean one.
+%
+%\paragraph{The bias as a covariance.}
+%For vectors $a, b \in \mathbb{R}^C$ let
+%$\langle a, b\rangle_\P = \sum_x a(x)\,b(x)\,\P(x)$ denote the $\P$-weighted inner
+%product, and $\Cov_\P(a,b) = \langle a, b\rangle_\P - \langle a,\mathbf{1}\rangle_\P
+%\langle b,\mathbf{1}\rangle_\P$ the corresponding covariance across cells. Since
+%$\dd\R_s = w_s \dd\P$, the realized preferential bias is
+%\begin{equation}
+%  \label{eq:thetacov}
+%  \theta_s
+%  = \int_\X \tZ \dd(\R_s - \M)
+%  = \sum_x \tZ(x)\big(w_s(x) - w(x)\big)\P(x)
+%  = \big\langle \tZ,\, w_s - w\big\rangle_\P .
+%\end{equation}
+%Because $w_s$ and $w$ share the $\P$-weighted mean one, $w_s - w$ has
+%$\P$-weighted mean zero, and \eqref{eq:thetacov} is exactly a covariance under
+%$\P$:
+%\begin{equation}
+%  \label{eq:thetacov2}
+%  \theta_s \;=\; \Cov_\P\big(\tZ,\, w_s\big),
+%\end{equation}
+%the covariance, across cells, between the anomaly field and the state-conditional
+%sampling density. It is positive when the state $s$ concentrates sampling effort
+%in cells where the anomaly is warm, and it is unchanged by adding a constant to
+%$\tZ$, so only the anomaly's spatial structure enters. The empirical bias of the
+%naive estimator has the same form with $w_s$ replaced by the realized weights:
+%$B_a^{(j)} = \langle \tZ, u^{(j)}\rangle$ where $u^{(j)} = \Q_n^{(j)}/\P - w$-free,
+%i.e.\ $u^{(j)}(x) = \Q_n^{(j)}(x) - \P(x)$ as in \eqref{eq:...}, so
+%\eqref{eq:thetacov2} is the denoised, coverage-removed analogue of the
+%single-realization weight $u^{(j)}$.
+
+% ============================================================
+% Assumptions
+% ============================================================
+
+
+
+\noindent
+Assumption~\ref{ass:stat} makes the target $\theta_y = \Cov_\P(\tZ_y, w^{(y)})$
+well-defined: without a single $\M$, each reference year would define a different
+baseline. Assumption~\ref{ass:mi} states that the expected sampling density of
+any \emph{other} year, given year $y$'s fields, is the marginal density---that is,
+another year's circulation is uninformative in mean about this year's anomaly. It
+constrains only the conditional mean of $w^{(y')}$; its variance and higher
+moments may depend on $\tZ_y$ freely, and it says nothing about $w^{(y)}$, whose
+dependence on $\tZ_y$ is the preferential sampling under study.
+
+% ============================================================
+% Proof
+% ============================================================
+
+\begin{proposition}[Conditional unbiasedness]
+\label{prop:unbiased}
+Under Assumptions~\ref{ass:stat}--\ref{ass:mi}, and with the deployment draws
+$d_{y',j} \sim \D$ i.i.d.\ across $j$,
+\begin{equation}
+  \E\big[\hat\theta_y \,\big|\, \tZ_y, \tV_y\big] \;=\; \theta_y .
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+Write $\F = \sigma(\{\tS_{y'}, \tV_{y'}\}_{y'=1}^M)$ for all fields, and recall
+that $\bar B_y^{y'} = \frac1D\sum_{j=1}^D B_y^{y'(j)}$ is the average bias over the
+$D$ deployment replicates, each
+$B_y^{y'(j)} = \langle \tZ_y,\, \Q_n^{y'(j)} - \P\rangle$.
+
+\emph{Step 1 (deployment average, fields fixed).} Given $\F$, the field $\tZ_y$
+and the population measure $\R^{(y')} = \E_d[\Q_n^{y'} \mid \tV_{y'}]$ are
+constants, and the only randomness in $\bar B_y^{y'}$ is the deployment draws.
+Each replicate has the same conditional mean, so
+\begin{equation}
+  \label{eq:step1}
+  \E\big[\bar B_y^{y'} \,\big|\, \F\big]
+  = \big\langle \tZ_y,\, \E_d[\Q_n^{y'} \mid \F] - \P\big\rangle
+  = \big\langle \tZ_y,\, \R^{(y')} - \P\big\rangle
+  = \big\langle \tZ_y,\, w^{(y')} - \mathbf{1}\big\rangle_\P ,
+\end{equation}
+the last equality using $\dd\R^{(y')} = w^{(y')}\dd\P$ and $\dd\P = \mathbf{1}\dd\P$.
+
+\emph{Step 2 (the uniform reference cancels).} Substituting \eqref{eq:step1} into
+$\hat\theta_y = \bar B_y^{y} - \frac{1}{M-1}\sum_{y'\neq y}\bar B_y^{y'}$, the
+term $\langle \tZ_y, \mathbf 1\rangle_\P$ enters with coefficient $+1$ from the
+diagonal and $-\frac{1}{M-1}$ from each of the $M-1$ off-diagonal terms, summing
+to zero:
+\begin{equation}
+  \label{eq:step2}
+  \E\big[\hat\theta_y \,\big|\, \F\big]
+  = \Big\langle \tZ_y,\; w^{(y)} - \frac{1}{M-1}\sum_{y'\neq y} w^{(y')}\Big\rangle_\P
+  = \big\langle \tZ_y,\; w^{(y)} - \bar w^{(-y)}\big\rangle_\P ,
+\end{equation}
+with $\bar w^{(-y)} = \frac{1}{M-1}\sum_{y'\neq y} w^{(y')}$. The coverage
+baseline, carried by $\mathbf 1$, has been differenced away.
+
+\emph{Step 3 (introduce $\M$).} Adding and subtracting $\langle \tZ_y, w\rangle_\P$
+and using \eqref{eq:thetacov2},
+\begin{equation}
+  \label{eq:step3}
+  \E\big[\hat\theta_y \,\big|\, \F\big]
+  = \underbrace{\big\langle \tZ_y,\, w^{(y)} - w\big\rangle_\P}_{=\,\theta_y}
+  \;-\; \underbrace{\big\langle \tZ_y,\, \bar w^{(-y)} - w\big\rangle_\P}_{=\,\xi_y} .
+\end{equation}
+Both terms are $\F$-measurable; $\theta_y$ is the estimand and $\xi_y$ is the
+reference error from $\bar w^{(-y)}$ being a finite average rather than $w$.
+
+\emph{Step 4 (the reference error is conditionally centred).} Take the
+expectation of \eqref{eq:step3} given $(\tZ_y, \tV_y)$. Since $\theta_y$ is a
+function of $\tZ_y$ and $w^{(y)}$, and $w^{(y)}$ is determined by $\tV_y$, it is
+$(\tZ_y,\tV_y)$-measurable and passes through unchanged. By linearity of the
+inner product and Assumption~\ref{ass:mi},
+\begin{equation}
+  \E\big[\xi_y \,\big|\, \tZ_y, \tV_y\big]
+  = \Big\langle \tZ_y,\; \tfrac{1}{M-1}\!\sum_{y'\neq y}
+     \E\big[w^{(y')} \mid \tZ_y, \tV_y\big] - w\Big\rangle_\P
+  = \big\langle \tZ_y,\; w - w\big\rangle_\P
+  = 0 .
+\end{equation}
+
+\emph{Step 5.} Combining by the tower property,
+\begin{equation}
+  \E\big[\hat\theta_y \mid \tZ_y, \tV_y\big]
+  = \E\big[\, \E[\hat\theta_y \mid \F] \,\big|\, \tZ_y, \tV_y\big]
+  = \theta_y - \E\big[\xi_y \mid \tZ_y, \tV_y\big]
+  = \theta_y . \qedhere
+\end{equation}
+\end{proof}
+
+\begin{remark}[The reference error is centred, not zero]
+$\xi_y$ has conditional mean zero but positive variance,
+$\Var(\xi_y \mid \tZ_y,\tV_y) = (M-1)^{-1}\Var_{y'}\big(\langle \tZ_y, w^{(y')}\rangle_\P\big)$,
+an $O((M-1)^{-1})$ contribution to the variance of $\hat\theta_y$ that no increase
+in $D$ removes. Assumption~\ref{ass:mi} fails under interannual persistence, when
+$w^{(y\pm1)}$ carries information about $\tZ_y$; the induced bias is
+$O((M-1)^{-1}\rho_1)$ and, since it makes $\bar w^{(-y)}$ resemble $w^{(y)}$,
+understates $\hat\theta_y$ --- the conservative direction.
+\end{remark}
+
+
+\newpage
+
+The target of our analysis is 
+\begin{equation}
+  \theta_{\tS} = \int_{\X} \tZ\dd(\R_{\tS} - \M),
+\end{equation}
+which is the expected preferential sampling bias given the ocean state $\tS$, a term of $\E[B_a | \tS]$.
+
+\subsection{Design}
+
+Let $\Psi$ denote the ocean state in a given year, determining both the heat
+content field $S = S(\Psi)$ and the velocity field $V = V(\Psi)$. A float is
+released according to a deployment realization $d$ and thereafter follows the
+flow, so that the sampling configuration is
+\begin{equation}
+  \label{eq:gmap}
+  X \;=\; g(d,\, V), \qquad d \sim \Dl ,
+\end{equation}
+where $\Dl$ denotes the distribution of deployment positions, dates, mission
+parameters and failure times, and $g$ advects floats seeded according to $d$
+through a velocity field and returns the resulting profile positions. Because
+$d \sim \Dl$ is drawn independently of the ocean state, $\E[\Q_n \mid \Psi]$
+depends on $\Psi$ only through $V(\Psi)$, so that $\R_\Psi = \R^{V(\Psi)}$: the
+conditional sampling measure of \eqref{eq:Rdef} is a function of the circulation
+alone. Holding $\Dl$ fixed across years isolates the \emph{advective} channel of
+preferential sampling; deployment-driven preferentiality, arising from targeted
+seeding or fleet growth, is excluded by construction and is not addressed here.
+
+We replace the unobserved field $S$ with a fully observed proxy $\tS$, together
+with the velocity field $\tV$ that generates the flow, both taken from the
+GLORYS12V1 reanalysis on a common grid over the whole domain. The reanalysis
+supplies $\tS$ and $\tV$ for each of $M$ analysis years, so that
+$\int_\X \tS \dd\P$ is computable directly, the observing system may be
+replicated by redrawing $d \sim \Dl$ and re-integrating trajectories through
+$\tV$, and the years of the record supply the variation in ocean state required
+to construct a reference.
+
+The climatology $\hat m$ is fit from the full gridded reanalysis product, and
+includes a pointwise linear drift, $\hat m(x,t) = \mu(x) + \beta(x)\,t$, with
+$\beta$ estimated separately in each grid cell. Fitting from the complete
+gridded field rather than from the simulated profiles ensures that the
+climatology error is uncorrelated with the sampling design, so that the coupling
+term of \eqref{eq:cellcov} vanishes. Including the drift removes the
+long-term warming pattern from the residual, which is required both for the
+exchangeability assumption of \S\ref{sec:test} and because the trend-aligned
+component of preferential bias is confounded with the array's own expansion
+history and with reanalysis quality improving as Argo coverage grew. The
+estimand is therefore alignment between circulation and \emph{interannual}
+anomalies. Write
+\begin{equation}
+  \Z_k \;=\; \tS_k - \hat m(\cdot,\, t_k), \qquad k = 1,\ldots,M ,
+\end{equation}
+for the residual field of year $k$.
+
+We take the climatology as fixed and known, so that the estimand is the anomaly relative to a specified mean field and the coupling term is identically zero. This matches the situation of a user who adopts a published climatology as an input.
+
+\subsection{Estimand}
+
+Throughout, the estimand is the bias of the anomaly estimator $\ohchat_a$ of
+\S\ref{sec:anomaly}: the climatology $\hat m$ is taken as given and defines the
+anomaly, so that $\Z_k$ is the residual field of year $k$ and no climatology
+error term arises. For each analysis year $k$, define the realized preferential
+bias
+\begin{equation}
+  \label{eq:thetastar}
+  \Rstar_k \;=\; \int_\X \Z_k \dd\big(\R^{(k)} - \M\big) ,
+\end{equation}
+where $\R^{(i)}$ is the mean sampling measure induced by advection through
+$\tV_i$, averaged over deployment realizations.
+
+Two comparisons locate \eqref{eq:thetastar} within the decomposition of
+\S\ref{sec:anomaly}. Conditionally on the ocean state, the realized bias of the
+anomaly estimator is
+$\E[B_a \mid S = s_k] = \int_\X \Z_k \dd(\R^{(k)} - \M) + \int_\X \Z_k \dd(\M - \P)$,
+so that $\Rstar_k$ is its preferential term, the realized coverage term being
+absent because the reference measure $\P$ has been replaced by $\M$. This is
+deliberate: coverage bias is a property of the deployment record alone and
+requires none of the machinery below. Marginally, the coupling term of
+\eqref{eq:biasdecompanom} is zero because the climatology is fixed rather than
+estimated from the profiles, and the coverage term is mean-zero across ocean
+states, so that
+\begin{equation}
+  \label{eq:thetaisbias}
+  \E\big[\Rstar\big] \;=\; \E\big[B_a\big] :
+\end{equation}
+the mean estimand of the simulation is the entire expected bias of the anomaly
+estimator, not one component of it.
+
+Two quantities are of interest. The first is $\E[\Rstar]$, which by
+\eqref{eq:thetaisbias} is the systematic bias incurred by anomaly estimation
+averaged over ocean states. The second, and the primary object of this study, is
+the \emph{distribution} of $\Rstar_k$ across ocean states. A preferential bias
+that averages to zero is not thereby harmless: a bias that fluctuates from year
+to year injects spurious interannual variance into the OHC record, aliasing
+directly into the signal used for climate-mode attribution and for closing the
+energy budget on annual timescales. We therefore report $\sd(\Rstar_k)$, its
+magnitude relative to the interannual standard deviation of domain-mean OHC, and
+its association with climate indices, alongside the mean.
+
+\subsection{Estimation}
+
+For each velocity year $i = 1,\ldots,M$ and each of $j = 1,\ldots,D$ replicates,
+draw $d_{i,j} \sim \Dl$ independently and integrate trajectories through
+$\tV_i$, giving designs $X^{(i,j)} = g(d_{i,j}, \tV_i)$ with empirical sampling
+measures $\Q_n^{(i,j)}$. Drawing a separate deployment realization for each pair
+$(i,j)$, rather than reusing a common realization across velocity years, renders
+the $MD$ designs mutually independent.
+
+Write $u_{i,j} = \Q_n^{(i,j)} - \P$ for the centered sampling measure. The
+simulated bias is bilinear,
+\begin{equation}
+  \label{eq:Bkl}
+  B_k^{(i,j)} \;=\; \int_\X \Z_k \dd\, u_{i,j}
+  \;=\; \big\langle \Z_k,\, u_{i,j}\big\rangle ,
+\end{equation}
+the sampling bias incurred when floats advected by the circulation of year $i$
+sample the residual field of year $k$. Since $u_{i,j}$ does not depend on $k$,
+the $M \times M \times D$ array is generated by $M$ residual fields and $MD$
+signed measures: trajectories are integrated once and all $M^2$ cells are filled
+by inner products. Let
+$\bar B_k^{(i)} = D^{-1}\sum_{j=1}^{D} B_k^{(i,j)}$ denote the deployment
+average. The estimator contrasts the aligned cell with the average of the
+unaligned cells in the same row,
+\begin{equation}
+  \label{eq:thetahat}
+  \widehat\Theta_k \;=\; \bar B_k^{(k)} \;-\; \frac{1}{M-1}\sum_{l \neq k} \bar B_k^{(l)} .
+\end{equation}
+
+\begin{proposition}[Unbiasedness]
+\label{prop:unbiased}
+For every analysis year $k$, $\E\big[\widehat\Theta_k\big] = \Theta_k$, where
+the expectation is over the deployment law $\Dl$ alone, the fields $\tS$ and
+$\tV$ being held fixed.
+\end{proposition}
+
+\begin{proof}
+The residual field is bounded on the grid and $\Q_n^{(i,j)}$ is a probability
+measure, so each $B_k^{(i,j)}$ is integrable and expectation commutes with the
+finite sums below. Since the $d_{i,j}$ are identically distributed across $j$,
+and integration against a fixed field is linear in the measure,
+\begin{equation}
+  \label{eq:cellmean}
+  \E\big[\bar B_k^{(i)}\big]
+  \;=\; \int_\X \Z_k \dd\,\E\big[\Q_n^{(i,j)} - \P\big]
+  \;=\; \int_\X \Z_k \dd\big(\R^{(i)} - \P\big) ,
+\end{equation}
+by the definition of $\R^{(i)}$ as the deployment-averaged sampling measure.
+Substituting \eqref{eq:cellmean} into \eqref{eq:thetahat}, the measure $\P$
+appears with coefficients $1$ and $-(M-1)^{-1}$ repeated $M-1$ times, which sum
+to zero, and therefore cancels:
+\begin{equation}
+  \E\big[\widehat\Theta_k\big]
+  \;=\; \int_\X \Z_k \dd\Big(\R^{(k)} - \frac{1}{M-1}\sum_{l\neq k}\R^{(l)}\Big)
+  \;=\; \Theta_k . \qedhere
+\end{equation}
+\end{proof}
+
+\begin{remark}[Three variance components]
+\label{rem:variance}
+Writing $\sigma^2_{kl}$ for the variance of $B_k^{(l,j)}$ over deployment
+realizations, independence across the pairs $(i,j)$ gives
+\begin{equation}
+  \label{eq:var}
+  \Var\big(\widehat\Theta_k \mid \tS, \tV\big)
+  \;=\; \frac{1}{D}\left[\sigma^2_{kk} + \frac{1}{(M-1)^2}\sum_{l\neq k}\sigma^2_{kl}\right],
+\end{equation}
+each $\sigma^2_{kl}$ estimated by the sample variance of
+$\{B_k^{(l,j)}\}_{j=1}^{D}$. The empirical estimate is used rather than an
+expression assembled from the variance of the residual field and the profile
+count: advected floats are strongly clustered along trajectories, so consecutive
+profiles are near-replicates and the effective number of independent
+observations is far below $n$. Equation \eqref{eq:var} is Monte Carlo
+resolution at fixed fields and shrinks as $D^{-1}$; it is one of three
+components, the others being the reference term $\Var(\xi_k)$ of order
+$(M-1)^{-1}$ from \eqref{eq:thetasplit}, and the across-state variance
+$\Var(\Rstar_k)$, which is not error but the quantity of interest. The
+across-state spread is therefore estimated by deconvolution,
+\begin{equation}
+  \label{eq:deconv}
+  \widehat\Var\big(\Rstar\big)
+  \;=\; \widehat\Var\big(\{\widehat\Theta_k\}_{k=1}^M\big)
+  \;-\; \widehat\Var_{\mathrm{MC}}
+  \;-\; \widehat\Var(\xi) ,
+\end{equation}
+and $D$ is chosen large enough that the first subtracted term is small relative
+to the residual. Because the reference $\bar\R^{(-k)}$ shares circulation years
+across rows, the $\widehat\Theta_k$ are weakly correlated across $k$ at order
+$(M-1)^{-1}$; at $M \approx 29$ this contributes a few percent and is neglected.
+\end{remark}
+
+\subsection{Testing whether preferential bias is present}
+\label{sec:test}
+
+Proposition~\ref{prop:unbiased} holds the fields fixed, so $\Theta_k$ is
+deterministic there and \eqref{eq:var} carries no evidential content about the
+ocean. Inference about whether preferential sampling is present requires a
+second frame, in which the $M$ years are draws from a distribution over ocean
+states and the randomness under test is the \emph{alignment} between circulation
+year and field year.
+
+Condition on the realized circulation sequence $\{u_i\}_{i=1}^M$. The null
+hypothesis that the residual field is unrelated to the circulation transporting
+the floats implies that $\{\Z_k\}$ is exchangeable and independent of
+$\{u_i\}$, so that all pairings $(\Z_k, u_{\pi(k)})$ are equally likely.
+Conditioning on the circulation is what permits this: only the field sequence
+need be exchangeable, and it is the sequence whose drift we have removed, while
+circulation drift is left unrestricted. Let
+$\bar\Theta = M^{-1}\sum_k \widehat\Theta_k$ and let $\bar\Theta^\pi$ denote the
+same statistic with field year $k$ paired to circulation year $\pi(k)$; no
+re-simulation is required, since the array is precomputed. Row totals
+$R_k = \sum_i \bar B_k^{(i)}$ are invariant under $\pi$, and
+$\widehat\Theta_k^\pi = \tfrac{M}{M-1}\bar B_k^{(\pi(k))} - \tfrac{1}{M-1}R_k$,
+so $\bar\Theta^\pi$ is an increasing affine function of the diagonal sum with
+permutation-invariant coefficients: the row centering, though necessary for the
+point estimate, does not affect the $p$-value.
+
+Detrending does not eliminate interannual persistence, and pairings at small
+displacement retain it, so the reference distribution is formed over the
+restricted set
+\begin{equation}
+  \Pi_\ell \;=\; \big\{\pi \in \mathfrak{S}_M : |\pi(k) - k| \ge \ell \ \ \forall k\big\}
+  \;\cup\; \{\mathrm{id}\},
+\end{equation}
+with $\ell$ fixed a priori to exceed the decorrelation scale of
+$\int_\X \Z_k \dd\P$. Since $\Pi_\ell$ is chosen independently of the data and
+contains the identity, the test remains exact. The statistic is studentized by
+$\widehat\se(\bar\Theta)$ so that rejection may be read against
+$\E[\Rstar] = 0$ rather than only against full independence, and sensitivity to
+$\ell$ is reported. Inverting the test over location shifts of the diagonal
+cells gives a confidence interval for $\E[\Rstar]$, which is reported alongside
+the interval obtained by treating the $M$ yearly estimates as replicates with an
+effective sample size deflated for serial dependence.
+
+\subsection{Scope}
+
+The quantity estimated is preferential bias in GLORYS12V1, under a fixed
+deployment law, at the resolution the reanalysis resolves. Three gaps to the
+operational Argo array should be noted. First, $\Dl$ is held fixed, so
+deployment-driven preferentiality contributes nothing. Second, at $1/12^\circ$
+the reanalysis resolves the mesoscale but not the submesoscale, truncating
+exactly the component of the fine-scale field most tightly coupled to float
+trajectories and deflating the estimate. Third, GLORYS assimilates Argo, so both
+$\tS$ and $\tV$ are better constrained where floats historically went; to the
+extent that $\Dl$ reflects the historical deployment record, this correlation
+inflates the estimate. The second and third act in opposite directions and their
+relative magnitudes are unknown, so they cannot be assumed to cancel; the
+sensitivity of the results to restricting the record to its pre-Argo portion is
+reported in the supplement. Finally, the estimator studied here is the naive
+sample average; operational OHC products use objective mapping, which
+down-weights clustered observations and so partially corrects the mechanism
+measured above. The extension to general linear estimators, and to the observed
+Argo positions in place of simulated trajectories, is taken up in
+\S\ref{sec:linear}.
+
+%\section{Simulation Study}
+%\label{sec:sim}
+%
+%We have shown that the preferential sampling mechanism induces bias that is an expectation over the joint distribution of OHC ocean fields $S$ and sampling points $X$. 
+%Therefore, estimating or detecting the bias from the real Argo data which consists of a single realization of the ocean and the sampling distribution poses significant challenges.
+%Further, if climatological mean field estimation is done through Argo data alone then preferential bias can leak into the mean field estimate.
+%Thus, we first consider a proxy for the OHC ocean fields and  
+%
+%
+%%Additionally, because Argo floats are deployed in unbalanced arrays, often dropped in lines over the course of a day from ships the initial shape of the array 
+%
+%Let $\Psi$ denote the ocean state in a given year, which determines both the heat content
+%field $S = S(\Psi)$ and the velocity field $V = V(\Psi)$. A float is released according to
+%a deployment realization $d$ and thereafter follows the flow, so that the sampling
+%configuration is
+%\begin{equation}
+%  \label{eq:Gmap}
+%  X \;=\; g(d,\, V), \qquad d \sim \D ,
+%\end{equation}
+%where $\D$ denotes the distribution of deployment positions, dates, mission parameters and
+%failure times, and $g$ is the map that advects floats seeded according to $d$
+%through a velocity field and returns the resulting profile positions.
+%
+%Replace the unobserved field $S$ with a fully observed proxy $\tS$, together
+%with the velocity field $\tV$ that generates the flow, taken from the GLORYS12V1
+%reanalysis. The reanalysis supplies $\tS$ and $\tV$ on a common grid over the whole domain
+%and over so $\int_\X \tS \dd\P$ is computable directly; the observing
+%system may be replicated by redrawing $d \sim \D$ and re-integrating trajectories
+%through $\G$; and, as described below, the years of the record supply the variation in
+%ocean state required to construct a reference.
+%
+%Fit $\hat m$ from the full gridded reanalysis product such that its error from the true mean-field is uncorrelated with the sampling design, and let $\tZ = \tS - \hat m$.
+%
+%The simulation therefore estimates, for each analysis year $k$, the difference between the
+%sampling bias incurred against the residual field of year $k$ by that year's own
+%circulation and the bias incurred by the unaligned reference circulations,
+%\begin{equation}
+%  \label{eq:theta}
+%  \Theta_k \;=\; \int_\X \tilde z
+%  \dd\big(\R^{(k)} - \bar\R^{(-k)}\big),
+%\end{equation}
+%where $\R^{(i)}$ denotes the mean sampling measure induced by advection through $\tV_l$,
+%averaged over deployment realizations, and $\bar\R^{(-k)}$ its average over the remaining
+%years $l \neq k$. 
+%
+%If the years of the record are additionally taken to be pairwise independent draws from a
+%common distribution over ocean states, then $\E[\bar\R^{(-k)}] = \M$ and the reference term
+%is centered, so that $\E[\Theta_k]$ is the preferential term of \eqref{eq:biasdecomp}.
+%
+%
+%For each velocity year $i = 1,\ldots,M$ and each of $j = 1,\ldots, D$ replicates, draw
+%$d_{i,j} \sim \D$ independently and integrate trajectories through $\tV_l$, giving
+%designs $X^{(i,d)} = \G(d_{i,j}, \tV_i)$ with empirical sampling measures
+%$\Q_n^{(i,d)}$. Drawing a separate deployment realization for each pair $(i,j)$, rather
+%than reusing a common realization across velocity years, renders the $MD$ designs mutually
+%independent.
+%
+%Write
+%\begin{equation}
+%  \label{eq:Bkl}
+%  B_k^{(i,j)} \;=\; \int_\X \tilde z \dd\big(\Q_n^{(i,j)} - \P\big)
+%\end{equation}
+%for the sampling bias incurred when floats advected by the circulation of year $i$ sample
+%the residual field of year $k$, and let
+%$\bar B_k^{(i)} = D^{-1}\sum_{d=1}^{D} B_k^{(i,j)}$ denote its average over deployment
+%replicates. The natural estimator of \eqref{eq:theta} contrasts the aligned cell of this
+%array with the average of the unaligned cells in the same row,
+%\begin{equation}
+%  \label{eq:thetahat}
+%  \widehat\Theta_k \;=\; \bar B_k^{(k)} \;-\; \frac{1}{M-1}\sum_{l \neq k} \bar B_k^{(i)} .
+%\end{equation}
+%
+%\begin{proposition}[Unbiasedness]
+%\label{prop:unbiased}
+%For every analysis year $k$,
+%\begin{equation}
+%  \E\big[\widehat\Theta_k\big] \;=\; \Theta_k ,
+%\end{equation}
+%where the expectation is over the deployment law $\D$ alone, the fields $\tS$ and $\tV$
+%being held fixed.
+%\end{proposition}
+%
+%\begin{proof}
+%The cell weights lie in $[0,1]$ and the residual field is bounded on the finite partition,
+%so $B_k^{(i,j)}$ is integrable and expectation commutes with the finite sums below. Since
+%the $d_{i,j}$ are identically distributed across $d$, and since integration against a
+%fixed field is linear in the measure,
+%\begin{equation}
+%  \label{eq:cellmean}
+%  \E\big[\bar B_k^{(i)}\big]
+%  \;=\; \int_\X \tilde z\dd\,\E\big[\Q_n^{(i,j)} - \P\big]
+%  \;=\; \int_\X \tilde z \dd\big(\R^{(i)} - \P\big) ,
+%\end{equation}
+%by the definition of $\R^{(i)}$ as the deployment-averaged sampling measure. Substituting
+%\eqref{eq:cellmean} into \eqref{eq:thetahat}, the reference measure $\P$ appears with
+%coefficients $1$ and $-(M-1)^{-1}$ repeated $M-1$ times, which sum to zero, and therefore
+%cancels:
+%\begin{equation}
+%  \E\big[\widehat\Theta_k\big]
+%  \;=\; \int_\X \tilde z \dd\Big(\R^{(k)} - \frac{1}{M-1}\sum_{l\neq k}\R^{(i)}\Big)
+%  \;=\; \Theta_k . \qedhere
+%\end{equation}
+%\end{proof}
+%
+%
+%\begin{remark}[Variance]
+%\label{rem:variance}
+%Writing $\sigma^2_{kl}$ for the variance of $B_k^{(i,j)}$ over deployment realizations,
+%independence across the pairs $(i,j)$ gives
+%\begin{equation}
+%  \label{eq:var}
+%  \Var\big(\widehat\Theta_k\big)
+%  \;=\; \frac{1}{D}\left[\sigma^2_{kk} + \frac{1}{(M-1)^2}\sum_{l\neq k}\sigma^2_{kl}\right],
+%\end{equation}
+%each $\sigma^2_{kl}$ being estimated by the sample variance of $\{B_k^{(i,j)}\}_{d=1}^{D}$
+%within the corresponding cell. The empirical estimate is used rather than an expression
+%assembled from the variance of the residual field and the profile count: advected floats
+%are strongly clustered along trajectories, so consecutive profiles are near-replicates and
+%the effective number of independent observations is far below $n$. Equation \eqref{eq:var}
+%quantifies the Monte Carlo resolution of $\Theta_k$ at $D$ replicates and shrinks as
+%$D^{-1}$; it does not represent uncertainty about the ocean, the fields being held fixed
+%throughout.
+%\end{remark}
+%
