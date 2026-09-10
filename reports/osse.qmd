@@ -279,6 +279,37 @@ construction, with no calibrated release schedule. Each realization therefore yi
 every analysis year at once, flow and field the same calendar year — there is no velocity-year /
 field-year pairing, only the realized diagonal.
 
+::: {.panel-tabset}
+
+### Simulated advection
+
+```{python}
+#| label: fig-advection
+#| echo: false
+#| fig-cap: "One simulated deployment realization on the analysis-domain base map: float drift tracks and profile points (one per 10-day cycle at 1000 m park depth), coloured by the calendar year of the profile. 60 of the seeded floats are drawn; floats are seeded uniformly across the deep region spanning both boxes and advect through the North Atlantic, and only profiles inside a box (filled) enter an estimate."
+
+mm.plot_deployment_advection_map(max_floats=60)
+plt.show()
+```
+
+### Real Argo
+
+```{python}
+#| label: fig-advection-argo
+#| echo: false
+#| fig-cap: "Real Argo trajectories over the same domain and years, same base map and year colouring, for comparison. Positions are the profile (surface) locations from the Argo record; 60 of the 740 floats present in the domain over 2010-2019 are drawn. Real deployment is programmatic and clustered rather than area-uniform, and coverage builds over the decade, whereas the simulated array is seeded uniformly in space-time by construction."
+
+mm.plot_argo_trajectory_map(max_floats=60)
+plt.show()
+```
+
+:::
+
+The two maps share the base map, years, and colour scale. The simulated array is seeded uniformly in
+space–time; real Argo is deployed programmatically, so its coverage is patchier and grows through the
+decade, but individual drift paths trace the same circulation — the contrast is in *where and when
+floats are placed*, not in the advection itself.
+
 **Reference.** For a design's per-(box, year) sample size $n$, an $n$-matched iid draw from
 $\mathbb{P}$ (cell $\propto A_j$, day-of-year uniform) is a genuine sample from $\mathbb{P}$ with
 $\mathbb{E}[B] = 0$ — at once the null reference and an end-to-end check of the gather, the
@@ -445,8 +476,30 @@ though not perfectly, orthogonal to the field.
 est = mm.load_continuous("_pilot")
 ```
 
-The ensemble is $100$ independent realizations, each a single deployment advected $2010$–$2019$ and
-scored on $2015$–$2019$ in both boxes.
+## Pilot specification
+
+The pilot is **$100$ independent realizations**. Each seeds **$1{,}000$ floats** uniformly over
+normalized space–time on the deep ($\mathrm{deptho}\ge 1000$ m) region spanning both boxes plus an
+$8^\circ$ margin, across $2010\text{-}01\text{-}01$ to $2019\text{-}12\text{-}26$, and advects them
+once at $1000$ m park depth ($10$-day profiling cycle, lifespans drawn from the real Argo record).
+Years $2010$–$2014$ are the equilibration lead; bias is scored on **$2015$–$2019$**. A profile enters
+an estimate when it falls inside a box, so the one deployment feeds both.
+
+Across all $100$ realizations the pilot seeds $10^5$ float-deployments and scores about $2.15$ million
+in-box profiles (@tbl-size). Per realization, Box B holds $\sim\!90$ distinct floats (standing stock
+$\sim\!40$) giving $\sim\!1{,}410$–$1{,}490$ profiles a year; Box A holds $\sim\!145$ floats (stock
+$\sim\!78$) giving $\sim\!2{,}730$–$2{,}900$ — its quiescent flow retains more of the same deployment.
+
+```{python}
+#| label: tbl-size
+#| echo: false
+
+HTML(fmt(mm.continuous_pilot_size_table(est), 1))
+```
+
+: Pilot sample sizes by box and analysis year: mean in-box standing stock and distinct floats per
+realization, mean profile observations per realization, and the profile total over all $100$
+realizations. {#tbl-size}
 
 ## Standing stock against real Argo
 
@@ -484,15 +537,17 @@ real-density array would face.
 ```{python}
 #| label: fig-bias-intervals
 #| echo: false
-#| fig-cap: "Headline result. Sampling bias B = Zhat - Zbar_k by analysis year, one panel per box (note the differing y-axis scales). For each year the two intervals are the advective array (grey) and the n-matched uniform reference (blue): point = ensemble mean over the 100 realizations, thick bar = mean +/- 1 Monte Carlo standard error (whether the mean bias is resolved from zero), thin whisker = 5-95 percent of realizations (the scatter of a single deployment). Red line at zero is the target."
+#| fig-cap: "Headline result. Sampling bias B = Zhat - Zbar_k by analysis year, one panel per box (note the differing y-axis scales). For each year the two intervals are the advective array (grey) and the n-matched uniform reference (blue): marker = ensemble mean over the 100 realizations, capped bar around it = mean +/- 1 Monte Carlo standard error (whether the mean bias is resolved from zero), thin line = 5-95 percent of realizations (the scatter of a single deployment). Red line at zero is the target."
 
 mm.plot_bias_intervals(est)
 plt.show()
 ```
 
 The advective means sit within a few hundredths of a GJ/m$^2$ of zero and, on the standardized scale,
-within $0.012\,\sigma_k$ (Box B) and $0.019\,\sigma_k$ (Box A); the uniform reference straddles zero as
-it must. What dominates each interval is the $5$–$95\%$ whisker: a *single* advective deployment scatters
+within $0.012\,\sigma_k$ (Box B) and $0.019\,\sigma_k$ (Box A); the uniform reference, unbiased by
+construction, scatters around zero at the $100$-realization Monte-Carlo floor — a few hundredths of a
+GJ/m$^2$, comparable to the advective displacement itself and shrinking as realizations grow. What
+dominates each interval is the $5$–$95\%$ whisker: a *single* advective deployment scatters
 far more widely than the mean is displaced, and visibly wider than the uniform reference at the same
 $n$ — the within-float clustering quantified in @tbl-deff. The per-year detail and the shape of these
 distributions follow.
@@ -545,11 +600,13 @@ HTML(fmt(mm.continuous_bias_table(est, "boxA"), 4))
 $0.012\,\sigma_k$ in Box B and $0.019\,\sigma_k$ in Box A — a few hundredths of a GJ/m$^2$ — while the
 across-realization spread $\mathrm{sd}(B^{(d)}_k)$ is $0.32$–$0.37$ GJ/m$^2$ in Box B and $0.08$–$0.10$
 in Box A, an order of magnitude larger than the mean. The displacement is a property of the ensemble,
-invisible in any single deployment. The **uniform mean B** column and the dashed overlays confirm the
-$n$-matched reference sits on zero ($|\text{mean}| < 1$ MC se in every year), so any advective
-departure is signal, not a pipeline artefact. At $100$ realizations the mean is resolved to a
-Monte-Carlo se of $\sim\!0.03$ GJ/m$^2$ in Box B and $\sim\!0.01$ in Box A; more realizations tighten
-it further.
+invisible in any single deployment. The **uniform mean B** column and the dashed overlays show the
+$n$-matched reference is unbiased ($\mathbb{E}[B]=0$ by construction, and verified to
+$<\!0.002$ GJ/m$^2$ by a large-ensemble draw); at the $100$ realizations shown its mean still carries
+Monte-Carlo noise of a few hundredths of a GJ/m$^2$, so only advective departures beyond that floor —
+Box A 2017 and Box B 2018 most clearly — are resolved as signal. At $100$ realizations the advective
+mean is itself resolved only to a Monte-Carlo se of $\sim\!0.03$ GJ/m$^2$ in Box B and $\sim\!0.01$ in
+Box A, so more realizations are the way to separate the two.
 
 ## Within-design dependence
 
@@ -596,3 +653,62 @@ $\sim\!1460$) therefore buys little more independent information ($n_{\mathrm{ef
 The width ratio tracks $\sqrt{\mathrm{deff}}$ (@fig-deff, right), confirming the clustering inflates the
 *spread* of a single deployment without moving its *mean* — dependence, not bias, and the two must not
 be read as one effect.
+
+# Conclusions
+
+From this $100$-realization pilot:
+
+**The advective sampling bias is small but not zero.** In both boxes $\mathbb{E}[B_k]$ stays within
+$\sim\!0.02\,\sigma_k$ (@tbl-bias) — a few hundredths of a GJ/m$^2$ against a field varying by $6$–$8$
+(Box B) and $2$ (Box A) GJ/m$^2$. It is not identically zero: several years are resolved at $2$–$4$
+Monte-Carlo standard errors, so the array is weakly preferential in effect, at a magnitude that is a
+small fraction of the field's own variability.
+
+**Strong non-uniform sampling, nearly orthogonal to the field.** The array samples space genuinely
+non-uniformly (on-mask up to $\sim\!3.6\times$ over-sampling, $\operatorname{sd}_p(r)\approx0.4$;
+@fig-whist), yet the bias is only $\sim\!1$–$5\%$ of the Cauchy–Schwarz ceiling that non-uniformity
+permits, i.e. a weight–field correlation $|\rho_k|\approx0.02$. Preferential sampling does not imply
+preferential bias for this functional — the estimand-level bias is the covariance
+$\operatorname{Cov}_p(r,\tilde Z_k)$, and the array sits near its null space, not a property of sampling
+non-uniformity per se.
+
+**The bias is irreducibly spatiotemporal.** The temporal marginal is zero by construction and the
+spatial marginal is modest; the space–time interaction dominates (@tbl-decomp). The bias comes from
+the array's spatial preference co-varying with the field's day-to-day structure, so a time-averaged
+sampling map understates it and any correction must be posed jointly in space–time.
+
+**It is invisible in a single deployment.** The scatter of one array ($\operatorname{sd}(B)\approx0.3$
+Box B, $0.09$ Box A; @fig-bias-intervals) is $5$–$10\times$ the mean bias. The systematic effect exists
+only in expectation over many arrays; a single year's estimate from one array is realization noise, not
+bias.
+
+**Profile counts overstate information.** Within-float clustering gives design effects of $\approx3$
+(Box B) and $\approx5$ (Box A), so $n_{\mathrm{eff}}\sim550$ in both despite Box A's $\sim\!2\times$
+larger $n$ (@tbl-deff).
+
+**Both regimes are comparably biased once standardized.** Box B has larger raw bias and spread, but on
+the $\sigma_k$ scale the energetic western-boundary region is not disproportionately biased relative to
+the quiescent gyre.
+
+**The design and pipeline work.** Uniform space–time seeding plus a multi-year lead produces a stable
+equilibrium array with no calibrated schedule (@tbl-stock), and the $n$-matched uniform reference
+recovers $\mathbb{E}[B]=0$, so any advective departure is signal.
+
+## Caveats
+
+- **Pilot precision.** $100$ realizations give a Monte-Carlo se of $\sim\!0.03$ (Box B) / $\sim\!0.01$
+  (Box A) GJ/m$^2$; the "small bias" conclusion is robust, but per-year signs and magnitudes are not
+  all resolved and would sharpen with more realizations.
+- **The temporal null is assumed, not found** — the fixed $10$-day cadence, uniform release phase, and
+  equilibrium stock remove any seasonal sampling preference by construction, so this is not evidence
+  that a real array (with deployment surges, under-ice gaps, or seasonal mortality) carries none.
+- **Five scored years.** Deployment from $2010$ scores $2015$–$2019$; the velocity record now reaches
+  $2005$, so extending to $2010$–$2019$ would double the field years at no new modelling cost.
+- **Array density.** The virtual array holds $\sim\!40$ (Box B) / $\sim\!78$ (Box A) floats against
+  real Argo's $\sim\!27$ / $\sim\!30$ (@tbl-stock); $\mathbb{E}[B_k]$ is $n$-independent so it stands,
+  but single-array spreads are density-specific.
+- **The mean field is a preliminary stationary trend-plus-harmonics fit** (@sec-meanfield); it sets the
+  estimand's level but $B$ is invariant to it, so the conclusions above do not depend on it.
+- **No tight distribution-free bound yet.** We report the realized covariance and its decomposition; a
+  bound over an RKHS smoothness class for $\tilde Z_k$ is the natural next step to turn "small in this
+  pilot" into "provably bounded."

@@ -807,8 +807,11 @@ def plot_mean_field_months(boxes=("boxB", "boxA"), year=2015, months=(1, 4, 7, 1
     return fig
 
 
-def plot_domain_map(boxes=("boxA", "boxB"), figsize=(7.5, 6.4)):
-    """Analysis boxes inside the velocity and thetao download regions."""
+def _domain_base(boxes=("boxA", "boxB"), figsize=(7.5, 6.4)):
+    """Base analysis-domain map: land, the velocity/thetao regions, and the boxes.
+
+    Returns (fig, ax, pc, extents); the caller adds the legend and any overlay.
+    """
     import matplotlib.pyplot as plt
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
@@ -821,7 +824,8 @@ def plot_domain_map(boxes=("boxA", "boxB"), figsize=(7.5, 6.4)):
     fig, ax = plt.subplots(figsize=figsize, subplot_kw={"projection": pc},
                            layout="constrained")
     v = e["velocity"]
-    ax.set_extent([v[2] - 1.5, v[3] + 1.5, v[0] - 1.5, v[1] + 1.5], crs=pc)
+    ext = [v[2] - 1.5, v[3] + 1.5, v[0] - 1.5, v[1] + 1.5]
+    ax.set_extent(ext, crs=pc)
     ax.add_feature(cfeature.LAND, facecolor="0.88", zorder=0)
     ax.add_feature(cfeature.COASTLINE, lw=0.5)
 
@@ -837,9 +841,78 @@ def plot_domain_map(boxes=("boxA", "boxB"), figsize=(7.5, 6.4)):
                                fill=fill, facecolor=color if fill else "none",
                                alpha=0.18 if fill else 1.0, edgecolor=color,
                                lw=2.0, ls="-" if fill else "--", zorder=2, label=label))
-    _geo_ticks(ax, [v[2] - 1.5, v[3] + 1.5, v[0] - 1.5, v[1] + 1.5], True, True, step=10.0)
+    _geo_ticks(ax, ext, True, True, step=10.0)
+    return fig, ax, pc, e
+
+
+def plot_domain_map(boxes=("boxA", "boxB"), figsize=(7.5, 6.4)):
+    """Analysis boxes inside the velocity and thetao download regions."""
+    fig, ax, pc, e = _domain_base(boxes, figsize)
     ax.legend(loc="lower left", fontsize=8, framealpha=0.9)
     return fig
+
+
+def _trajectory_map(tracks, boxes=("boxA", "boxB"), max_floats=60, figsize=(8.5, 7.2),
+                    order="time", years=None, subset_seed=None):
+    """Float drift tracks + profile points on the domain base map, coloured by the
+    calendar year of each profile. `tracks` needs float_id, lat, lon, year and an
+    `order` column; `years` fixes the colour scale so two maps stay comparable."""
+    import matplotlib.pyplot as plt
+    import matplotlib as mpl
+    from matplotlib.collections import LineCollection
+
+    tracks = tracks.dropna(subset=["lat", "lon"]).sort_values(["float_id", order])
+    ids = tracks["float_id"].unique()
+    if max_floats is not None and len(ids) > max_floats:
+        ids = (np.random.default_rng(subset_seed).choice(ids, max_floats, replace=False)
+               if subset_seed is not None else np.sort(ids)[:max_floats])
+        tracks = tracks[tracks["float_id"].isin(ids)]
+    yr = years or sorted(int(y) for y in tracks["year"].unique())
+    cmap = plt.get_cmap("turbo", len(yr))
+    norm = mpl.colors.BoundaryNorm(np.arange(yr[0], yr[-1] + 2) - 0.5, cmap.N)
+
+    fig, ax, pc, e = _domain_base(boxes, figsize)
+    for _, g in tracks.groupby("float_id"):
+        p = g[["lon", "lat"]].to_numpy()
+        if len(p) < 2:
+            continue
+        segs = np.stack([p[:-1], p[1:]], axis=1)
+        ax.add_collection(LineCollection(segs, colors=cmap(norm(g["year"].to_numpy()[:-1])),
+                                         lw=0.35, alpha=0.5, transform=pc, zorder=1.5))
+    ax.scatter(tracks["lon"], tracks["lat"], c=tracks["year"], cmap=cmap, norm=norm,
+               s=1.5, alpha=0.75, transform=pc, zorder=3)
+    cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax,
+                        ticks=yr, shrink=0.8, pad=0.02)
+    cbar.set_label("profile year")
+    ax.legend(loc="lower left", fontsize=7, framealpha=0.9)
+    return fig
+
+
+def plot_deployment_advection_map(tracks=None, boxes=("boxA", "boxB"),
+                                  max_floats=60, figsize=(8.5, 7.2)):
+    """One simulated realization's advection: drift tracks + profile points by year."""
+    if tracks is None:
+        tracks = pd.read_csv(os.path.join(cfg.OUT_DIR, "illustration_tracks.csv"))
+    return _trajectory_map(tracks, boxes, max_floats, figsize, order="time",
+                           years=list(range(2010, 2020)))
+
+
+def plot_argo_trajectory_map(boxes=("boxA", "boxB"), years=(2010, 2019),
+                             buffer=((15, 50), (-70, -30)), max_floats=60,
+                             figsize=(8.5, 7.2), path=None):
+    """Real Argo trajectories over the advection domain, same base map and year
+    colouring as the simulated map, for side-by-side comparison. Positions are the
+    profile (surface) locations in data/argo_ohc.csv; a random subset of the floats
+    present in the domain is drawn for legibility."""
+    path = path or os.path.join(os.path.dirname(cfg.GLORYS_DIR), "argo_ohc.csv")
+    d = pd.read_csv(path, usecols=["float_id", "lat", "lon", "date"])
+    d["date"] = pd.to_datetime(d["date"], format="ISO8601", utc=True)
+    d["year"] = d["date"].dt.year
+    (la0, la1), (lo0, lo1) = buffer
+    d = d[d["lat"].between(la0, la1) & d["lon"].between(lo0, lo1)
+          & d["year"].between(*years)].rename(columns={"date": "time"})
+    return _trajectory_map(d, boxes, max_floats, figsize, order="time",
+                           years=list(range(years[0], years[1] + 1)), subset_seed=0)
 
 
 def bathymetry(tag="static_vel"):
@@ -1809,6 +1882,23 @@ def continuous_nsize_table(est, boxes=("boxB", "boxA")):
     return pd.DataFrame(rows)
 
 
+def continuous_pilot_size_table(est, boxes=("boxB", "boxA")):
+    """Per box/year pilot sample sizes: mean in-box standing stock and distinct
+    floats per realization, mean profile observations per realization, and the
+    profile total over all realizations."""
+    rows = []
+    for b in boxes:
+        g = est[est["box"] == b]
+        for y in sorted(int(v) for v in g["year"].unique()):
+            gy = g[g["year"] == y]
+            rows.append({"box": b, "year": y,
+                         "in-box stock": gy["standing_stock"].mean(),
+                         "floats / realization": gy["n_floats"].mean(),
+                         "profiles / realization": gy["n"].mean(),
+                         "profiles, all reps": int(gy["n"].sum())})
+    return pd.DataFrame(rows)
+
+
 def continuous_deff_table(tag="_pilot", boxes=("boxB", "boxA")):
     """Float-clustered design effect and advective/uniform width ratio, per box/year.
 
@@ -1894,16 +1984,16 @@ def plot_bias_intervals(est, boxes=("boxB", "boxA"), figsize=(11, 4.0)):
                 m, se = b.mean(), b.std(ddof=1) / np.sqrt(b.size)
                 q05, q95 = np.percentile(b, [5, 95])
                 x = y + dx
-                ax.plot([x, x], [q05, q95], color=color, lw=1.0, alpha=0.7, zorder=2)
-                ax.plot([x, x], [m - se, m + se], color=color, lw=4.0, solid_capstyle="butt", zorder=3)
-                ax.plot(x, m, "o", color=color, ms=4, zorder=4)
+                ax.plot([x, x], [q05, q95], color=color, lw=1.0, alpha=0.6, zorder=2)
+                ax.errorbar(x, m, yerr=se, fmt="o", color=color, ms=4.5,
+                            elinewidth=1.4, capsize=3.5, capthick=1.4, zorder=4)
         ax.axhline(0.0, color="crimson", lw=1.4, zorder=1)
         ax.set_xticks(years)
         ax.set_xticklabels([str(y) for y in years], rotation=45, fontsize=8)
         ax.set_title(box, fontsize=10)
         ax.set_xlabel("analysis year", fontsize=9)
     np.atleast_1d(axes)[0].set_ylabel("sampling bias B (GJ/m2)")
-    handles = [Line2D([0], [0], color=c, lw=4, marker="o", label=l) for _, c, l, _ in methods]
+    handles = [Line2D([0], [0], color=c, lw=1.4, marker="o", label=l) for _, c, l, _ in methods]
     np.atleast_1d(axes)[0].legend(handles=handles, fontsize=8, loc="best")
     fig.tight_layout()
     return fig

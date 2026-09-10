@@ -244,7 +244,14 @@ def diagonal_estimates(prof, score_years=None):
 
 
 def uniform_reference(est, seed=0):
-    """U-full check: for each (box, rep, year) draw n iid points from P; E[B]=0."""
+    """U-full check: for each (box, rep, year) draw n iid points from P; E[B]=0.
+
+    MUST be run once over the FULL ensemble, not per array chunk: a single rng
+    walks all rows, so every rep gets an independent draw. Computing it per chunk
+    (each seeded identically) makes the reps share their random stream, which
+    underestimates the reference spread and biases its mean toward one draw's
+    sampling error -- gather_chunks therefore recomputes it on the merged frame.
+    """
     from osse import mean_mc as mm
     rng = np.random.default_rng(seed)
     ub = np.full(len(est), np.nan)
@@ -274,6 +281,7 @@ def gather_chunks(tag):
     dup = est.duplicated(["box", "rep", "year"]).sum()
     if dup:
         raise ValueError(f"{dup} duplicated (box, rep, year) rows: chunk rep-offsets overlap")
+    est = uniform_reference(est)  # recompute on the full ensemble; per-chunk values share a seed
     out = os.path.join(cfg.OUT_DIR, f"estimates_continuous{tag}.csv")
     est.to_csv(out, index=False)
 
@@ -340,6 +348,52 @@ def main(n_floats=1000, reps=1, rep_offset=0, t_start=None, t_end=None,
     return est
 
 
+def run_illustration(out_csv=None, n_floats=100, rep=0, t_start=None, t_end=None, margin=SEED_MARGIN):
+    """Run one realization keeping ALL positions (in-box and out), tagged by year.
+
+    For the advection-illustration map only: a legible subset of floats from one
+    realization's deployment law, full drift paths. Writes float_id, cycle, lat,
+    lon, time, year, box (whichever box contains the point, else blank).
+    """
+    import shutil
+    os.makedirs(cfg.OUT_DIR, exist_ok=True)
+    scratch = os.path.join(cfg.OUT_DIR, "_traj")
+    os.makedirs(scratch, exist_ok=True)
+    if t_start is None or t_end is None:
+        yrs = sorted({int(os.path.basename(f).split("_")[-2])
+                      for f in glob.glob(os.path.join(di.VEL_DIR, "velocity_daily_park_*.nc"))})
+        yrs = [y for y in yrs
+               if len(glob.glob(os.path.join(di.VEL_DIR, f"velocity_daily_park_{y}_*.nc"))) == 12]
+        t_start = t_start or f"{yrs[0]}-01-01"
+        t_end = t_end or f"{yrs[-1]}-12-26"
+    zpath = os.path.join(scratch, f"traj_illustration_r{rep}.zarr")
+    shutil.rmtree(zpath, ignore_errors=True)
+    print(f"illustration: {n_floats} floats, {t_start}..{t_end}", flush=True)
+    run_continuous(rep, zpath, n_floats, t_start, t_end, margin)
+
+    ds = xr.open_zarr(zpath)
+    lat, lon, time = ds["lat"].values, ds["lon"].values, ds["time"].values
+    pid = np.asarray(ds["trajectory"].values)
+    pid = (pid[:, 0] if pid.ndim == 2 else pid).astype(int)
+    ds.close()
+    n_traj, n_obs = lat.shape
+    df = pd.DataFrame({"float_id": np.repeat(pid, n_obs),
+                       "cycle": np.tile(np.arange(n_obs), n_traj),
+                       "lat": lat.ravel(), "lon": lon.ravel(), "time": time.ravel()}
+                      ).dropna(subset=["lat", "lon", "time"])
+    df = df.sort_values(["float_id", "time"])
+    df = df[df.groupby("float_id").cumcount() > 0]           # drop the release record
+    df["year"] = pd.DatetimeIndex(df["time"]).year
+    df["box"] = pd.NA
+    for b in BOXES:
+        df.loc[di.in_box(df, b), "box"] = b
+    out_csv = out_csv or os.path.join(cfg.OUT_DIR, "illustration_tracks.csv")
+    df.to_csv(out_csv, index=False)
+    shutil.rmtree(zpath, ignore_errors=True)
+    print(f"{len(df):,} positions, {df['float_id'].nunique()} floats -> {out_csv}")
+    return df
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--n-floats", type=int, default=1000)
@@ -352,9 +406,13 @@ if __name__ == "__main__":
     ap.add_argument("--keep-zarr", action="store_true")
     ap.add_argument("--tag", default="")
     ap.add_argument("--gather", action="store_true", help="concat array chunks for --tag and exit")
+    ap.add_argument("--illustrate", action="store_true",
+                    help="run one realization keeping all positions -> illustration_tracks.csv")
     a = ap.parse_args()
     if a.gather:
         gather_chunks(a.tag)
+    elif a.illustrate:
+        run_illustration(n_floats=a.n_floats, t_start=a.start, t_end=a.end)
     else:
         sy = [int(y) for y in a.score_years.split(",")] if a.score_years else None
         main(a.n_floats, a.reps, a.rep_offset, a.start, a.end, sy, a.keep_zarr, a.tag)
