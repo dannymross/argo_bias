@@ -832,20 +832,26 @@ def ohc_domain_series(box):
     return dates, mhat + by_doy.reshape(-1), mhat
 
 
-def plot_ohc_timeseries(boxes=("boxA", "boxB"), figsize=(11, 4.5)):
-    """Domain-mean total OHC (solid) and fitted mean field (dashed) per box, daily
-    over 2010-2019; the gap between the pair is the domain-mean anomaly."""
+def plot_ohc_timeseries(boxes=("boxA", "boxB"), figsize=(11, 6.5)):
+    """Two stacked panels sharing the date axis: (top) domain-mean total OHC
+    (solid) and fitted mean field (dashed) per box; (bottom) the domain-mean
+    anomaly (total - mean field) per box. Daily over 2010-2019, GJ/m^2."""
     import matplotlib.pyplot as plt
     color = {"boxA": "tab:orange", "boxB": "tab:blue"}
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=figsize, sharex=True,
+                                 gridspec_kw={"height_ratios": [2, 1]})
     for b in boxes:
         dates, total, mhat = ohc_domain_series(b)
         c = color.get(b)
-        ax.plot(dates, total * J_TO_GJ, color=c, lw=0.7, alpha=0.9, label=f"{b} total OHC")
-        ax.plot(dates, mhat * J_TO_GJ, color=c, lw=1.4, ls="--", label=f"{b} mean field")
-    ax.set_xlabel("date")
-    ax.set_ylabel("domain-mean OHC 0-2000 m (GJ/m2)")
-    ax.legend(fontsize=8, ncol=2)
+        a1.plot(dates, total * J_TO_GJ, color=c, lw=0.7, alpha=0.9, label=f"{b} total OHC")
+        a1.plot(dates, mhat * J_TO_GJ, color=c, lw=1.4, ls="--", label=f"{b} mean field")
+        a2.plot(dates, (total - mhat) * J_TO_GJ, color=c, lw=0.8, label=b)
+    a1.set_ylabel("domain-mean OHC 0-2000 m (GJ/m2)")
+    a1.legend(fontsize=8, ncol=2)
+    a2.axhline(0.0, color="0.4", lw=1.0, ls=":")
+    a2.set_ylabel("anomaly (GJ/m2)")
+    a2.set_xlabel("date")
+    a2.legend(fontsize=8, ncol=2)
     fig.tight_layout()
     return fig
 
@@ -2010,9 +2016,10 @@ def plot_bias_intervals(est, boxes=("boxB", "boxA"), figsize=(11, 4.0)):
     """Headline bias chart: per year, dodged intervals for the advective and the
     n-matched uniform sampling bias, one panel per box (own y-axis).
 
-    For each (box, year, method): point = ensemble mean; thick bar = mean +/- 1 MC
-    se (is the mean resolved from zero); thin whisker = 5-95% of realizations (the
-    scatter of a single deployment). Red line at 0 is the target.
+    For each (box, year, method): point = ensemble mean; capped bar = 95% CI
+    (mean +/- 1.96 MC se), so an interval clearing zero flags a mean distinguishable
+    from zero at the 5% level; thin whisker = 5-95% of realizations (the scatter of
+    a single deployment). Red line at 0 is the target.
     """
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
@@ -2028,7 +2035,7 @@ def plot_bias_intervals(est, boxes=("boxB", "boxA"), figsize=(11, 4.0)):
                 q05, q95 = np.percentile(b, [5, 95])
                 x = y + dx
                 ax.plot([x, x], [q05, q95], color=color, lw=1.0, alpha=0.6, zorder=2)
-                ax.errorbar(x, m, yerr=se, fmt="o", color=color, ms=4.5,
+                ax.errorbar(x, m, yerr=1.96 * se, fmt="o", color=color, ms=4.5,
                             elinewidth=1.4, capsize=3.5, capthick=1.4, zorder=4)
         ax.axhline(0.0, color="crimson", lw=1.4, zorder=1)
         ax.set_xticks(years)

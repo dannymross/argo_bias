@@ -223,7 +223,7 @@ field whose domain mean the sampling must recover.
 ```{python}
 #| label: fig-ohc-series
 #| echo: false
-#| fig-cap: "Domain-mean OHC 0-2000 m over each box, daily 2010-2019: total OHC (solid) and the fitted mean field (dashed). The mean field carries the seasonal cycle and the warming trend; the gap between the pair is the domain-mean anomaly (a few GJ/m2). Box B (NAC) has a larger seasonal swing (~6 GJ/m2, harmonics plus trend) and a larger anomaly than the subtropical Box A (~2.5)."
+#| fig-cap: "Domain-mean OHC 0-2000 m over each box, daily 2010-2019. Top: total OHC (solid) and the fitted mean field (dashed); the mean field carries the seasonal cycle and the warming trend. Bottom, same date axis: the domain-mean anomaly (total minus mean field) per box. Box B (NAC) has a larger seasonal swing (~6 GJ/m2, harmonics plus trend) and a larger, more variable anomaly than the subtropical Box A (~2.5)."
 
 mm.plot_ohc_timeseries()
 plt.show()
@@ -550,7 +550,7 @@ real-density array would face.
 ```{python}
 #| label: fig-bias-intervals
 #| echo: false
-#| fig-cap: "Headline result. Sampling bias B = Zhat - Zbar_k by analysis year, one panel per box (note the differing y-axis scales). For each year the two intervals are the advective array (grey) and the n-matched uniform reference (blue): marker = ensemble mean over the 100 realizations, capped bar around it = mean +/- 1 Monte Carlo standard error (whether the mean bias is resolved from zero), thin line = 5-95 percent of realizations (the scatter of a single deployment). Red line at zero is the target."
+#| fig-cap: "Headline result. Sampling bias B = Zhat - Zbar_k by analysis year, one panel per box (note the differing y-axis scales). For each year the two intervals are the advective array (grey) and the n-matched uniform reference (blue): marker = ensemble mean over the 100 realizations, capped bar around it = 95 percent CI (mean +/- 1.96 Monte Carlo standard errors), so an interval clearing zero marks a mean distinguishable from zero at the 5 percent level; thin line = 5-95 percent of realizations (the scatter of a single deployment). Red line at zero is the target."
 
 mm.plot_bias_intervals(est)
 plt.show()
