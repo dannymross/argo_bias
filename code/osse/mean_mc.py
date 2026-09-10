@@ -1962,27 +1962,60 @@ def uniform_reference_ensemble(est, R=2000, seed=0):
     return pd.DataFrame(rows, columns=["box", "year", "B_unif"])
 
 
-def argo_bias_by_year(box, path=None):
-    """Realized bias of the REAL Argo array sampling the GLORYS anomaly field:
-    B_k = mean over that box's year-k Argo profiles of Z_k, minus Zbar_k (J/m^2).
+def clean_argo(path=None, min_spacing=10, max_gap=90, min_span=90):
+    """QC-cleaned real Argo profile record (float_id, lat, lon, date, year, doy).
 
-    Same estimator as the simulated arm, on the actual Argo profile positions
-    (surface locations) in data/argo_ohc.csv. Returns a Series year -> B_argo for
-    the years present in both the Argo record and the residual field.
+    Applied to each float's FULL global record: (1) thin to >= min_spacing days
+    between kept profiles (drops near-duplicate surface fixes); (2) drop the whole
+    float if any consecutive gap exceeds max_gap days OR its total span is under
+    min_span days. doy is on the 365-day leap-dropped calendar (Feb 29 dropped).
     """
-    from osse import sample_residuals as sr
     path = path or os.path.join(os.path.dirname(cfg.GLORYS_DIR), "argo_ohc.csv")
-    d = pd.read_csv(path, usecols=["lat", "lon", "date"])
+    d = pd.read_csv(path, usecols=["float_id", "lat", "lon", "date"])
     d["date"] = pd.to_datetime(d["date"], format="ISO8601", utc=True)
-    (la0, la1), (lo0, lo1) = cfg.BOXES[box]["lat_bounds"], cfg.BOXES[box]["lon_bounds"]
-    d = d[d["lat"].between(la0, la1) & d["lon"].between(lo0, lo1)].copy()
+    d = d.dropna(subset=["lat", "lon", "date"]).sort_values(["float_id", "date"])
+
+    # Greedy thin: keep a profile only if >= min_spacing days since the last KEPT one
+    # (per float), so runs of sub-cycle fixes are thinned to ~min_spacing rather than
+    # collapsed to a single point.
+    fid = pd.factorize(d["float_id"].to_numpy())[0]
+    day = (d["date"] - d["date"].min()).dt.total_seconds().to_numpy() / 86400.0
+    keep = np.zeros(len(d), dtype=bool)
+    last = -1e18
+    for i in range(len(d)):
+        if i and fid[i] != fid[i - 1]:
+            last = -10 ** 9
+        if day[i] - last >= min_spacing:
+            keep[i] = True
+            last = day[i]
+    d = d[keep]
+    gap = d.groupby("float_id")["date"].diff().dt.total_seconds() / 86400.0
+    g = d.groupby("float_id")
+    max_gap_f = gap.groupby(d["float_id"]).transform("max")      # NaN for single-profile floats
+    span_f = (g["date"].transform("max") - g["date"].transform("min")).dt.total_seconds() / 86400.0
+    d = d[(max_gap_f <= max_gap) & (span_f >= min_span)]         # NaN comparisons -> False -> dropped
+
     dt = d["date"].dt
     doy0 = (dt.dayofyear - 1).to_numpy()
     leap = dt.is_leap_year.to_numpy()
-    d["year"] = dt.year.to_numpy()
-    d["doy"] = np.where(leap & (doy0 >= 60), doy0 - 1, doy0)
+    d = d.assign(year=dt.year.to_numpy(),
+                 doy=np.where(leap & (doy0 >= 60), doy0 - 1, doy0))
     d.loc[leap & (dt.month.to_numpy() == 2) & (dt.day.to_numpy() == 29), "doy"] = -1
-    d = d[d["doy"] >= 0]
+    return d[d["doy"] >= 0]
+
+
+def argo_bias_by_year(box, cleaned=None, path=None):
+    """Realized bias of the REAL Argo array sampling the GLORYS anomaly field:
+    B_k = mean over that box's year-k Argo profiles of Z_k, minus Zbar_k (J/m^2).
+
+    Same estimator as the simulated arm, on the QC-cleaned Argo profile positions
+    (surface locations; see clean_argo). Returns a Series year -> B_argo for the
+    years present in both the Argo record and the residual field.
+    """
+    from osse import sample_residuals as sr
+    d = clean_argo(path) if cleaned is None else cleaned
+    (la0, la1), (lo0, lo1) = cfg.BOXES[box]["lat_bounds"], cfg.BOXES[box]["lon_bounds"]
+    d = d[d["lat"].between(la0, la1) & d["lon"].between(lo0, lo1)]
 
     z = sr.load_residual_field(box)
     years = [int(y) for y in z["year"].values]
@@ -1994,7 +2027,7 @@ def argo_bias_by_year(box, path=None):
                           [col[y] for y in sampled["year"].to_numpy()]]
     zf, wet, w = load_field(box)
     zbar = domain_means(zf, wet, w)[0].set_index("year")["zbar"]
-    ghat = sampled[sampled["year"].isin(years)].groupby("year")["z_own"].mean()
+    ghat = sampled.groupby("year")["z_own"].mean()
     return (ghat - zbar).dropna()
 
 
