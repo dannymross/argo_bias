@@ -379,9 +379,18 @@ plt.show()
 
 :::
 
-The equilibrium array carries essentially no seasonal preference — the day-of-year weight stays within
-a few percent of uniform all year in both boxes — so the sampling bias is a spatial effect, not a
-temporal one. This is the multi-year deployment lead doing its job.
+The day-of-year weight stays within a few percent of uniform all year in both boxes. This is **by
+construction, and deliberately so**: floats profile on a fixed $10$-day cadence independent of season,
+release phases are uniform, and the multi-year lead holds the within-year standing stock flat, so no
+part of the design profiles preferentially in any season. We are therefore not modelling the
+mechanisms that drive *temporal* sampling bias in real observing systems — seasonal deployment surges,
+under-ice winter gaps, seasonally varying mortality or cycle timing — an assumption that is defensible
+for ice-free, mid-latitude Box B, where real Argo also cycles year-round, but is an assumption, not a
+result. Removing the seasonal marginal by design is the point: it isolates the two mechanisms that are
+genuinely dynamical — spatial preference and the space–time interaction — so that any bias the array
+shows is attributable to *where* it samples and to how that *where* co-varies with the field through
+the year, not to *when*. The residual few-percent wiggle is weak seasonal in/out-advection at the
+$1000$ m park depth, not a sampling choice.
 
 ## Bias as a covariance
 
@@ -415,9 +424,11 @@ HTML(fmt(mm.bias_decomposition_table("_pilot"), 4))
 : Space / time / interaction split of the measured bias, by box and analysis year, in GJ/m$^2$.
 The three components sum to the measured $B_k$. {#tbl-decomp}
 
-The temporal component is negligible in both boxes — the equilibrium array carries no seasonal
-preference, matching the flat weight curves — and the spatial-marginal component is real but modest.
-The **space–time interaction is often the largest term** (Box B 2018 is almost entirely interaction):
+The temporal component is negligible in both boxes — zero seasonal preference is built into the design
+(fixed $10$-day cadence, uniform release phase, equilibrium stock), so this term is uninformative by
+construction and is shown only to confirm the decomposition leaves it empty. The spatial-marginal
+component is real but modest, and the **space–time interaction is often the largest term** (Box B 2018
+is almost entirely interaction):
 the array's spatial preference co-varies with the field's day-to-day structure, so the bias is a
 genuinely spatiotemporal covariance that the time-averaged weight map understates. On the scored years
 the spatial weight dispersion is $\operatorname{sd}_p(r) \approx 0.46$ (Box B) and $0.37$ (Box A)
@@ -469,6 +480,22 @@ extra floats only tighten the per-realization spread. Read the widths below as a
 real-density array would face.
 
 ## Sampling bias
+
+```{python}
+#| label: fig-bias-intervals
+#| echo: false
+#| fig-cap: "Headline result. Sampling bias B = Zhat - Zbar_k by analysis year, one panel per box (note the differing y-axis scales). For each year the two intervals are the advective array (grey) and the n-matched uniform reference (blue): point = ensemble mean over the 100 realizations, thick bar = mean +/- 1 Monte Carlo standard error (whether the mean bias is resolved from zero), thin whisker = 5-95 percent of realizations (the scatter of a single deployment). Red line at zero is the target."
+
+mm.plot_bias_intervals(est)
+plt.show()
+```
+
+The advective means sit within a few hundredths of a GJ/m$^2$ of zero and, on the standardized scale,
+within $0.012\,\sigma_k$ (Box B) and $0.019\,\sigma_k$ (Box A); the uniform reference straddles zero as
+it must. What dominates each interval is the $5$–$95\%$ whisker: a *single* advective deployment scatters
+far more widely than the mean is displaced, and visibly wider than the uniform reference at the same
+$n$ — the within-float clustering quantified in @tbl-deff. The per-year detail and the shape of these
+distributions follow.
 
 ::: {.panel-tabset}
 

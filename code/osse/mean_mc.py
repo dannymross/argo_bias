@@ -1873,6 +1873,42 @@ def plot_continuous_bias(est, box, figsize=(13, 3.0)):
     return fig
 
 
+def plot_bias_intervals(est, boxes=("boxB", "boxA"), figsize=(11, 4.0)):
+    """Headline bias chart: per year, dodged intervals for the advective and the
+    n-matched uniform sampling bias, one panel per box (own y-axis).
+
+    For each (box, year, method): point = ensemble mean; thick bar = mean +/- 1 MC
+    se (is the mean resolved from zero); thin whisker = 5-95% of realizations (the
+    scatter of a single deployment). Red line at 0 is the target.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    fig, axes = plt.subplots(1, len(boxes), figsize=figsize)
+    methods = [("B", "0.35", "advective", -0.15), ("B_unif", "tab:blue", "uniform (P)", 0.15)]
+    for ax, box in zip(np.atleast_1d(axes), boxes):
+        g = est[est["box"] == box]
+        years = sorted(int(y) for y in g["year"].unique())
+        for col, color, _lab, dx in methods:
+            for y in years:
+                b = g.loc[g["year"] == y, col].to_numpy() * J_TO_GJ
+                m, se = b.mean(), b.std(ddof=1) / np.sqrt(b.size)
+                q05, q95 = np.percentile(b, [5, 95])
+                x = y + dx
+                ax.plot([x, x], [q05, q95], color=color, lw=1.0, alpha=0.7, zorder=2)
+                ax.plot([x, x], [m - se, m + se], color=color, lw=4.0, solid_capstyle="butt", zorder=3)
+                ax.plot(x, m, "o", color=color, ms=4, zorder=4)
+        ax.axhline(0.0, color="crimson", lw=1.4, zorder=1)
+        ax.set_xticks(years)
+        ax.set_xticklabels([str(y) for y in years], rotation=45, fontsize=8)
+        ax.set_title(box, fontsize=10)
+        ax.set_xlabel("analysis year", fontsize=9)
+    np.atleast_1d(axes)[0].set_ylabel("sampling bias B (GJ/m2)")
+    handles = [Line2D([0], [0], color=c, lw=4, marker="o", label=l) for _, c, l, _ in methods]
+    np.atleast_1d(axes)[0].legend(handles=handles, fontsize=8, loc="best")
+    fig.tight_layout()
+    return fig
+
+
 def plot_continuous_stock(est, boxes=("boxB", "boxA"), figsize=(11, 3.6)):
     """Virtual (mean +/- sd over realizations) against real Argo standing stock."""
     import matplotlib.pyplot as plt
