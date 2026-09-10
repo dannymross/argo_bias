@@ -1962,6 +1962,42 @@ def uniform_reference_ensemble(est, R=2000, seed=0):
     return pd.DataFrame(rows, columns=["box", "year", "B_unif"])
 
 
+def argo_bias_by_year(box, path=None):
+    """Realized bias of the REAL Argo array sampling the GLORYS anomaly field:
+    B_k = mean over that box's year-k Argo profiles of Z_k, minus Zbar_k (J/m^2).
+
+    Same estimator as the simulated arm, on the actual Argo profile positions
+    (surface locations) in data/argo_ohc.csv. Returns a Series year -> B_argo for
+    the years present in both the Argo record and the residual field.
+    """
+    from osse import sample_residuals as sr
+    path = path or os.path.join(os.path.dirname(cfg.GLORYS_DIR), "argo_ohc.csv")
+    d = pd.read_csv(path, usecols=["lat", "lon", "date"])
+    d["date"] = pd.to_datetime(d["date"], format="ISO8601", utc=True)
+    (la0, la1), (lo0, lo1) = cfg.BOXES[box]["lat_bounds"], cfg.BOXES[box]["lon_bounds"]
+    d = d[d["lat"].between(la0, la1) & d["lon"].between(lo0, lo1)].copy()
+    dt = d["date"].dt
+    doy0 = (dt.dayofyear - 1).to_numpy()
+    leap = dt.is_leap_year.to_numpy()
+    d["year"] = dt.year.to_numpy()
+    d["doy"] = np.where(leap & (doy0 >= 60), doy0 - 1, doy0)
+    d.loc[leap & (dt.month.to_numpy() == 2) & (dt.day.to_numpy() == 29), "doy"] = -1
+    d = d[d["doy"] >= 0]
+
+    z = sr.load_residual_field(box)
+    years = [int(y) for y in z["year"].values]
+    sampled, _ = sr.gather(d, z)
+    sampled = sampled[sampled["year"].isin(years)].copy()
+    col = {y: j for j, y in enumerate(years)}
+    zc = sampled[[f"z_{y}" for y in years]].to_numpy()
+    sampled["z_own"] = zc[np.arange(len(sampled)),
+                          [col[y] for y in sampled["year"].to_numpy()]]
+    zf, wet, w = load_field(box)
+    zbar = domain_means(zf, wet, w)[0].set_index("year")["zbar"]
+    ghat = sampled[sampled["year"].isin(years)].groupby("year")["z_own"].mean()
+    return (ghat - zbar).dropna()
+
+
 def continuous_pilot_size_table(est, boxes=("boxB", "boxA")):
     """Per box/year pilot sample sizes: mean in-box standing stock and distinct
     floats per realization, mean profile observations per realization, and the
@@ -2021,10 +2057,13 @@ def continuous_deff_table(tag="_pilot", boxes=("boxB", "boxA"), ref=None):
     return pd.DataFrame(rows)
 
 
-def plot_continuous_bias(est, box, ref=None, figsize=(13, 3.0)):
+def plot_continuous_bias(est, box, ref=None, argo=None, figsize=(13, 3.0)):
     """Bias distribution over realizations, one panel per year; uniform null overlaid
-    (from the large `ref` ensemble when given, else the aligned per-rep B_unif)."""
+    (from the large `ref` ensemble when given). If `argo` (a Series year -> B in
+    J/m^2 from argo_bias_by_year) is given, the realized real-Argo bias is drawn as
+    a green reference line, and the x-axis is widened to include it."""
     import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
     g = est[est["box"] == box]
     gu = ref[ref["box"] == box] if ref is not None else g
     years = sorted(int(y) for y in g["year"].unique())
@@ -2032,6 +2071,10 @@ def plot_continuous_bias(est, box, ref=None, figsize=(13, 3.0)):
     lo, hi = np.percentile(allB, [0.5, 99.5])
     pad = 0.08 * (hi - lo)
     bins = np.linspace(lo - pad, hi + pad, 28)
+    xlo, xhi = lo - pad, hi + pad
+    if argo is not None:
+        av = argo * J_TO_GJ
+        xlo, xhi = min(xlo, av.min() - pad), max(xhi, av.max() + pad)
     fig, axes = plt.subplots(1, len(years), figsize=figsize, sharex=True, sharey=True)
     for ax, k in zip(np.atleast_1d(axes), years):
         gk = g[g["year"] == k]
@@ -2040,10 +2083,19 @@ def plot_continuous_bias(est, box, ref=None, figsize=(13, 3.0)):
                 histtype="step", color="tab:blue", lw=1.2, ls="--")
         ax.axvline(0.0, color="crimson", lw=1.6)
         ax.axvline(gk["B"].mean() * J_TO_GJ, color="k", lw=1.4, ls=":")
+        if argo is not None and k in argo.index:
+            ax.axvline(argo[k] * J_TO_GJ, color="tab:green", lw=1.8)
+        ax.set_xlim(xlo, xhi)
         ax.set_title(str(k), fontsize=10)
         ax.set_xlabel("B (GJ/m2)", fontsize=8)
         ax.tick_params(labelsize=7)
     np.atleast_1d(axes)[0].set_ylabel("density")
+    if argo is not None:
+        np.atleast_1d(axes)[0].legend(
+            handles=[Line2D([0], [0], color="tab:green", lw=1.8, label="real Argo"),
+                     Line2D([0], [0], color="tab:blue", lw=1.2, ls="--", label="uniform"),
+                     Line2D([0], [0], color="crimson", lw=1.6, label="zero")],
+            fontsize=7, loc="upper left")
     fig.tight_layout()
     return fig
 

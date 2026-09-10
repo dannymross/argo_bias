@@ -498,6 +498,7 @@ though not perfectly, orthogonal to the field.
 
 est = mm.load_continuous("_pilot")
 ref = mm.uniform_reference_ensemble(est, R=2000)   # large n-matched uniform null
+argo = {b: mm.argo_bias_by_year(b) for b in ("boxB", "boxA")}  # real-Argo realized bias
 ```
 
 ## Pilot specification
@@ -584,9 +585,9 @@ distributions follow.
 ```{python}
 #| label: fig-bias
 #| echo: false
-#| fig-cap: "Box B. Sampling distribution of B = Zhat - Zbar_k over the 100 realizations, one panel per year. Grey: the advective ensemble. Dashed blue: the n-matched uniform reference. Solid red: zero (the target). Dotted black: the ensemble mean."
+#| fig-cap: "Box B. Sampling distribution of B = Zhat - Zbar_k over the 100 realizations, one panel per year. Grey: the advective ensemble. Dashed blue: the n-matched uniform reference. Solid red: zero (the target). Dotted black: the ensemble mean. Solid green: the realized bias of the REAL Argo array sampling the same GLORYS anomaly field (the x-axis is widened where it falls outside the simulated range)."
 
-mm.plot_continuous_bias(est, "boxB", ref)
+mm.plot_continuous_bias(est, "boxB", ref, argo=argo["boxB"])
 plt.show()
 ```
 
@@ -604,9 +605,9 @@ HTML(fmt(mm.continuous_bias_table(est, "boxB", ref), 4))
 ```{python}
 #| label: fig-bias-a
 #| echo: false
-#| fig-cap: "Box A, same construction on its own axis: the bias scale is roughly a third of Box B's. Compare the boxes through the standardized column of the tables, not across these figures."
+#| fig-cap: "Box A, same construction on its own axis (green: the real-Argo realized bias): the bias scale is roughly a third of Box B's. Compare the boxes through the standardized column of the tables, not across these figures."
 
-mm.plot_continuous_bias(est, "boxA", ref)
+mm.plot_continuous_bias(est, "boxA", ref, argo=argo["boxA"])
 plt.show()
 ```
 
@@ -631,6 +632,18 @@ Resolution is then limited by the *advective* side: at $100$ realizations its me
 of $\sim\!0.03$ GJ/m$^2$ in Box B and $\sim\!0.01$ in Box A, so its $95\%$ CI clears zero only where
 the bias is largest — Box A 2017 and Box B 2018 most clearly — while the marginal years overlap zero.
 More advective realizations are the way to resolve the rest.
+
+**The real Argo array is more biased than the uniformly-seeded simulation.** The green lines apply the
+same estimator to the actual Argo profile positions sampling the GLORYS anomaly field. In Box B the
+realized Argo bias is strongly negative — $-0.56$ to $-1.35$ GJ/m$^2$ in four of the five years,
+falling at the $0$th–$5$th percentile of (and often outside) the simulated ensemble; Box A is milder
+but 2015 is likewise an outlier ($-0.33$). A single uniform draw of the same size would scatter only
+$\pm\!0.2$ GJ/m$^2$, so these are many standard errors from zero: the real array samples the field
+preferentially in a way the uniform-in-space-time seeding does not reproduce. This points to real
+deployment non-uniformity — programmatic, clustered coverage (@fig-advection-argo) — adding bias
+beyond the advective mechanism alone, and is the clearest signal in the pilot that the idealized
+seeding *understates* the bias a real array carries. It warrants scrutiny (real park depths and
+coverage differ from the simulation) but is a concrete, testable difference.
 
 ## Within-design dependence
 
