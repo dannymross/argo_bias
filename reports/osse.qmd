@@ -220,6 +220,19 @@ $3.80$ GJ/m$^2$ within a year ($1.50$ in Box A), the trend by $2.59$ across 2010
 consecutive days by $0.03$. Everything mesoscale and day-to-day is therefore left in $\tilde Z$ — the
 field whose domain mean the sampling must recover.
 
+```{python}
+#| label: fig-ohc-series
+#| echo: false
+#| fig-cap: "Domain-mean OHC 0-2000 m over each box, daily 2010-2019: total OHC (solid) and the fitted mean field (dashed). The mean field carries the seasonal cycle and the warming trend; the gap between the pair is the domain-mean anomaly (a few GJ/m2). Box B (NAC) has a larger seasonal swing (~6 GJ/m2, harmonics plus trend) and a larger anomaly than the subtropical Box A (~2.5)."
+
+mm.plot_ohc_timeseries()
+plt.show()
+```
+
+@fig-ohc-series shows this directly: each box's total OHC oscillates seasonally about its smooth mean
+field, and the residual gap — the domain mean of $\tilde Z$ — is a few GJ/m$^2$, larger and more
+variable in Box B than in Box A.
+
 **Stationarity caveat.** A single global trend-plus-harmonics form is a preliminary,
 stationary-in-form choice; OHC is strongly non-stationary across these current regions, so a
 covariance-aware mean is a likely refinement. It does not threaten $B$: a spatially uniform misfit in

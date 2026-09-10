@@ -807,6 +807,49 @@ def plot_mean_field_months(boxes=("boxB", "boxA"), year=2015, months=(1, 4, 7, 1
     return fig
 
 
+def ohc_domain_series(box):
+    """Daily domain-mean OHC and fitted mean field over `box`, 2010-2019 (J/m^2).
+
+    Returns (dates, total, mhat) on the 365-day leap-dropped calendar. The mean
+    field domain mean is phi(t)^T beta-bar with beta-bar the area-weighted mean
+    coefficients; total = mhat + the area-weighted daily residual (domain_means),
+    so total - mhat is the domain-mean anomaly.
+    """
+    zf, wet, w = load_field(box)
+    _, by_doy = domain_means(zf, wet, w)
+    years = _field_years(box)
+    with xr.open_dataset(os.path.join(cfg.OUT_DIR, f"mean_field_coef_{box}.nc")) as ds:
+        beta = ds["beta"].values.reshape(ds.sizes["coef"], -1)
+        t_ref = float(ds.attrs["t_ref"])
+    a = xr.open_dataset(os.path.join(cfg.OUT_DIR, f"cell_area_{box}.nc"))["cell_area"].values.ravel()
+    m = np.isfinite(a)
+    betabar = (beta[:, m] * (a[m] / a[m].sum())).sum(axis=1)
+
+    dates = pd.date_range(f"{years[0]}-01-01", f"{years[-1]}-12-31", freq="D")
+    dates = dates[~((dates.month == 2) & (dates.day == 29))]
+    X, _ = cfg.design_matrix(cfg.decimal_year(dates.values), quadratic=True, t_ref=t_ref)
+    mhat = X @ betabar
+    return dates, mhat + by_doy.reshape(-1), mhat
+
+
+def plot_ohc_timeseries(boxes=("boxA", "boxB"), figsize=(11, 4.5)):
+    """Domain-mean total OHC (solid) and fitted mean field (dashed) per box, daily
+    over 2010-2019; the gap between the pair is the domain-mean anomaly."""
+    import matplotlib.pyplot as plt
+    color = {"boxA": "tab:orange", "boxB": "tab:blue"}
+    fig, ax = plt.subplots(figsize=figsize)
+    for b in boxes:
+        dates, total, mhat = ohc_domain_series(b)
+        c = color.get(b)
+        ax.plot(dates, total * J_TO_GJ, color=c, lw=0.7, alpha=0.9, label=f"{b} total OHC")
+        ax.plot(dates, mhat * J_TO_GJ, color=c, lw=1.4, ls="--", label=f"{b} mean field")
+    ax.set_xlabel("date")
+    ax.set_ylabel("domain-mean OHC 0-2000 m (GJ/m2)")
+    ax.legend(fontsize=8, ncol=2)
+    fig.tight_layout()
+    return fig
+
+
 def _domain_base(boxes=("boxA", "boxB"), figsize=(7.5, 6.4)):
     """Base analysis-domain map: land, the velocity/thetao regions, and the boxes.
 
