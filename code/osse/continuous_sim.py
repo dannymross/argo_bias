@@ -106,8 +106,13 @@ def _window_files(t_start, t_end):
     return files
 
 
-def run_continuous(rep, out_zarr, n_floats, t_start, t_end, margin=SEED_MARGIN):
-    """Advect one realisation's plan continuously over [t_start, t_end]."""
+def run_continuous(rep, out_zarr, n_floats, t_start, t_end, margin=SEED_MARGIN, seeds=None):
+    """Advect one realisation continuously over [t_start, t_end].
+
+    `seeds`, if given, is a (lat, lon, release_datetime64, lifespan_days) tuple used
+    verbatim (for the real-Argo deployment arms); otherwise the uniform space-time
+    deployment_plan is drawn.
+    """
     from parcels import (AdvectionRK4, FieldSet, JITParticle, ParticleSet,
                          StatusCode, Variable)
 
@@ -130,7 +135,10 @@ def run_continuous(rep, out_zarr, n_floats, t_start, t_end, margin=SEED_MARGIN):
         dimensions={"time": "time", "depth": "depth", "lat": "latitude", "lon": "longitude"},
         allow_time_extrapolation=False,
     )
-    lat, lon, rel, life = deployment_plan(n_floats, rep, t_start, t_end, margin=margin)
+    if seeds is None:
+        lat, lon, rel, life = deployment_plan(n_floats, rep, t_start, t_end, margin=margin)
+    else:
+        lat, lon, rel, life = seeds
     pset = ParticleSet(fieldset=fieldset, pclass=ArgoFloat,
                        lon=lon, lat=lat, depth=np.full(len(lat), PARK_DEPTH),
                        time=rel.astype("datetime64[s]"), lifespan=life * 86400.0)
@@ -394,6 +402,93 @@ def run_illustration(out_csv=None, n_floats=100, rep=0, t_start=None, t_end=None
     return df
 
 
+def argo_deployment_pool(cleaned=None, boxes=BOXES, margin=SEED_MARGIN,
+                         t_start=None, t_end=None, deep=True):
+    """Real Argo deployments (each cleaned float's first profile) in the seed region.
+
+    Returns float_id, lat, lon, date (deploy datetime), lifespan (days = last-first
+    cleaned profile). Restricted to first-profile inside (union box + margin) cap the
+    velocity domain, deploy date in [t_start, t_end), and (deep) deptho >= park depth.
+    """
+    from osse import mean_mc as mm
+    d = mm.clean_argo() if cleaned is None else cleaned
+    g = d.sort_values("date").groupby("float_id")
+    dep = g[["lat", "lon", "date"]].first()
+    dep["lifespan"] = (g["date"].last() - dep["date"]).dt.total_seconds() / 86400.0
+
+    la0 = min(cfg.BOXES[b]["lat_bounds"][0] for b in boxes) - margin
+    la1 = max(cfg.BOXES[b]["lat_bounds"][1] for b in boxes) + margin
+    lo0 = min(cfg.BOXES[b]["lon_bounds"][0] for b in boxes) - margin
+    lo1 = max(cfg.BOXES[b]["lon_bounds"][1] for b in boxes) + margin
+    (vla0, vla1), (vlo0, vlo1) = di.velocity_extent()
+    dep = dep[dep["lat"].between(max(la0, vla0), min(la1, vla1))
+              & dep["lon"].between(max(lo0, vlo0), min(lo1, vlo1))]
+    if t_start is not None:
+        dep = dep[dep["date"] >= pd.Timestamp(t_start, tz="UTC")]
+    if t_end is not None:
+        dep = dep[dep["date"] < pd.Timestamp(t_end, tz="UTC")]
+    if deep:
+        with xr.open_dataset(BATHY_PATH) as ds:
+            dd = ds["deptho"]
+            ii = cfg.containing_index(dep["lat"].to_numpy(), dd["latitude"].values)
+            jj = cfg.containing_index(dep["lon"].to_numpy(), dd["longitude"].values)
+            ok = (ii >= 0) & (jj >= 0)
+            keep = np.zeros(len(dep), bool)
+            keep[ok] = np.isfinite(dd.values[ii[ok], jj[ok]]) & (dd.values[ii[ok], jj[ok]] >= PARK_DEPTH)
+        dep = dep[keep]
+    return dep.reset_index()
+
+
+def main_argo(mode="actual", reps=1, rep_offset=0, n=None, t_start="2010-01-01",
+              t_end=None, score_years=None, tag="", keep_zarr=False):
+    """Real-Argo deployment arm: advect floats seeded from the real deployment record
+    through GLORYS. mode='actual' uses the deployments verbatim (one realization, the
+    advection-fidelity check); mode='boot' resamples them with replacement at the real
+    rate (n = pool size unless given), one draw per rep (RNG keyed on rep, jittered)."""
+    os.makedirs(cfg.OUT_DIR, exist_ok=True)
+    scratch = os.path.join(cfg.OUT_DIR, "_traj")
+    os.makedirs(scratch, exist_ok=True)
+    if t_end is None:
+        yrs = sorted({int(os.path.basename(f).split("_")[-2])
+                      for f in glob.glob(os.path.join(di.VEL_DIR, "velocity_daily_park_*.nc"))})
+        yrs = [y for y in yrs
+               if len(glob.glob(os.path.join(di.VEL_DIR, f"velocity_daily_park_{y}_*.nc"))) == 12]
+        t_end = f"{yrs[-1]}-12-26"
+
+    pool = argo_deployment_pool(t_start=t_start, t_end=t_end)
+    rel = pool["date"].dt.tz_localize(None).to_numpy().astype("datetime64[s]")
+    lat, lon, life = pool["lat"].to_numpy(), pool["lon"].to_numpy(), pool["lifespan"].to_numpy()
+    sfx = f"_argo_{mode}{tag}"
+    print(f"argo pool: {len(pool)} real deployments in seed region, {t_start}..{t_end}")
+
+    all_prof = []
+    for d in range(rep_offset, rep_offset + reps):
+        if mode == "actual":
+            seeds = (lat, lon, rel, life)
+        else:
+            r = np.random.default_rng([6000, int(d)])
+            nn = n or len(pool)
+            idx = r.integers(0, len(pool), nn)
+            jl = r.normal(0.0, di.JITTER_KM / 111.0, nn)
+            jo = r.normal(0.0, di.JITTER_KM / (111.0 * np.cos(np.deg2rad(lat[idx]))), nn)
+            seeds = (lat[idx] + jl, lon[idx] + jo, rel[idx], life[idx])
+        zpath = os.path.join(scratch, f"traj{sfx}_r{d}.zarr")
+        print(f"  rep {d}: advecting {len(seeds[0])} floats ...", flush=True)
+        run_continuous(d, zpath, len(seeds[0]), t_start, t_end, seeds=seeds)
+        all_prof.append(profiles_from_zarr(zpath, d))
+        if not keep_zarr:
+            import shutil
+            shutil.rmtree(zpath, ignore_errors=True)
+
+    prof = pd.concat(all_prof, ignore_index=True)
+    prof.to_csv(os.path.join(cfg.OUT_DIR, f"design_profiles{sfx}.csv"), index=False)
+    est, ndropped = diagonal_estimates(prof, score_years)
+    est.to_csv(os.path.join(cfg.OUT_DIR, f"estimates{sfx}.csv"), index=False)
+    print(f"{len(prof):,} in-box profiles, {ndropped:,} dropped -> estimates{sfx}.csv")
+    _print_summary(est)
+    return est
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--n-floats", type=int, default=1000)
@@ -408,11 +503,16 @@ if __name__ == "__main__":
     ap.add_argument("--gather", action="store_true", help="concat array chunks for --tag and exit")
     ap.add_argument("--illustrate", action="store_true",
                     help="run one realization keeping all positions -> illustration_tracks.csv")
+    ap.add_argument("--argo", choices=("actual", "boot"), default=None,
+                    help="real-Argo deployment arm: 'actual' (verbatim) or 'boot' (resampled)")
     a = ap.parse_args()
+    sy = [int(y) for y in a.score_years.split(",")] if a.score_years else None
     if a.gather:
         gather_chunks(a.tag)
     elif a.illustrate:
         run_illustration(n_floats=a.n_floats, t_start=a.start, t_end=a.end)
+    elif a.argo:
+        main_argo(a.argo, a.reps, a.rep_offset, None,   # boot uses the real deployment rate
+                  a.start or "2010-01-01", a.end, sy, a.tag, a.keep_zarr)
     else:
-        sy = [int(y) for y in a.score_years.split(",")] if a.score_years else None
         main(a.n_floats, a.reps, a.rep_offset, a.start, a.end, sy, a.keep_zarr, a.tag)
