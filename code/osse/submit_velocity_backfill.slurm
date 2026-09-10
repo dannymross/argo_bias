@@ -2,15 +2,16 @@
 # Backfill daily uo/vo (park + surf bands) over the extended velocity window in
 # code/osse/configs/osse_glorys.json -- one array task per year.
 #
-# More velocity years widen the comparison set C_k = {l : |l - k| >= 2} of the
-# permutation test; only the velocity record needs extending, since thetao/zos
-# stay on the 2015-2019 analysis window.
+# The velocity record is extended back to 2005 so floats seeded uniformly over
+# 2005-2019 spacetime reach renewal equilibrium by the first analysis year
+# (2010) in one continuous advection; only the velocity record needs extending,
+# since thetao/zos (which define the analysis years) stay on their own window.
 #
 #   mkdir -p logs
-#   sbatch code/osse/submit_velocity_backfill.slurm            # 2010-2019
-#   sbatch --array=0-4 code/osse/submit_velocity_backfill.slurm  # 2010-2014 only
+#   sbatch code/osse/submit_velocity_backfill.slurm            # 2005-2019
+#   sbatch --array=0-2 code/osse/submit_velocity_backfill.slurm  # 2005-2007 only
 #
-# Resumable: existing files are skipped, so the 2015-2019 tasks finish
+# Resumable: existing files are skipped, so already-downloaded years finish
 # immediately and a timed-out or requeued task picks up where it stopped.
 # ~1.4 GB/yr at ~0.43 MB/s sustained => ~1 h per task.
 #
@@ -22,7 +23,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --time=08:00:00
-#SBATCH --array=0-9%5
+#SBATCH --array=0-14%5
 #SBATCH --output=logs/osse_vel_backfill_%A_%a.out
 #SBATCH --error=logs/osse_vel_backfill_%A_%a.err
 
@@ -32,7 +33,7 @@ PROJECT_ROOT="$SLURM_SUBMIT_DIR"
 source activate argo_bias
 cd "$PROJECT_ROOT"
 
-START_YEAR=2010
+START_YEAR="${START_YEAR:-2005}"
 YEAR=$((START_YEAR + SLURM_ARRAY_TASK_ID))
 
 echo "array task ${SLURM_ARRAY_TASK_ID}: velocity_daily ${YEAR}"

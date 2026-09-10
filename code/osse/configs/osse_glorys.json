@@ -39,8 +39,8 @@
     {"name": "velocity_daily", "cadence": "velocity_bands", "region": "buffer",
      "dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1D-m",
      "variables": ["uo", "vo"],
-     "period": {"daily_start": "2008-01", "daily_end": "2019-12"},
-     "note": "velocity spans MORE years than the analysis window, for two reasons. (1) Unaligned (l != k) cells are the no-coupling counterfactual and set the null scale for the diagonal. (2) The steady arm spins up over the PRECEDING 540 d, so the earliest analysis year is bounded by the velocity start: 2008 keeps analysis years from 2010. Note extra velocity years buy little precision on a per-year contrast -- var = sigma_f^2 (1 + 1/M) and the 1 is the diagonal's own flow-year draw -- so 2008 is chosen to cover the spin-up, not to grow M. Same buffer region and depth bands throughout so the extra years are exchangeable with the rest."},
+     "period": {"daily_start": "2005-01", "daily_end": "2019-12"},
+     "note": "velocity spans MORE years than the analysis window: floats are seeded uniformly over spacetime across the whole 2005-2019 velocity record and advected in one continuous run, so the ~5 yr lead to the first analysis year (2010) brings the drifting array to renewal equilibrium (constant seed rate against an empirical lifespan median ~1339 d) before any year is scored. thetao (and hence the residual field Z_k) still defines the analysis years 2010-2019; profiles from the 2005-2009 spin-up carry no Z and are discarded. Same buffer region and depth bands throughout."},
 
     {"name": "zos_daily", "cadence": "daily", "region": "buffer",
      "dataset_id": "cmems_mod_glo_phy_my_0.083deg_P1D-m",

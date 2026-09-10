@@ -1,0 +1,545 @@
+---
+title: "Simulation Based Estimation of Sampling Bias"
+jupyter: python3
+fig-dpi: 300
+bibliography: references.bib
+---
+
+```{=html}
+<style>
+table.dataframe { width: auto; max-width: 90%; font-size: 0.85em; margin-left: auto; margin-right: auto; }
+/* The field maps are native 1/12 deg cells drawn as hard-edged quads. Browsers
+   smooth-scale images by default, which blurs those cells into a continuous
+   field the data does not have; nearest-neighbour scaling keeps them discrete. */
+figure img, .quarto-figure img { image-rendering: pixelated; }
+</style>
+```
+
+```{python}
+#| label: setup
+#| include: false
+
+import os, sys
+sys.path.insert(0, os.path.abspath("../code"))
+
+import numpy as np, pandas as pd, matplotlib.pyplot as plt
+from IPython.display import HTML
+from osse import mean_mc as mm
+
+plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.alpha": 0.25})
+GJ = mm.J_TO_GJ
+BOXES = ("boxB", "boxA")
+
+def fmt(df, dec=3):
+    return df.round(dec).to_html(index=False, border=0)
+
+mm.set_box("boxB")
+```
+
+# Data and models
+
+**Field.** GLORYS12V1 reanalysis on its native $1/12^\circ$ grid. OHC is the $0$–$2000$ m depth
+integral of potential temperature against constant $c_p\rho$ (`code/ohc.py`), evaluated daily over
+2010–2019. Cells enter the analysis only where $\mathrm{deptho} > 2000$ m *and* the integral is
+defined at every level, which is $92.4\%$ of Box B by area ($26{,}785$ cells) and $99.8\%$ of Box A
+($34{,}863$ cells) — Box B loses its shelf edge, Box A is essentially all deep ocean.
+
+**Mean field.** OHC is split as $\mathrm{OHC} = \hat m + \tilde Z$ into a smooth climatological mean
+field $\hat m$, fitted once across $1995$–$2019$, and the residual $\tilde Z_k$ the designs actually
+sample — the field the sampling bias is defined over. $\hat m$ is a per-cell OLS on a quadratic trend
+plus annual and semiannual harmonics, fit against the GLORYS *monthly* record with each basis
+function averaged over its month to match the monthly-mean response, then evaluated pointwise per
+day. @sec-meanfield gives the estimator and summarizes what it leaves.
+
+**Advection.** OceanParcels, park depth $1000$ m, advected by GLORYS daily $(u,v)$ over
+$15$–$50^\circ$ N, $70$–$30^\circ$ W. Floats advect continuously at park depth and record a position
+every $10$ days; there is no ascent, descent or surface drift, so a cycle is a position sample, not
+a simulated dive. Floats are deleted on leaving the velocity domain and retired at a lifespan drawn
+from the real Argo record for this region ($153$ deployments, median $1339$ d).
+
+**Estimation.** $\hat Z$ is the unweighted mean of $\tilde Z_k$ at the profile positions, and $\bar Z_k$ is the exact $\mathbb{P}$-weighted domain mean
+of the same field.
+
+# The analysis domain
+
+Two analysis boxes sit inside the downloaded GLORYS region, both spanning $60^\circ$–$40^\circ$ W:
+**Box B** ($35$–$45^\circ$ N) straddles the North Atlantic Current and the Gulf Stream extension,
+and **Box A** ($22$–$34^\circ$ N) sits in the quiescent subtropical gyre. Temperature is downloaded
+over a common buffer, from which the OHC truth and the fitted mean field are built; velocity is
+downloaded over a larger region, because floats seeded near a box advect well outside it and
+return, and a float that leaves the velocity domain is lost from the experiment rather than merely
+lost from the box.
+
+```{python}
+#| label: fig-domain
+#| echo: false
+#| fig-cap: "Analysis boxes inside the two downloaded GLORYS regions. Dashed: the velocity region driving advection, and the thetao region from which OHC truth and the mean field are built. Filled: the two analysis boxes."
+
+mm.plot_domain_map()
+plt.show()
+```
+
+```{python}
+#| label: fig-bathy
+#| echo: false
+#| fig-cap: "GLORYS ocean depth over the advection domain. Left: deptho in km, capped at 6 km for display so the shelf break is resolved rather than compressed against the abyssal plain. Right: the ocean cells shallower than the 2000 m analysis cut, which are excluded from the OHC integral and from the measure P. Both analysis boxes are outlined. Land is grey in both panels."
+
+mm.plot_bathymetry()
+plt.show()
+```
+
+@fig-bathy is why the analysis mask is not the whole box. OHC is integrated to $2000$ m, so a cell
+enters the estimand only where the water column reaches that depth; $88.7\%$ of the ocean cells in
+the advection domain do. The cut is not evenly distributed. **Box B loses $7.2\%$ of its area to
+it**, and that loss is concentrated in one corner: $99\%$ of its excluded cells lie north of
+$42^\circ$ N and $81\%$ west of $50^\circ$ W, on the Grand Banks and the Newfoundland shelf and
+rise. **Box A loses $0.08\%$** — $29$ cells, all isolated ridge and seamount tops in its eastern
+half. Median depth is $4.85$ km in Box B and $4.94$ km in Box A.
+
+The mask actually used is slightly stricter than the depth cut alone: it also requires the depth
+integral to be defined at every level, which drops a further $0.5\%$ of Box B and $0.15\%$ of Box A.
+Retained area is $92.35\%$ and $99.77\%$ against $92.83\%$ and $99.92\%$ from depth alone.
+
+```{python}
+#| label: fig-days
+#| echo: false
+#| fig-cap: "Residual field Z on single unaveraged days, in GJ per m2. Each day is the one whose P-weighted spatial standard deviation is nearest the 5th, 50th and 95th percentile of that box's 3,650 daily values, so the columns span typical low, median and high spatial variability. Rows carry their own colour scale, since the boxes differ several-fold in amplitude. Panel titles give the day and its spatial sd."
+
+mm.plot_quantile_days()
+plt.show()
+```
+
+@fig-days is the field the designs actually sample, shown unaveraged: each panel is one real day,
+selected by where its spatial dispersion $\mathrm{sd}_{\mathbb{P}}(\tilde Z_k(\cdot,d))$ falls in the
+distribution of all $3{,}650$ days. 
+
+The same construction applied to the flow that moves the floats gives @fig-vel-u and @fig-vel-v: the
+two park-depth velocity components, each on the day whose own $\mathbb{P}$-weighted spatial standard
+deviation sits at the 5th, 50th and 95th percentile of that component's $3{,}650$ daily values. The
+velocity archive is on the identical native grid and is defined at every cell of the analysis mask,
+so these are the same measure $\mathbb{P}$ and the same cells as @fig-days — no regridding and no
+second mask. Values are interpolated to the $1000$ m park depth between the two archived levels
+($902$ and $1062$ m), which is what Parcels does to the same files when it advects the floats.
+
+```{python}
+#| label: fig-vel-u
+#| echo: false
+#| fig-cap: "Eastward velocity at 1000 m in cm/s."
+mm.plot_velocity_quantile_days("uo")
+plt.show()
+```
+
+```{python}
+#| label: fig-vel-v
+#| echo: false
+#| fig-cap: "Northward velocity at 1000 m in cm/s."
+mm.plot_velocity_quantile_days("vo")
+plt.show()
+```
+
+**The flow is roughly twice as disperse in Box B, and that holds on every day, not just energetic
+ones.** Median daily $\mathrm{sd}_{\mathbb{P}}$ is $12.1$ cm/s eastward and $11.5$ northward in Box
+B against $5.5$ and $5.4$ in Box A, and the decade-wide range of that daily value is narrow in both
+— $9.7$–$14.8$ and $9.0$–$14.7$ in Box B, $4.5$–$7.0$ and $4.4$–$6.7$ in Box A. The 5th and 95th
+percentile columns are therefore much closer to each other than the two rows are, so the box, not
+the day, is what sets the scale.
+
+**Box B's structure is substantially standing, Box A's is substantially transient.** The
+$\mathbb{P}$-weighted spatial sd of the decade-mean velocity field is $4.11$ cm/s eastward and
+$2.37$ northward in Box B against $0.94$ and $0.61$ in Box A — a $4.4\times$ and $3.9\times$ gap,
+about twice the gap in the daily dispersion. As a fraction of each box's mean daily spatial sd, the
+persistent part is $0.34$ and $0.21$ in Box B against $0.17$ and $0.11$ in Box A. 
+
+**Neither box has appreciable net transport.** The domain-mean velocity is within $\pm 1$ cm/s of
+zero on every one of the $3{,}650$ days in both components and both boxes (largest $0.996$ cm/s), so
+the contrast between the boxes is in spatial structure, not in bulk flow through the domain.
+
+Together with @fig-days this is the setup the two boxes were selected to contrast: they differ
+$3.3\times$ in field amplitude and $2.2\times$ in the daily spatial dispersion of the flow that
+samples it, with the standing component of that flow differing by about $4\times$.
+
+# Mean field {#sec-meanfield}
+
+The sampling-bias question concerns the *residual* OHC field, not the total. The smooth
+climatological part of OHC is large and slowly varying, and any array recovers it almost exactly, so
+the bias $B$ lives entirely in what remains once it is removed. We therefore decompose
+
+$$\mathrm{OHC}(c,t) \;=\; \hat m(c,t) \;+\; \tilde Z(c,t),$$
+
+with $\hat m$ a mean field fitted once across all years — a climatology, deliberately not a per-year
+fit — and $\tilde Z_k$ the year-$k$ residual the designs sample. Because $\hat m$ is estimated, so is
+$\tilde Z$; this section states the estimator and summarizes what it leaves.
+
+**Regression.** For each analysis cell $c$, OHC is modelled as
+$\mathrm{OHC}(c,t) = \phi(t)^\top \beta_c + \varepsilon(c,t)$ on the trend-plus-harmonics basis
+$\phi(t) = \bigl(1,\,t,\,t^2,\,\sin 2\pi t,\,\cos 2\pi t,\,\sin 4\pi t,\,\cos 4\pi t\bigr)^\top$
+($t$ in years): a quadratic secular trend and the annual and semiannual cycles. The coefficients are
+fit by ordinary least squares to the $1995$–$2019$ GLORYS *monthly* record.
+
+**Fit and prediction use different bases, on purpose.** A GLORYS monthly file holds the month *mean*
+OHC over $I_m = [t_0^m, t_1^m)$ but is time-stamped at its start $t_0^m$. Regressing that mean on the
+instantaneous basis $\phi(t_0^m)$ would misdate the harmonics by $\sim\!15$ d and attenuate their
+amplitude, since the mean of a sinusoid over a month is not its value at a point. We instead regress
+on the **window-averaged basis** $\bar\phi(I_m) = |I_m|^{-1}\!\int_{I_m}\phi(t)\,dt$, so both sides of
+the regression are monthly averages; each column is exact in closed form (constant $\mapsto 1$;
+linear $\mapsto$ the window midpoint; quadratic $\mapsto (t_1^3 - t_0^3)/3|I_m|$; each harmonic
+$\mapsto$ its exact windowed integral). The window is common to every cell, so there is a single
+design matrix $\bar X = \bigl[\bar\phi(I_m)^\top\bigr]_m$ and the per-cell fit is one pseudo-inverse,
+$\hat\beta_c = \bar X^{+} Y_c$. **Prediction is then pointwise:** the fitted field is evaluated at
+each instant on the daily grid, $\hat m(c,t) = \phi(t)^\top \hat\beta_c$, and subtracted from daily
+OHC to give $\tilde Z_k = \mathrm{OHC}_k - \hat m$ on the same mask. The window average enters only
+the fit, to keep regressor and response on the same footing; the prediction is the smooth curve
+itself.
+
+```{python}
+#| label: fig-meanfield
+#| echo: false
+#| fig-cap: "Fitted mean field (quadratic trend plus annual and semiannual harmonics) at mid-month, 2015, in GJ per m2."
+
+mm.plot_mean_field_months()
+plt.show()
+```
+
+```{python}
+#| label: fig-decomp3
+#| echo: false
+#| fig-cap: "The decomposition on one day per box, in GJ per m2."
+
+mm.plot_ohc_decomposition()
+plt.show()
+```
+
+In @fig-decomp3 the identity $\mathrm{OHC} = \hat m + \tilde Z$ holds exactly on the analysis mask:
+the top row is reconstructed from the other two rather than re-integrated from temperature, and
+reproduces the GLORYS field bitwise. OHC runs $60$–$90$ GJ/m$^2$ and is almost entirely captured by
+the smooth mean field; $\tilde Z$ is a few GJ/m$^2$ of mesoscale structure. On the Box B day shown,
+domain-mean OHC is $67.9$ GJ/m$^2$ against a mean field of $66.5$ and a residual of $+1.45$.
+
+The mean field varies on two time scales, neither daily: the harmonics move the Box B domain mean by
+$3.80$ GJ/m$^2$ within a year ($1.50$ in Box A), the trend by $2.59$ across 2010–2019 ($0.96$), and
+consecutive days by $0.03$. Everything mesoscale and day-to-day is therefore left in $\tilde Z$ — the
+field whose domain mean the sampling must recover.
+
+**Stationarity caveat.** A single global trend-plus-harmonics form is a preliminary,
+stationary-in-form choice; OHC is strongly non-stationary across these current regions, so a
+covariance-aware mean is a likely refinement. It does not threaten $B$: a spatially uniform misfit in
+$\tilde Z_k$ differences out of $B$ identically, and the per-year residual offsets it leaves are
+carried explicitly in @tbl-truth rather than assumed zero.
+
+# Estimand, truth, and estimator
+
+Let $\mathbb{P}$ be the normalized area $\times$ time probability measure on the Box B analysis
+domain: the base measure is surface measure restricted to the wet native GLORYS cells
+($\mathrm{deptho} > 2000$ m, intersected with the data support), $A_j = e1t_j\,e2t_j$, tensored with
+counting measure on the $365$ days of the year and normalized. The target is the residual field's
+domain mean,
+
+$$\bar Z_k \;=\; \int_{\mathcal{X}} \tilde Z_k \, d\mathbb{P},$$
+
+for each analysis year $k$, where $\tilde Z_k$ is the year-$k$ OHC 0–2000 m field with the fitted mean
+field removed. A design is a finite point set $\{x_i\}_{i=1}^{n} \subset \mathcal{X}$ — the year-$k$
+in-box profiles of one deployment realization $d$; its estimator and bias are
+
+$$\hat Z^{(d)}_k \;=\; \frac{1}{n}\sum_{i=1}^{n} \tilde Z_k\!\left(x_i^{(d)}\right),
+\qquad
+B^{(d)}_k \;=\; \hat Z^{(d)}_k - \bar Z_k .$$
+
+$\tilde Z_k$ is a simple function on the native $1/12^\circ \times$ daily grid, so evaluating it at
+$x_i$ is the cell-day lookup of the *containing* cell, not an interpolation — no quadrature remainder
+enters.
+
+```{python}
+#| label: tbl-truth
+#| echo: false
+
+HTML(fmt(mm.truth_table()))
+```
+
+: Domain mean and dispersion of the residual field, by analysis year, both boxes.
+$\bar Z_k$ and $\mathrm{sd}_{\mathbb{P}}(\tilde Z_k)$ are in GJ/m$^2$; the third column of each pair
+standardizes the first by the second. {#tbl-truth}
+
+$\bar Z_k$ would be zero if the 1995–2019 mean-field fit were exact on the analysis years; @tbl-truth
+carries the small per-year misfit (largest $\bar Z_{2011} = -1.63$ GJ/m$^2$ in Box B), which is
+mean-field misfit, not sampling, and cancels from $B$ by construction (@sec-meanfield). The dispersion
+$\mathrm{sd}_{\mathbb{P}}(\tilde Z_k)$ — $6.3$–$7.6$ GJ/m$^2$ in Box B against $1.7$–$2.4$ in Box A,
+and rising through the decade in Box B — is the $\sigma_k$ that any cross-box comparison of $B$ must be
+standardized by.
+
+# Deployment
+
+One continuous advection per realization generates the sampling. For realization $d$, $N$ floats are
+seeded uniformly over normalized spacetime across the velocity record — area-uniform over the deep
+($\mathrm{deptho} \ge 1000$ m) part of a single region spanning both boxes plus an $8^\circ$ margin,
+uniform in release time — and advected once at park depth. A profile is scored against whichever box
+contains it, so one deployment feeds both boxes. The lead from the deployment start to the first
+scored year (several years, against an empirical lifespan median of $1339$ d) brings the drifting
+array to renewal equilibrium, so the in-box standing stock is flat across the analysis years by
+construction, with no calibrated release schedule. Each realization therefore yields $B^{(d)}_k$ for
+every analysis year at once, flow and field the same calendar year — there is no velocity-year /
+field-year pairing, only the realized diagonal.
+
+**Reference.** For a design's per-(box, year) sample size $n$, an $n$-matched iid draw from
+$\mathbb{P}$ (cell $\propto A_j$, day-of-year uniform) is a genuine sample from $\mathbb{P}$ with
+$\mathbb{E}[B] = 0$ — at once the null reference and an end-to-end check of the gather, the
+day-of-year indexing, and the $\bar Z_k$ subtraction.
+
+# The sampling weight field
+
+The bias is a projection: $B^{(d)}_k = \langle \tilde Z_k,\, w^{(d)} - p\rangle$, the inner product of
+the residual field with the excess of the empirical sampling weight $w^{(d)}$ over the uniform weight
+$p_{c,d} = A_c / (\sum_c A_c \cdot 365)$. Averaging the empirical weight over realizations estimates
+$\mathbb{E}[w]$ — the normalized occupancy measure of the advective array — so
+$\mathbb{E}[B_k] = \langle \tilde Z_k,\, \mathbb{E}[w] - p\rangle$. This section shows $\mathbb{E}[w]$
+on the native $1/12^\circ \times$ daily grid for the scored years $2015$–$2019$.
+
+$\mathbb{E}[w]$ lives on spacetime, so it is shown through its spatial and temporal marginals. These
+are projections: the bias is the *joint* inner product, and does **not** split additively into a
+space and a time part — a space–time interaction remains, and only the temporal marginal carries an
+exact bias component $\sum_d (\mathbb{E}[w^t_d] - \tfrac1{365})\,\bar Z_k(d)$.
+
+## Spatial marginal
+
+::: {.panel-tabset}
+
+### Box B
+
+```{python}
+#| label: fig-wspace
+#| echo: false
+#| fig-cap: "Box B. Over- and under-sampling on the native 1/12 deg grid: log2 of the estimated sampling weight E[w] against the uniform weight, one panel per scored year, averaged over the 100 realizations. Red over-sampled, blue under-sampled, white uniform."
+
+mm.plot_sampling_weight_space("boxB", years=[2015, 2016, 2017, 2018, 2019])
+plt.show()
+```
+
+```{python}
+#| label: fig-whist
+#| echo: false
+#| fig-cap: "Box B. Distribution of the per-cell weight E[w]/uniform over native cells, one panel per year. Red line at 1 is the uniform weight; dotted black is the mean (1 by construction). The spread around 1 measures how preferential the sampling is."
+
+mm.plot_sampling_weight_hist("boxB", years=[2015, 2016, 2017, 2018, 2019])
+plt.show()
+```
+
+### Box A
+
+```{python}
+#| label: fig-wspace-a
+#| echo: false
+#| fig-cap: "Box A, same construction. The subtropical gyre spreads floats more evenly, so the weight sits closer to uniform than Box B's."
+
+mm.plot_sampling_weight_space("boxA", years=[2015, 2016, 2017, 2018, 2019])
+plt.show()
+```
+
+```{python}
+#| label: fig-whist-a
+#| echo: false
+#| fig-cap: "Box A, same construction as the Box B weight histogram."
+
+mm.plot_sampling_weight_hist("boxA", years=[2015, 2016, 2017, 2018, 2019])
+plt.show()
+```
+
+:::
+
+On the analysis mask the advective array departs from uniform but not wildly: the per-cell weight has
+standard deviation $\approx 0.46$ (Box B) and $0.37$ (Box A) around a mean of $1$, most cells within a
+factor of two and the 99th percentile near $2\times$. Box B is the more preferential of the two, and
+its over-sampled cells cluster where the North Atlantic Current concentrates floats. The strongest
+concentration happens in shallow, sub-$2000$ m cells *outside* the mask, where it cannot enter $B$;
+what remains on-mask is the moderate structure shown here, consistent with the small measured bias.
+
+## Temporal marginal
+
+::: {.panel-tabset}
+
+### Box B
+
+```{python}
+#| label: fig-wtime
+#| echo: false
+#| fig-cap: "Box B. Seasonal marginal of the sampling weight: E[w] per day-of-year against uniform, one line per year. Near 1 throughout means no seasonal sampling bias."
+
+mm.plot_sampling_weight_time("boxB", years=[2015, 2016, 2017, 2018, 2019])
+plt.show()
+```
+
+### Box A
+
+```{python}
+#| label: fig-wtime-a
+#| echo: false
+#| fig-cap: "Box A, same construction."
+
+mm.plot_sampling_weight_time("boxA", years=[2015, 2016, 2017, 2018, 2019])
+plt.show()
+```
+
+:::
+
+The equilibrium array carries essentially no seasonal preference — the day-of-year weight stays within
+a few percent of uniform all year in both boxes — so the sampling bias is a spatial effect, not a
+temporal one. This is the multi-year deployment lead doing its job.
+
+## Bias as a covariance
+
+Write the sampling density ratio as the Radon–Nikodym derivative $r = \mathrm{d}w/\mathrm{d}p$
+($r_{c,d} = w_{c,d}/p_{c,d}$, so $\mathbb{E}_p[r] = 1$). The bias is then exactly a covariance under
+the uniform measure,
+
+$$B_k \;=\; \langle \tilde Z_k,\, w - p\rangle \;=\; \operatorname{Cov}_p\!\big(r,\, \tilde Z_k\big)
+\;=\; \rho_k \,\operatorname{sd}_p(r)\,\sigma_k,$$
+
+with $\sigma_k = \operatorname{sd}_p(\tilde Z_k)$ (@tbl-truth) and $\rho_k$ the weight–field correlation.
+Cauchy–Schwarz gives the distribution-free cap $|B_k| \le \operatorname{sd}_p(r)\,\sigma_k$. **Zero bias
+does not require uniform sampling** — it requires only $\rho_k = 0$, the excess weight orthogonal to
+the field; a strongly non-uniform array can be unbiased for this functional.
+
+Two caveats make this operational. A finite design is discrete, so the pointwise $r$ is unbounded and
+the exact joint $\operatorname{sd}_p(r)$ is not cleanly estimable at a fixed realization count — a tight
+distribution-free bound instead rests on a smoothness class for $\tilde Z_k$. And $B_k$ is a *joint*
+spacetime covariance, so it does not reduce to the marginals mapped above. We therefore report its
+exact split into a spatial-marginal covariance (the weight map against the time-mean field), a
+temporal-marginal covariance (the seasonal weight against the daily domain mean), and the space–time
+interaction that remains.
+
+```{python}
+#| label: tbl-decomp
+#| echo: false
+
+HTML(fmt(mm.bias_decomposition_table("_pilot"), 4))
+```
+
+: Space / time / interaction split of the measured bias, by box and analysis year, in GJ/m$^2$.
+The three components sum to the measured $B_k$. {#tbl-decomp}
+
+The temporal component is negligible in both boxes — the equilibrium array carries no seasonal
+preference, matching the flat weight curves — and the spatial-marginal component is real but modest.
+The **space–time interaction is often the largest term** (Box B 2018 is almost entirely interaction):
+the array's spatial preference co-varies with the field's day-to-day structure, so the bias is a
+genuinely spatiotemporal covariance that the time-averaged weight map understates. On the scored years
+the spatial weight dispersion is $\operatorname{sd}_p(r) \approx 0.46$ (Box B) and $0.37$ (Box A)
+against $\sigma_k$ of $6.3$–$7.6$ and $1.7$–$2.4$ GJ/m$^2$, so the Cauchy–Schwarz scale is a few
+GJ/m$^2$ and the realized $|B_k|$ is $\sim\!1$–$5\%$ of it: the sampling non-uniformity is largely,
+though not perfectly, orthogonal to the field.
+
+# Results
+
+```{python}
+#| label: load-continuous
+#| include: false
+
+est = mm.load_continuous("_pilot")
+```
+
+The ensemble is $100$ independent realizations, each a single deployment advected $2010$–$2019$ and
+scored on $2015$–$2019$ in both boxes.
+
+## Standing stock against real Argo
+
+```{python}
+#| label: tbl-stock
+#| echo: false
+
+HTML(fmt(mm.continuous_stock_table(est), 1))
+```
+
+: Virtual against real Argo in-box standing stock, both boxes, by analysis year, with their ratio.
+Stock is the mean number of distinct floats reporting within a 10-day window — the quantity that
+compares across the two, since real and virtual floats cycle on different schedules. The last row is
+the per-year mean. {#tbl-stock}
+
+```{python}
+#| label: fig-stock
+#| echo: false
+#| fig-cap: "In-box standing stock by analysis year: virtual array (mean +/- sd over the 100 realizations) against the real Argo record, one panel per box."
+
+mm.plot_continuous_stock(est)
+plt.show()
+```
+
+Both virtual arrays are denser than the real one and flat across the window, where the real array is
+neither: Box B holds $\sim\!40$ floats against real Argo's $20$–$31$ (mean ratio $1.5\times$), Box A
+$\sim\!78$ against $28$–$32$ ($2.6\times$). One deployment cannot equalize the two boxes — Box A's
+quiescent flow retains floats, so it accumulates about twice Box B's stock — but the over-density is
+deliberate: the ensemble estimates $\mathbb{E}[B]$, which does not depend on array size, while the
+extra floats only tighten the per-realization spread. Read the widths below as a lower bound on what a
+real-density array would face.
+
+## Sampling bias
+
+::: {.panel-tabset}
+
+### Box B
+
+```{python}
+#| label: fig-bias
+#| echo: false
+#| fig-cap: "Box B. Sampling distribution of B = Zhat - Zbar_k over the 100 realizations, one panel per year. Grey: the advective ensemble. Dashed blue: the n-matched uniform reference. Solid red: zero (the target). Dotted black: the ensemble mean."
+
+mm.plot_continuous_bias(est, "boxB")
+plt.show()
+```
+
+```{python}
+#| label: tbl-bias
+#| echo: false
+
+HTML(fmt(mm.continuous_bias_table(est, "boxB"), 4))
+```
+
+: Box B bias distribution by analysis year. {#tbl-bias}
+
+### Box A
+
+```{python}
+#| label: fig-bias-a
+#| echo: false
+#| fig-cap: "Box A, same construction on its own axis: the bias scale is roughly a third of Box B's. Compare the boxes through the standardized column of the tables, not across these figures."
+
+mm.plot_continuous_bias(est, "boxA")
+plt.show()
+```
+
+```{python}
+#| label: tbl-bias-a
+#| echo: false
+
+HTML(fmt(mm.continuous_bias_table(est, "boxA"), 4))
+```
+
+: Box A bias distribution by analysis year. {#tbl-bias-a}
+
+:::
+
+**The bias is small and the spread is large.** In standardized terms $\overline{B_k}$ stays within
+$0.012\,\sigma_k$ in Box B and $0.019\,\sigma_k$ in Box A — a few hundredths of a GJ/m$^2$ — while the
+across-realization spread $\mathrm{sd}(B^{(d)}_k)$ is $0.32$–$0.37$ GJ/m$^2$ in Box B and $0.08$–$0.10$
+in Box A, an order of magnitude larger than the mean. The displacement is a property of the ensemble,
+invisible in any single deployment. The **uniform mean B** column and the dashed overlays confirm the
+$n$-matched reference sits on zero ($|\text{mean}| < 1$ MC se in every year), so any advective
+departure is signal, not a pipeline artefact. At $100$ realizations the mean is resolved to a
+Monte-Carlo se of $\sim\!0.03$ GJ/m$^2$ in Box B and $\sim\!0.01$ in Box A; more realizations tighten
+it further.
+
+## Within-design dependence
+
+```{python}
+#| label: tbl-deff
+#| echo: false
+
+HTML(fmt(mm.continuous_deff_table("_pilot"), 3))
+```
+
+: Float-clustered design effect
+$\sum_f (\sum_{i \in f}(\tilde Z_i - \hat Z))^2 / \sum_i (\tilde Z_i - \hat Z)^2$ over floats $f$, and
+the advective/uniform width ratio, by box and year. {#tbl-deff}
+
+Consecutive cycles of one float are near-replicates, so a design of $n$ profiles carries fewer than
+$n$ independent observations and the advective spread runs wider than its $n$-matched uniform
+counterpart. The effect is stronger in Box A (design effect $4.9$–$5.9$, width ratio $2.2$–$2.5$) than
+in Box B ($2.8$–$3.7$, $1.7$–$2.0$): Box A's quiescent flow holds each float in the box for many more
+consecutive cycles, so its larger $n$ does not buy proportionally more independent information. This
+inflates the width without moving the mean, and the two must not be read as one effect.

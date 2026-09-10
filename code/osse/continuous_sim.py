@@ -1,0 +1,360 @@
+"""Continuous-seeding OSSE: one advection per realization over the velocity
+record, scored on every analysis year of BOTH boxes from the same deployment.
+
+Floats are seeded uniformly over normalized spacetime -- area-uniform over the
+deep (deptho >= park depth) part of a single region spanning both analysis boxes
+plus a margin, uniform in release time -- and advected in one continuous run per
+realization. The lead from the deployment start to the first scored year brings
+the drifting array to renewal equilibrium (constant seed rate against an
+empirical lifespan pool), so a stable in-box stock is a by-product of the
+seeding, not a calibrated schedule. One deployment feeds both boxes: a profile is
+scored against whichever box contains it. Each realization yields the realized
+sampling bias
+
+    B_k = Zhat_k - Zbar_k,   Zhat_k = mean over year-k in-box profiles of Z_k,
+
+for every scored year and both boxes at once, flow and field the same calendar
+year by construction -- the diagonal of the old velocity-year x field-year grid.
+This replaces the per-box spin-up / release-schedule calibration of
+design_invariance.py's steady arm, which is left in place unused.
+
+Run from the repo root:
+    python code/osse/continuous_sim.py [--n-floats 1000] [--reps 1] [--rep-offset 0]
+        [--start 2010-01-01] [--end 2019-12-26] [--score-years 2015,2016,2017,2018,2019]
+    python code/osse/continuous_sim.py --gather --tag _pilot   # concat array chunks
+"""
+
+import argparse
+import glob
+import os
+import sys
+import warnings
+
+import numpy as np
+import pandas as pd
+import xarray as xr
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from osse import osse_config as cfg
+from osse import design_invariance as di
+
+PARK_DEPTH = di.PARK_DEPTH
+CYCLE_DAYS = di.CYCLE_DAYS
+SEED_MARGIN = di.SEED_MARGIN_UNIFORM
+BOXES = ("boxA", "boxB")  # both scored from one deployment
+BATHY_PATH = os.path.join(cfg.GLORYS_DIR, "static", "static_vel_bathy.nc")
+
+
+def seed_region(boxes=BOXES, margin=SEED_MARGIN, min_depth=PARK_DEPTH):
+    """Deep native cells over (union of boxes + margin) cap velocity domain.
+
+    The seed region is defined once from the bathymetry rather than as a
+    rectangle sampled with rejection: a cell is eligible iff deptho >= min_depth
+    (the float must reach park depth). Returns the sin-latitude and longitude
+    edges of each eligible cell (for exact within-cell area-uniform draws) and
+    normalised area weights.
+    """
+    la0 = min(cfg.BOXES[b]["lat_bounds"][0] for b in boxes) - margin
+    la1 = max(cfg.BOXES[b]["lat_bounds"][1] for b in boxes) + margin
+    lo0 = min(cfg.BOXES[b]["lon_bounds"][0] for b in boxes) - margin
+    lo1 = max(cfg.BOXES[b]["lon_bounds"][1] for b in boxes) + margin
+    (vla0, vla1), (vlo0, vlo1) = di.velocity_extent()
+
+    with xr.open_dataset(BATHY_PATH) as ds:
+        dep = ds["deptho"].sel(
+            latitude=slice(max(la0, vla0), min(la1, vla1)),
+            longitude=slice(max(lo0, vlo0), min(lo1, vlo1)))
+        lat = dep["latitude"].values.astype(float)
+        lon = dep["longitude"].values.astype(float)
+        deep = np.isfinite(dep.values) & (dep.values >= min_depth)
+
+    late, lone = cfg.cell_edges(lat), cfg.cell_edges(lon)
+    jla, jlo = np.where(deep)
+    slat0, slat1 = np.sin(np.deg2rad(late[jla])), np.sin(np.deg2rad(late[jla + 1]))
+    area = slat1 - slat0  # spherical cell area is proportional to d(sin lat)
+    return {"slat0": slat0, "slat1": slat1, "lon0": lone[jlo], "lon1": lone[jlo + 1],
+            "w": area / area.sum(), "n_cells": int(deep.sum())}
+
+
+def deployment_plan(n_floats, rep, t_start, t_end, boxes=BOXES, margin=SEED_MARGIN):
+    """One realisation's seeds: area-uniform in space over the deep region,
+    uniform in release time over [t_start, t_end), lifespans from the Argo pool.
+    """
+    pool = di.load_deployment_pool()
+    region = seed_region(boxes, margin)
+    r = np.random.default_rng([5000, int(rep)])
+
+    c = r.choice(region["n_cells"], size=n_floats, p=region["w"])
+    lat = np.rad2deg(np.arcsin(r.uniform(region["slat0"][c], region["slat1"][c])))
+    lon = r.uniform(region["lon0"][c], region["lon1"][c])
+
+    span = (np.datetime64(t_end) - np.datetime64(t_start)) / np.timedelta64(1, "s")
+    rel = np.datetime64(t_start) + (r.uniform(0.0, span, n_floats)
+                                    ).astype("int64").astype("timedelta64[s]")
+    life = r.choice(pool["lifespan_days"].to_numpy(), size=n_floats, replace=True)
+    return lat, lon, rel, life.astype(float)
+
+
+def _window_files(t_start, t_end):
+    months = pd.period_range(str(t_start)[:7], str(t_end)[:7], freq="M")
+    files = [os.path.join(di.VEL_DIR, f"velocity_daily_park_{m.year}_{m.month:02d}.nc")
+             for m in months]
+    missing = [f for f in files if not os.path.exists(f)]
+    if missing:
+        raise FileNotFoundError(f"{len(missing)} park velocity files missing over "
+                                f"[{t_start}, {t_end}], first {os.path.basename(missing[0])}")
+    return files
+
+
+def run_continuous(rep, out_zarr, n_floats, t_start, t_end, margin=SEED_MARGIN):
+    """Advect one realisation's plan continuously over [t_start, t_end]."""
+    from parcels import (AdvectionRK4, FieldSet, JITParticle, ParticleSet,
+                         StatusCode, Variable)
+
+    class ArgoFloat(JITParticle):
+        age = Variable("age", dtype=np.float32, initial=0.0)
+        lifespan = Variable("lifespan", dtype=np.float32, initial=0.0)
+
+    def DeleteOutOfBounds(particle, fieldset, time):  # noqa: N802 (parcels kernel)
+        if particle.state == StatusCode.ErrorOutOfBounds:
+            particle.delete()
+
+    def Mortality(particle, fieldset, time):  # noqa: N802 (parcels kernel)
+        particle.age += particle.dt
+        if particle.lifespan > 0 and particle.age > particle.lifespan:
+            particle.delete()
+
+    fieldset = FieldSet.from_netcdf(
+        _window_files(t_start, t_end),
+        variables={"U": "uo", "V": "vo"},
+        dimensions={"time": "time", "depth": "depth", "lat": "latitude", "lon": "longitude"},
+        allow_time_extrapolation=False,
+    )
+    lat, lon, rel, life = deployment_plan(n_floats, rep, t_start, t_end, margin=margin)
+    pset = ParticleSet(fieldset=fieldset, pclass=ArgoFloat,
+                       lon=lon, lat=lat, depth=np.full(len(lat), PARK_DEPTH),
+                       time=rel.astype("datetime64[s]"), lifespan=life * 86400.0)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        pset.execute([AdvectionRK4, DeleteOutOfBounds, Mortality],
+                     endtime=np.datetime64(t_end, "s"),
+                     dt=np.timedelta64(1, "h"),
+                     output_file=pset.ParticleFile(name=out_zarr,
+                                                   outputdt=np.timedelta64(CYCLE_DAYS, "D")),
+                     verbose_progress=False)
+    return out_zarr
+
+
+def leap_dropped_doy(times):
+    """(calendar year, 0-based day-of-year) on the Feb-29-dropped 365-day calendar.
+
+    The residual field drops Feb 29 (osse_config.drop_leap_day), so a profile's
+    doy must be indexed the same way. Feb 29 itself has no field slot and is
+    flagged with doy = -1 for the caller to drop.
+    """
+    t = pd.DatetimeIndex(times)
+    year = np.asarray(t.year)
+    doy0 = np.asarray(t.dayofyear) - 1
+    leap = np.asarray(t.is_leap_year)
+    is_feb29 = leap & (np.asarray(t.month) == 2) & (np.asarray(t.day) == 29)
+    doy0 = np.where(leap & (doy0 >= 60), doy0 - 1, doy0)  # shift days after Feb 29
+    doy0 = np.where(is_feb29, -1, doy0)
+    return year, doy0
+
+
+def profiles_from_zarr(path, rep, boxes=BOXES):
+    """Trajectory output -> profile positions tagged with (box, year, doy).
+
+    Drops each float's release record and any Feb-29 profile, keeps profiles that
+    fall in one of the boxes. Scoring years are applied later, in the estimator.
+    """
+    ds = xr.open_zarr(path)
+    lat, lon, time = ds["lat"].values, ds["lon"].values, ds["time"].values
+    pid = np.asarray(ds["trajectory"].values)
+    pid = (pid[:, 0] if pid.ndim == 2 else pid).astype(int)
+    ds.close()
+    n_traj, n_obs = lat.shape
+
+    df = pd.DataFrame({
+        "rep": int(rep),
+        "float_id": np.repeat(pid, n_obs),
+        "cycle": np.tile(np.arange(n_obs), n_traj),
+        "lat": lat.ravel(), "lon": lon.ravel(), "time": time.ravel(),
+    }).dropna(subset=["lat", "lon", "time"])
+
+    df = df.sort_values(["float_id", "time"])
+    df = df[df.groupby("float_id").cumcount() > 0]           # drop the release record
+    df["year"], df["doy"] = leap_dropped_doy(df["time"].to_numpy())
+
+    df["box"] = pd.NA
+    for b in boxes:
+        df.loc[di.in_box(df, b), "box"] = b
+    df = df[(df["doy"] >= 0) & df["box"].notna()]
+    # Raw `time` is kept alongside the leap-dropped (year, doy): the estimator uses
+    # only (year, doy, lat, lon), but the absolute timestamp lets these positions
+    # be re-scored against a residual field on a different time discretization
+    # without re-advecting.
+    cols = ["rep", "float_id", "cycle", "time", "lat", "lon", "box", "year", "doy"]
+    return df[cols].reset_index(drop=True)
+
+
+# --------------------------- estimator --------------------------------------
+
+def diagonal_estimates(prof, score_years=None):
+    """Per-(realisation, box, year) Zhat_k over year-k in-box profiles, and B_k.
+
+    Z is gathered for every analysis year at each position (one cell-day lookup)
+    against that box's residual field, then only the profile's own calendar year
+    is kept -- the diagonal the continuous seeding produces directly.
+    """
+    from osse import mean_mc as mm
+    from osse import sample_residuals as sr
+
+    out, ndropped = [], 0
+    for box in sorted(prof["box"].dropna().unique()):
+        sub = prof[prof["box"] == box].copy()
+        z = sr.load_residual_field(box)
+        years = [int(y) for y in z["year"].values]
+        sampled, nd = sr.gather(sub, z)
+        ndropped += nd
+        col = {y: j for j, y in enumerate(years)}
+        zdiag = sampled[[f"z_{y}" for y in years]].to_numpy()
+        yr = sampled["year"].to_numpy()
+        sampled["z_own"] = zdiag[np.arange(len(sampled)), [col[y] for y in yr]]
+        if score_years is not None:
+            sampled = sampled[sampled["year"].isin(score_years)]
+
+        mm.set_box(box)
+        zf, wet, w = mm.load_field(box)
+        zbar = mm.domain_means(zf, wet, w)[0].set_index("year")["zbar"]
+
+        g = sampled.groupby(["rep", "year"], sort=True)
+        stock = (sampled.assign(cyc=sampled["doy"] // CYCLE_DAYS)
+                 .groupby(["rep", "year", "cyc"])["float_id"].nunique()
+                 .groupby(level=[0, 1]).mean())
+        e = pd.DataFrame({"zhat": g["z_own"].mean(), "n": g.size(),
+                          "n_floats": g["float_id"].nunique(),
+                          "standing_stock": stock}).reset_index()
+        e.insert(0, "box", box)
+        e["zbar"] = e["year"].map(zbar)
+        e["B"] = e["zhat"] - e["zbar"]
+        out.append(e)
+    return pd.concat(out, ignore_index=True), ndropped
+
+
+def uniform_reference(est, seed=0):
+    """U-full check: for each (box, rep, year) draw n iid points from P; E[B]=0."""
+    from osse import mean_mc as mm
+    rng = np.random.default_rng(seed)
+    ub = np.full(len(est), np.nan)
+    for box in est["box"].unique():
+        mm.set_box(box)
+        zf, wet, w = mm.load_field(box)
+        yidx = {y: j for j, y in enumerate(mm.YEARS)}
+        zbar = mm.domain_means(zf, wet, w)[0].set_index("year")["zbar"]
+        cw = np.cumsum(w)
+        for i in est.index[est["box"] == box]:
+            n, y = int(est.at[i, "n"]), int(est.at[i, "year"])
+            cells = wet[np.searchsorted(cw, rng.random(n)).clip(max=len(w) - 1)]
+            d = rng.integers(0, cfg.DAYS_PER_YEAR, n)
+            ub[i] = zf[yidx[y], d, cells].mean() - zbar[y]
+    est = est.copy()
+    est["B_unif"] = ub
+    return est
+
+
+def gather_chunks(tag):
+    """Concatenate array-chunk estimate/profile CSVs into one ensemble each."""
+    from osse import mean_mc as mm
+    ep = sorted(glob.glob(os.path.join(cfg.OUT_DIR, f"estimates_continuous{tag}_c*.csv")))
+    if not ep:
+        raise FileNotFoundError(f"estimates_continuous{tag}_c*.csv")
+    est = pd.concat((pd.read_csv(f) for f in ep), ignore_index=True)
+    dup = est.duplicated(["box", "rep", "year"]).sum()
+    if dup:
+        raise ValueError(f"{dup} duplicated (box, rep, year) rows: chunk rep-offsets overlap")
+    out = os.path.join(cfg.OUT_DIR, f"estimates_continuous{tag}.csv")
+    est.to_csv(out, index=False)
+
+    pp = sorted(glob.glob(os.path.join(cfg.OUT_DIR, f"design_profiles_continuous{tag}_c*.csv")))
+    if pp:
+        prof = pd.concat((pd.read_csv(f) for f in pp), ignore_index=True)
+        pout = os.path.join(cfg.OUT_DIR, f"design_profiles_continuous{tag}.csv")
+        prof.to_csv(pout, index=False)
+        print(f"{len(pp)} profile chunks, {len(prof):,} positions -> {pout}")
+
+    _print_summary(est)
+    print(f"\n{len(ep)} chunks, {est['rep'].nunique()} reps -> {out}")
+    return est
+
+
+def _print_summary(est):
+    from osse import mean_mc as mm
+    print("\nPer-year bias, averaged over realisations (GJ/m2):")
+    for box, g in est.groupby("box"):
+        s = (g.groupby("year").agg(mean_B=("B", "mean"), sd_B=("B", "std"),
+                                   mean_B_unif=("B_unif", "mean"),
+                                   mean_stock=("standing_stock", "mean"),
+                                   mean_n=("n", "mean"), reps=("rep", "nunique")))
+        s[["mean_B", "sd_B", "mean_B_unif"]] *= mm.J_TO_GJ
+        print(f"\n[{box}]")
+        print(s.round(3).to_string())
+
+
+def main(n_floats=1000, reps=1, rep_offset=0, t_start=None, t_end=None,
+         score_years=None, keep_zarr=False, tag=""):
+    os.makedirs(cfg.OUT_DIR, exist_ok=True)
+    scratch = os.path.join(cfg.OUT_DIR, "_traj")
+    os.makedirs(scratch, exist_ok=True)
+
+    if t_start is None or t_end is None:
+        yrs = sorted({int(os.path.basename(f).split("_")[-2])
+                      for f in glob.glob(os.path.join(di.VEL_DIR, "velocity_daily_park_*.nc"))})
+        yrs = [y for y in yrs
+               if len(glob.glob(os.path.join(di.VEL_DIR, f"velocity_daily_park_{y}_*.nc"))) == 12]
+        t_start = t_start or f"{yrs[0]}-01-01"
+        t_end = t_end or f"{yrs[-1]}-12-26"  # a few days inside the last daily field
+
+    sfx = f"_continuous{tag}"
+    print(f"{reps} reps (offset {rep_offset}) x {n_floats} floats, continuous "
+          f"{t_start}..{t_end}, score {score_years or 'all field years'}")
+    all_prof = []
+    for d in range(rep_offset, rep_offset + reps):
+        zpath = os.path.join(scratch, f"traj{sfx}_r{d}.zarr")
+        print(f"  rep {d}: advecting {n_floats} floats ...", flush=True)
+        run_continuous(d, zpath, n_floats, t_start, t_end)
+        all_prof.append(profiles_from_zarr(zpath, d))
+        if not keep_zarr:
+            import shutil
+            shutil.rmtree(zpath, ignore_errors=True)
+
+    prof = pd.concat(all_prof, ignore_index=True)
+    prof.to_csv(os.path.join(cfg.OUT_DIR, f"design_profiles{sfx}.csv"), index=False)
+
+    est, ndropped = diagonal_estimates(prof, score_years)
+    est = uniform_reference(est)
+    est.to_csv(os.path.join(cfg.OUT_DIR, f"estimates{sfx}.csv"), index=False)
+    print(f"{len(prof):,} in-box profiles, {ndropped:,} dropped (masked) -> estimates{sfx}.csv")
+    _print_summary(est)
+    return est
+
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--n-floats", type=int, default=1000)
+    ap.add_argument("--reps", type=int, default=1)
+    ap.add_argument("--rep-offset", type=int, default=0)
+    ap.add_argument("--start", default=None, help="release/advection start, YYYY-MM-DD")
+    ap.add_argument("--end", default=None, help="advection end, YYYY-MM-DD")
+    ap.add_argument("--score-years", default=None,
+                    help="comma-separated years to score; default all residual-field years")
+    ap.add_argument("--keep-zarr", action="store_true")
+    ap.add_argument("--tag", default="")
+    ap.add_argument("--gather", action="store_true", help="concat array chunks for --tag and exit")
+    a = ap.parse_args()
+    if a.gather:
+        gather_chunks(a.tag)
+    else:
+        sy = [int(y) for y in a.score_years.split(",")] if a.score_years else None
+        main(a.n_floats, a.reps, a.rep_offset, a.start, a.end, sy, a.keep_zarr, a.tag)

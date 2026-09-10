@@ -1745,6 +1745,375 @@ def plot_alignment_years(boxes=("boxB", "boxA"), arm="_steady", figsize=(11, 3.6
     return fig
 
 
+# ----------------------- continuous-seeding ensemble --------------------------
+# One row per (box, rep, year) in estimates_continuous<tag>.csv: B, B_unif,
+# standing_stock, n, n_floats, zbar. These read that frame directly and take the
+# box as an argument, so none depend on the global YEARS.
+
+def load_continuous(tag="_pilot"):
+    return pd.read_csv(os.path.join(cfg.OUT_DIR, f"estimates_continuous{tag}.csv"))
+
+
+def _sd_Z(box):
+    return pd.read_csv(os.path.join(cfg.OUT_DIR, f"domain_means_{box}.csv")).set_index("year")["sd_Z"]
+
+
+def continuous_bias_table(est, box):
+    """Per-year bias distribution over realizations, with the U-full null alongside."""
+    sd = _sd_Z(box)
+    rows = []
+    for k, gk in est[est["box"] == box].groupby("year"):
+        b = gk["B"].to_numpy()
+        rows.append({"year": int(k), "reps": b.size,
+                     "mean B": b.mean() * J_TO_GJ,
+                     "MC se": b.std(ddof=1) / np.sqrt(b.size) * J_TO_GJ,
+                     "sd over deployments": b.std(ddof=1) * J_TO_GJ,
+                     "5%": np.percentile(b, 5) * J_TO_GJ,
+                     "95%": np.percentile(b, 95) * J_TO_GJ,
+                     "P(B < 0)": float((b < 0).mean()),
+                     "mean B / sd_k": b.mean() / sd[int(k)],
+                     "uniform mean B": gk["B_unif"].mean() * J_TO_GJ})
+    return pd.DataFrame(rows)
+
+
+def continuous_stock_table(est, boxes=("boxB", "boxA")):
+    """Virtual against real Argo standing stock, both boxes, by analysis year.
+
+    Standing stock is the mean number of distinct floats reporting in a 10-day
+    window -- the quantity that compares across the two, since real and virtual
+    floats cycle on different schedules. Real stock is from the Argo profile
+    record restricted to the box; virtual stock is the ensemble-mean in-box stock.
+    """
+    out = None
+    for b in boxes:
+        sim = est[est["box"] == b].groupby("year")["standing_stock"].mean()
+        real = argo_region_summary(b).set_index("year")["argo_stock"].reindex(sim.index)
+        t = pd.DataFrame({"year": sim.index.astype(int),
+                          f"Argo {b}": real.to_numpy(),
+                          f"virtual {b}": sim.to_numpy(),
+                          f"ratio {b}": sim.to_numpy() / real.to_numpy()})
+        out = t if out is None else out.merge(t, on="year")
+    out.loc["mean"] = ["mean", *out.iloc[:, 1:].mean()]
+    return out
+
+
+def continuous_nsize_table(est, boxes=("boxB", "boxA")):
+    """Retained sample size per design (profiles, distinct floats), both boxes."""
+    rows = []
+    for b in boxes:
+        g = est[est["box"] == b]
+        for lab, s in (("profiles", g["n"]), ("distinct floats", g["n_floats"])):
+            rows.append({"box": b, "quantity": f"{lab} per design",
+                         "min": s.min(), "5%": s.quantile(.05), "median": s.median(),
+                         "95%": s.quantile(.95), "max": s.max()})
+    return pd.DataFrame(rows)
+
+
+def continuous_deff_table(tag="_pilot", boxes=("boxB", "boxA")):
+    """Float-clustered design effect and advective/uniform width ratio, per box/year.
+
+    The design effect re-gathers the saved profile positions against the residual
+    field; the width ratio is the advective across-realization sd(B) against the
+    n-matched uniform sd(B), read straight from the estimate frame.
+    """
+    from osse import sample_residuals as sr
+    est = load_continuous(tag)
+    prof = pd.read_csv(os.path.join(cfg.OUT_DIR, f"design_profiles_continuous{tag}.csv"),
+                       usecols=["rep", "float_id", "box", "year", "lat", "lon", "doy"])
+    rows = []
+    for b in boxes:
+        z = sr.load_residual_field(b)
+        years = [int(y) for y in z["year"].values]
+        col = {y: j for j, y in enumerate(years)}
+        sampled, _ = sr.gather(prof[prof["box"] == b], z)
+        zc = sampled[[f"z_{y}" for y in years]].to_numpy()
+        sampled["z_own"] = zc[np.arange(len(sampled)),
+                              [col[y] for y in sampled["year"].to_numpy()]]
+        e = est[est["box"] == b]
+        for k in sorted(e["year"].unique()):
+            deffs = []
+            for _, gr in sampled[sampled["year"] == k].groupby("rep"):
+                z0 = gr["z_own"].to_numpy() - gr["z_own"].mean()
+                ss = float((z0 ** 2).sum())
+                if ss <= 0:
+                    continue
+                cl = pd.Series(z0).groupby(gr["float_id"].to_numpy()).sum().to_numpy()
+                deffs.append(float((cl ** 2).sum()) / ss)
+            ek = e[e["year"] == k]
+            rows.append({"box": b, "year": int(k),
+                         "median design effect": float(np.median(deffs)),
+                         "sd B advective": ek["B"].std(ddof=1) * J_TO_GJ,
+                         "sd B uniform": ek["B_unif"].std(ddof=1) * J_TO_GJ,
+                         "ratio": ek["B"].std(ddof=1) / ek["B_unif"].std(ddof=1)})
+    return pd.DataFrame(rows)
+
+
+def plot_continuous_bias(est, box, figsize=(13, 3.0)):
+    """Bias distribution over realizations, one panel per year; U-full null overlaid."""
+    import matplotlib.pyplot as plt
+    g = est[est["box"] == box]
+    years = sorted(int(y) for y in g["year"].unique())
+    allB = g["B"].to_numpy() * J_TO_GJ
+    lo, hi = np.percentile(allB, [0.5, 99.5])
+    pad = 0.08 * (hi - lo)
+    bins = np.linspace(lo - pad, hi + pad, 28)
+    fig, axes = plt.subplots(1, len(years), figsize=figsize, sharex=True, sharey=True)
+    for ax, k in zip(np.atleast_1d(axes), years):
+        gk = g[g["year"] == k]
+        ax.hist(gk["B"] * J_TO_GJ, bins=bins, density=True, color="0.35")
+        ax.hist(gk["B_unif"] * J_TO_GJ, bins=bins, density=True, histtype="step",
+                color="tab:blue", lw=1.2, ls="--")
+        ax.axvline(0.0, color="crimson", lw=1.6)
+        ax.axvline(gk["B"].mean() * J_TO_GJ, color="k", lw=1.4, ls=":")
+        ax.set_title(str(k), fontsize=10)
+        ax.set_xlabel("B (GJ/m2)", fontsize=8)
+        ax.tick_params(labelsize=7)
+    np.atleast_1d(axes)[0].set_ylabel("density")
+    fig.tight_layout()
+    return fig
+
+
+def plot_continuous_stock(est, boxes=("boxB", "boxA"), figsize=(11, 3.6)):
+    """Virtual (mean +/- sd over realizations) against real Argo standing stock."""
+    import matplotlib.pyplot as plt
+    fig, axes = plt.subplots(1, len(boxes), figsize=figsize)
+    for ax, b in zip(np.atleast_1d(axes), boxes):
+        g = est[est["box"] == b]
+        yrs = sorted(int(y) for y in g["year"].unique())
+        m = g.groupby("year")["standing_stock"].mean().reindex(yrs)
+        s = g.groupby("year")["standing_stock"].std().reindex(yrs)
+        real = argo_region_summary(b).set_index("year")["argo_stock"].reindex(yrs)
+        ax.errorbar(yrs, m.to_numpy(), yerr=s.to_numpy(), fmt="o-", color="0.2",
+                    capsize=3, label="virtual (mean +/- sd)")
+        ax.plot(yrs, real.to_numpy(), "s--", color="tab:red", label="real Argo")
+        ax.set_title(b, fontsize=10)
+        ax.set_xlabel("year")
+        ax.set_ylim(bottom=0)
+    a0 = np.atleast_1d(axes)[0]
+    a0.set_ylabel("in-box stock (floats per 10-day epoch)")
+    a0.legend(fontsize=8)
+    fig.tight_layout()
+    return fig
+
+
+def _profile_weights(box, tag):
+    """Native-cell-tagged profiles, each carrying weight 1/(n R) of its (year, rep).
+
+    Profiles are binned to the containing 1/12 deg cell and restricted to the wet
+    analysis mask -- the same support the estimator's w and the field live on, so n
+    is the on-mask count per realization. Summing wt over any set of (year, cell or
+    doy) bins gives E[w] = mean_rep (fraction of that rep's profiles in the bin),
+    since a bin a rep misses contributes 0 to the mean. Returns (prof, lat, lon, p)
+    with p = A_c / sum(A) the native uniform area weight (NaN off-mask).
+    """
+    a = xr.open_dataset(os.path.join(cfg.OUT_DIR, f"cell_area_{box}.nc"))["cell_area"]
+    lat, lon, A = a["latitude"].values, a["longitude"].values, a.values
+    prof = pd.read_csv(os.path.join(cfg.OUT_DIR, f"design_profiles_continuous{tag}.csv"),
+                       usecols=["rep", "box", "year", "lat", "lon", "doy"])
+    prof = prof[prof["box"] == box].copy()
+    ii = cfg.containing_index(prof["lat"].to_numpy(), lat)
+    jj = cfg.containing_index(prof["lon"].to_numpy(), lon)
+    wet = (ii >= 0) & (jj >= 0)
+    wet[wet] = np.isfinite(A[ii[wet], jj[wet]])
+    prof = prof.loc[wet].assign(ilat=ii[wet], ilon=jj[wet])
+    n = prof.groupby(["year", "rep"])["lat"].transform("size")
+    R = prof.groupby("year")["rep"].transform("nunique")
+    prof["wt"] = 1.0 / (n * R)
+    return prof, lat, lon, A / np.nansum(A)
+
+
+def sampling_weight_space(box, tag="_pilot"):
+    """E[w] spatial marginal and the uniform area reference p, on the NATIVE grid.
+
+    No coarsening: the 1/12 deg cells the residual field and the inner product
+    B = <Z, w - p> live on. Returns (Ew, lat, lon, p): Ew a Series indexed by
+    (year, ilat, ilon) summing to 1 per year; p the (nlat, nlon) area weight.
+    """
+    prof, lat, lon, p = _profile_weights(box, tag)
+    Ew = prof.groupby(["year", "ilat", "ilon"])["wt"].sum()
+    return Ew, lat, lon, p
+
+
+def sampling_weight_time(box, tag="_pilot"):
+    """E[w] day-of-year marginal (native daily) and the uniform reference 1/365.
+
+    Returns (Ew, p): Ew indexed by (year, doy) summing to 1 per year; p = 1/365.
+    """
+    prof, *_ = _profile_weights(box, tag)
+    Ew = prof.groupby(["year", "doy"])["wt"].sum()
+    return Ew, 1.0 / cfg.DAYS_PER_YEAR
+
+
+def bias_decomposition_table(tag="_pilot", boxes=("boxB", "boxA")):
+    """Space / time / interaction split of the measured bias B = <Z, w - p>.
+
+    B_space = <w^sp - p^sp, Zc> pairs the spatial weight departure with the
+    time-mean field Zc (time held uniform); B_time = <w^t - 1/365, Zd> pairs the
+    day-of-year weight departure with the P-spatial-mean field Zd (space held
+    uniform); the interaction is the remainder B - B_space - B_time. All exact and
+    estimable from E[w]; the total is the ensemble-mean measured bias. GJ/m2.
+    """
+    est = load_continuous(tag)
+    rows = []
+    for b in boxes:
+        Ew, lat, lon, p = sampling_weight_space(b, tag)
+        wet = np.isfinite(p)
+        pflat = p[wet]
+        nlon = p.shape[1]
+        wi, wj = np.where(wet)
+        widx = wi * nlon + wj
+        z = xr.open_dataset(os.path.join(cfg.OUT_DIR, f"residual_field_{b}.nc"))["z"]
+        Ewt, pt = sampling_weight_time(b, tag)
+        meas = est[est["box"] == b].groupby("year")["B"].mean()
+        for y in sorted(int(v) for v in meas.index):
+            w = Ew.xs(y, level="year")
+            wsp = np.zeros(len(pflat))
+            f = (w.index.get_level_values("ilat").to_numpy() * nlon
+                 + w.index.get_level_values("ilon").to_numpy())
+            wsp[np.searchsorted(widx, f)] = w.to_numpy()
+            zy = z.sel(year=y).values
+            Zc = zy.mean(axis=0)[wi, wj]
+            b_space = float((wsp - pflat) @ Zc)
+            Zday = (zy[:, wi, wj] * pflat).sum(axis=1)
+            wt = Ewt.xs(y, level="year").reindex(range(cfg.DAYS_PER_YEAR), fill_value=0.0).to_numpy()
+            b_time = float(np.sum((wt - pt) * Zday))
+            m = float(meas[y])
+            rows.append({"box": b, "year": int(y),
+                         "B (measured)": m * J_TO_GJ,
+                         "B space": b_space * J_TO_GJ,
+                         "B time": b_time * J_TO_GJ,
+                         "interaction": (m - b_space - b_time) * J_TO_GJ})
+    return pd.DataFrame(rows)
+
+
+def weight_dispersion_table(tag="_pilot", boxes=("boxB", "boxA")):
+    """Spatial weight dispersion sd_P(w/p) against the field dispersion sigma_k.
+
+    sd_P(w/p) is the spread of the (spatial-marginal) sampling density ratio -- the
+    multiplier in the Cauchy-Schwarz cap |B| <= sd_P(r) sigma_k. Reported per box,
+    year-averaged for the weight (it barely varies by year) and per year for
+    sigma_k, both with the product as a distribution-free scale for the bias.
+    """
+    rows = []
+    for b in boxes:
+        ratio = sampling_weight_ratio(b, tag)
+        Ew, lat, lon, p = sampling_weight_space(b, tag)
+        pflat = p[np.isfinite(p)]
+        sd = _sd_Z(b) * J_TO_GJ
+        for y in sorted(ratio):
+            r = ratio[y]
+            sdr = float(np.sqrt(np.sum(pflat * r * r) - 1.0))
+            rows.append({"box": b, "year": y, "sd_P(w/p)": sdr,
+                         "sigma_k (GJ/m2)": float(sd[y]),
+                         "cap = sd_P(w/p) sigma_k": sdr * float(sd[y])})
+    return pd.DataFrame(rows)
+
+
+def plot_sampling_weight_space(box, tag="_pilot", years=None, figsize=None):
+    """Over-/under-sampling map, log2(E[w]/uniform), on the native 1/12 deg grid.
+
+    One panel per year, shared symmetric colour scale from the 99th percentile of
+    |log2 ratio|. Empty native cells (very few at 100 realizations) are left blank.
+    """
+    import matplotlib.pyplot as plt
+    Ew, lat, lon, p = sampling_weight_space(box, tag)
+    years = years or sorted(int(y) for y in Ew.index.get_level_values("year").unique())
+    logp = np.where(p > 0, np.log2(np.where(p > 0, p, np.nan)), np.nan)
+
+    grids = []
+    for y in years:
+        w = Ew.xs(y, level="year")
+        i = w.index.get_level_values("ilat").to_numpy()
+        j = w.index.get_level_values("ilon").to_numpy()
+        v = w.to_numpy()
+        G = np.full(p.shape, np.nan)
+        pos = v > 0
+        G[i[pos], j[pos]] = np.log2(v[pos]) - logp[i[pos], j[pos]]
+        grids.append(G)
+    finite = np.concatenate([g[np.isfinite(g)] for g in grids])
+    vmax = float(np.percentile(np.abs(finite), 99))
+
+    figsize = figsize or (2.5 * len(years) + 1.6, 3.2)
+    fig, axes = plt.subplots(1, len(years), figsize=figsize, sharey=True)
+    for ax, y, G in zip(np.atleast_1d(axes), years, grids):
+        pm = ax.pcolormesh(lon, lat, G, cmap="RdBu_r", vmin=-vmax, vmax=vmax, shading="nearest")
+        ax.set_title(str(y), fontsize=10)
+        ax.set_xlabel("lon", fontsize=8)
+        ax.tick_params(labelsize=7)
+    np.atleast_1d(axes)[0].set_ylabel("lat")
+    fig.colorbar(pm, ax=list(np.atleast_1d(axes)), shrink=0.85,
+                 label="log2( E[w] / uniform )")
+    return fig
+
+
+def sampling_weight_ratio(box, tag="_pilot"):
+    """Per-year array of E[w]_c / p_c over ALL wet native cells (empty cells -> 0).
+
+    The over-/under-sampling factor per cell: 1 is the uniform weight, >1
+    over-sampled, <1 under-sampled. Returns {year: ndarray over wet cells}.
+    """
+    Ew, lat, lon, p = sampling_weight_space(box, tag)
+    wi, wj = np.where(np.isfinite(p))
+    wflat, pw = wi * p.shape[1] + wj, p[wi, wj]
+    out = {}
+    for y in sorted(int(y) for y in Ew.index.get_level_values("year").unique()):
+        w = Ew.xs(y, level="year")
+        f = (w.index.get_level_values("ilat").to_numpy() * p.shape[1]
+             + w.index.get_level_values("ilon").to_numpy())
+        r = np.zeros(len(wflat))
+        pos = np.searchsorted(wflat, f)
+        r[pos] = w.to_numpy() / pw[pos]
+        out[y] = r
+    return out
+
+
+def plot_sampling_weight_hist(box, tag="_pilot", years=None, figsize=None):
+    """Distribution of the per-cell sampling weight E[w]/uniform, one panel per year.
+
+    A histogram over native wet cells; the red line at 1 is the uniform weight.
+    Concentration near 1 means near-uniform sampling; a right tail is over-sampled
+    cells, mass below 1 under-sampled. All panels share bins set from the pooled
+    99.5th percentile.
+    """
+    import matplotlib.pyplot as plt
+    ratio = sampling_weight_ratio(box, tag)
+    years = years or sorted(ratio)
+    hi = np.percentile(np.concatenate([ratio[y] for y in years]), 99.5)
+    bins = np.linspace(0, hi, 40)
+    fig, axes = plt.subplots(1, len(years), figsize=figsize or (2.4 * len(years) + 1.0, 3.0),
+                             sharex=True, sharey=True)
+    for ax, y in zip(np.atleast_1d(axes), years):
+        r = ratio[y]
+        ax.hist(r, bins=bins, density=True, color="0.4")
+        ax.axvline(1.0, color="crimson", lw=1.6)
+        ax.axvline(r.mean(), color="k", lw=1.2, ls=":")
+        ax.set_title(str(y), fontsize=10)
+        ax.set_xlabel("E[w] / uniform", fontsize=8)
+        ax.tick_params(labelsize=7)
+    np.atleast_1d(axes)[0].set_ylabel("density (native cells)")
+    fig.tight_layout()
+    return fig
+
+
+def plot_sampling_weight_time(box, tag="_pilot", years=None, figsize=(8.0, 3.4)):
+    """Seasonal sampling weight E[w^t] / uniform vs day-of-year (daily), per year."""
+    import matplotlib.pyplot as plt
+    Ew, p = sampling_weight_time(box, tag)
+    years = years or sorted(int(y) for y in Ew.index.get_level_values("year").unique())
+    doy = np.arange(cfg.DAYS_PER_YEAR)
+    fig, ax = plt.subplots(figsize=figsize)
+    for y in years:
+        e = Ew.xs(y, level="year").reindex(doy, fill_value=0.0).to_numpy()
+        ax.plot(doy, e / p, lw=1.0, label=str(y))
+    ax.axhline(1.0, color="crimson", lw=1.4, ls="--")
+    ax.set_xlabel("day of year")
+    ax.set_ylabel("E[w] / uniform")
+    ax.set_title(f"{box}: seasonal sampling weight", fontsize=10)
+    ax.legend(fontsize=7, ncol=5)
+    fig.tight_layout()
+    return fig
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--box", default="boxB")
