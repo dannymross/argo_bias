@@ -1880,12 +1880,18 @@ def _sd_Z(box):
     return pd.read_csv(os.path.join(cfg.OUT_DIR, f"domain_means_{box}.csv")).set_index("year")["sd_Z"]
 
 
-def continuous_bias_table(est, box):
-    """Per-year bias distribution over realizations, with the U-full null alongside."""
+def continuous_bias_table(est, box, ref=None):
+    """Per-year advective bias distribution, with the uniform-null mean alongside.
+
+    The `uniform mean B` column is the mean of the large `ref` ensemble when given,
+    else the aligned per-rep B_unif in `est`.
+    """
     sd = _sd_Z(box)
     rows = []
     for k, gk in est[est["box"] == box].groupby("year"):
         b = gk["B"].to_numpy()
+        um = (ref[(ref["box"] == box) & (ref["year"] == k)]["B_unif"].mean()
+              if ref is not None else gk["B_unif"].mean())
         rows.append({"year": int(k), "reps": b.size,
                      "mean B": b.mean() * J_TO_GJ,
                      "MC se": b.std(ddof=1) / np.sqrt(b.size) * J_TO_GJ,
@@ -1894,7 +1900,7 @@ def continuous_bias_table(est, box):
                      "95%": np.percentile(b, 95) * J_TO_GJ,
                      "P(B < 0)": float((b < 0).mean()),
                      "mean B / sd_k": b.mean() / sd[int(k)],
-                     "uniform mean B": gk["B_unif"].mean() * J_TO_GJ})
+                     "uniform mean B": um * J_TO_GJ})
     return pd.DataFrame(rows)
 
 
@@ -1931,6 +1937,31 @@ def continuous_nsize_table(est, boxes=("boxB", "boxA")):
     return pd.DataFrame(rows)
 
 
+def uniform_reference_ensemble(est, R=2000, seed=0):
+    """Large n-matched uniform null: R iid draws from P per (box, year), each at the
+    median advective sample size for that cell. E[B]=0, so the ensemble mean is a
+    precise zero reference (its 95% CI covers zero) and its 5-95% spread is the
+    single-deployment scatter of a uniform array. Returns box, year, B_unif (R rows
+    per group). Decoupled from the 100 advective reps, which are limited by the
+    advection cost; the null is not.
+    """
+    rng = np.random.default_rng(seed)
+    rows = []
+    for box in sorted(est["box"].unique()):
+        zf, wet, w = load_field(box)
+        yidx = {y: j for j, y in enumerate(_field_years(box))}
+        zbar = domain_means(zf, wet, w)[0].set_index("year")["zbar"]
+        cw = np.cumsum(w)
+        g = est[est["box"] == box]
+        for y in sorted(int(v) for v in g["year"].unique()):
+            n = int(np.median(g.loc[g["year"] == y, "n"].to_numpy()))
+            cells = wet[np.searchsorted(cw, rng.random(R * n)).clip(max=len(w) - 1)].reshape(R, n)
+            d = rng.integers(0, cfg.DAYS_PER_YEAR, (R, n))
+            b = zf[yidx[y]][d, cells].mean(axis=1) - zbar[y]
+            rows += [(box, y, float(v)) for v in b]
+    return pd.DataFrame(rows, columns=["box", "year", "B_unif"])
+
+
 def continuous_pilot_size_table(est, boxes=("boxB", "boxA")):
     """Per box/year pilot sample sizes: mean in-box standing stock and distinct
     floats per realization, mean profile observations per realization, and the
@@ -1948,12 +1979,13 @@ def continuous_pilot_size_table(est, boxes=("boxB", "boxA")):
     return pd.DataFrame(rows)
 
 
-def continuous_deff_table(tag="_pilot", boxes=("boxB", "boxA")):
+def continuous_deff_table(tag="_pilot", boxes=("boxB", "boxA"), ref=None):
     """Float-clustered design effect and advective/uniform width ratio, per box/year.
 
     The design effect re-gathers the saved profile positions against the residual
     field; the width ratio is the advective across-realization sd(B) against the
-    n-matched uniform sd(B), read straight from the estimate frame.
+    n-matched uniform sd(B) (from the large `ref` ensemble when given, else the
+    aligned per-rep B_unif).
     """
     from osse import sample_residuals as sr
     est = load_continuous(tag)
@@ -1979,18 +2011,22 @@ def continuous_deff_table(tag="_pilot", boxes=("boxB", "boxA")):
                 cl = pd.Series(z0).groupby(gr["float_id"].to_numpy()).sum().to_numpy()
                 deffs.append(float((cl ** 2).sum()) / ss)
             ek = e[e["year"] == k]
+            su = (ref[(ref["box"] == b) & (ref["year"] == k)]["B_unif"].std(ddof=1)
+                  if ref is not None else ek["B_unif"].std(ddof=1))
             rows.append({"box": b, "year": int(k),
                          "median design effect": float(np.median(deffs)),
                          "sd B advective": ek["B"].std(ddof=1) * J_TO_GJ,
-                         "sd B uniform": ek["B_unif"].std(ddof=1) * J_TO_GJ,
-                         "ratio": ek["B"].std(ddof=1) / ek["B_unif"].std(ddof=1)})
+                         "sd B uniform": su * J_TO_GJ,
+                         "ratio": ek["B"].std(ddof=1) / su})
     return pd.DataFrame(rows)
 
 
-def plot_continuous_bias(est, box, figsize=(13, 3.0)):
-    """Bias distribution over realizations, one panel per year; U-full null overlaid."""
+def plot_continuous_bias(est, box, ref=None, figsize=(13, 3.0)):
+    """Bias distribution over realizations, one panel per year; uniform null overlaid
+    (from the large `ref` ensemble when given, else the aligned per-rep B_unif)."""
     import matplotlib.pyplot as plt
     g = est[est["box"] == box]
+    gu = ref[ref["box"] == box] if ref is not None else g
     years = sorted(int(y) for y in g["year"].unique())
     allB = g["B"].to_numpy() * J_TO_GJ
     lo, hi = np.percentile(allB, [0.5, 99.5])
@@ -2000,8 +2036,8 @@ def plot_continuous_bias(est, box, figsize=(13, 3.0)):
     for ax, k in zip(np.atleast_1d(axes), years):
         gk = g[g["year"] == k]
         ax.hist(gk["B"] * J_TO_GJ, bins=bins, density=True, color="0.35")
-        ax.hist(gk["B_unif"] * J_TO_GJ, bins=bins, density=True, histtype="step",
-                color="tab:blue", lw=1.2, ls="--")
+        ax.hist(gu[gu["year"] == k]["B_unif"] * J_TO_GJ, bins=bins, density=True,
+                histtype="step", color="tab:blue", lw=1.2, ls="--")
         ax.axvline(0.0, color="crimson", lw=1.6)
         ax.axvline(gk["B"].mean() * J_TO_GJ, color="k", lw=1.4, ls=":")
         ax.set_title(str(k), fontsize=10)
@@ -2012,25 +2048,27 @@ def plot_continuous_bias(est, box, figsize=(13, 3.0)):
     return fig
 
 
-def plot_bias_intervals(est, boxes=("boxB", "boxA"), figsize=(11, 4.0)):
-    """Headline bias chart: per year, dodged intervals for the advective and the
-    n-matched uniform sampling bias, one panel per box (own y-axis).
+def plot_bias_intervals(est, ref, boxes=("boxB", "boxA"), figsize=(11, 4.0)):
+    """Headline bias chart: per year, dodged intervals for the advective bias (from
+    `est`, 100 realizations) and the uniform null (from `ref`, the large n-matched
+    ensemble), one panel per box (own y-axis).
 
-    For each (box, year, method): point = ensemble mean; capped bar = 95% CI
+    For each (box, year, source): point = ensemble mean; capped bar = 95% CI
     (mean +/- 1.96 MC se), so an interval clearing zero flags a mean distinguishable
-    from zero at the 5% level; thin whisker = 5-95% of realizations (the scatter of
-    a single deployment). Red line at 0 is the target.
+    from zero at the 5% level; thin whisker = 5-95% (the scatter of a single
+    deployment). Red line at 0 is the target.
     """
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
     fig, axes = plt.subplots(1, len(boxes), figsize=figsize)
-    methods = [("B", "0.35", "advective", -0.15), ("B_unif", "tab:blue", "uniform (P)", 0.15)]
+    sources = [(est, "B", "0.35", "advective", -0.15),
+               (ref, "B_unif", "tab:blue", "uniform (P)", 0.15)]
     for ax, box in zip(np.atleast_1d(axes), boxes):
-        g = est[est["box"] == box]
-        years = sorted(int(y) for y in g["year"].unique())
-        for col, color, _lab, dx in methods:
+        years = sorted(int(y) for y in est.loc[est["box"] == box, "year"].unique())
+        for src, col, color, _lab, dx in sources:
+            gs = src[src["box"] == box]
             for y in years:
-                b = g.loc[g["year"] == y, col].to_numpy() * J_TO_GJ
+                b = gs.loc[gs["year"] == y, col].to_numpy() * J_TO_GJ
                 m, se = b.mean(), b.std(ddof=1) / np.sqrt(b.size)
                 q05, q95 = np.percentile(b, [5, 95])
                 x = y + dx
@@ -2043,7 +2081,8 @@ def plot_bias_intervals(est, boxes=("boxB", "boxA"), figsize=(11, 4.0)):
         ax.set_title(box, fontsize=10)
         ax.set_xlabel("analysis year", fontsize=9)
     np.atleast_1d(axes)[0].set_ylabel("sampling bias B (GJ/m2)")
-    handles = [Line2D([0], [0], color=c, lw=1.4, marker="o", label=l) for _, c, l, _ in methods]
+    handles = [Line2D([0], [0], color=c, lw=1.4, marker="o", label=l)
+               for _, _, c, l, _ in sources]
     np.atleast_1d(axes)[0].legend(handles=handles, fontsize=8, loc="best")
     fig.tight_layout()
     return fig

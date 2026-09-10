@@ -323,10 +323,12 @@ space–time; real Argo is deployed programmatically, so its coverage is patchie
 decade, but individual drift paths trace the same circulation — the contrast is in *where and when
 floats are placed*, not in the advection itself.
 
-**Reference.** For a design's per-(box, year) sample size $n$, an $n$-matched iid draw from
-$\mathbb{P}$ (cell $\propto A_j$, day-of-year uniform) is a genuine sample from $\mathbb{P}$ with
-$\mathbb{E}[B] = 0$ — at once the null reference and an end-to-end check of the gather, the
-day-of-year indexing, and the $\bar Z_k$ subtraction.
+**Reference.** An $n$-matched iid draw from $\mathbb{P}$ (cell $\propto A_j$, day-of-year uniform) is a
+genuine sample from $\mathbb{P}$ with $\mathbb{E}[B] = 0$ — the null reference and an end-to-end check
+of the gather, the day-of-year indexing, and the $\bar Z_k$ subtraction. Because it needs no advection
+it is drawn as a large ensemble ($2{,}000$ per box-year, at the year's median $n$), so its mean is a
+precise zero rather than a noisy few-draw estimate; its $5$–$95\%$ spread is the scatter of one uniform
+array of the same size.
 
 # The sampling weight field
 
@@ -487,6 +489,7 @@ though not perfectly, orthogonal to the field.
 #| include: false
 
 est = mm.load_continuous("_pilot")
+ref = mm.uniform_reference_ensemble(est, R=2000)   # large n-matched uniform null
 ```
 
 ## Pilot specification
@@ -552,14 +555,15 @@ real-density array would face.
 #| echo: false
 #| fig-cap: "Headline result. Sampling bias B = Zhat - Zbar_k by analysis year, one panel per box (note the differing y-axis scales). For each year the two intervals are the advective array (grey) and the n-matched uniform reference (blue): marker = ensemble mean over the 100 realizations, capped bar around it = 95 percent CI (mean +/- 1.96 Monte Carlo standard errors), so an interval clearing zero marks a mean distinguishable from zero at the 5 percent level; thin line = 5-95 percent of realizations (the scatter of a single deployment). Red line at zero is the target."
 
-mm.plot_bias_intervals(est)
+mm.plot_bias_intervals(est, ref)
 plt.show()
 ```
 
 The advective means sit within a few hundredths of a GJ/m$^2$ of zero and, on the standardized scale,
-within $0.012\,\sigma_k$ (Box B) and $0.019\,\sigma_k$ (Box A); the uniform reference, unbiased by
-construction, scatters around zero at the $100$-realization Monte-Carlo floor — a few hundredths of a
-GJ/m$^2$, comparable to the advective displacement itself and shrinking as realizations grow. What
+within $0.012\,\sigma_k$ (Box B) and $0.019\,\sigma_k$ (Box A). The uniform null — a large ($2{,}000$
+per box-year) $n$-matched ensemble, so its mean is a precise zero rather than a noisy 100-draw
+estimate — has a $95\%$ CI that covers zero in every year, confirming the pipeline is unbiased; an
+advective interval clearing zero is therefore a resolved bias, not a reference artefact. What
 dominates each interval is the $5$–$95\%$ whisker: a *single* advective deployment scatters
 far more widely than the mean is displaced, and visibly wider than the uniform reference at the same
 $n$ — the within-float clustering quantified in @tbl-deff. The per-year detail and the shape of these
@@ -574,7 +578,7 @@ distributions follow.
 #| echo: false
 #| fig-cap: "Box B. Sampling distribution of B = Zhat - Zbar_k over the 100 realizations, one panel per year. Grey: the advective ensemble. Dashed blue: the n-matched uniform reference. Solid red: zero (the target). Dotted black: the ensemble mean."
 
-mm.plot_continuous_bias(est, "boxB")
+mm.plot_continuous_bias(est, "boxB", ref)
 plt.show()
 ```
 
@@ -582,7 +586,7 @@ plt.show()
 #| label: tbl-bias
 #| echo: false
 
-HTML(fmt(mm.continuous_bias_table(est, "boxB"), 4))
+HTML(fmt(mm.continuous_bias_table(est, "boxB", ref), 4))
 ```
 
 : Box B bias distribution by analysis year. {#tbl-bias}
@@ -594,7 +598,7 @@ HTML(fmt(mm.continuous_bias_table(est, "boxB"), 4))
 #| echo: false
 #| fig-cap: "Box A, same construction on its own axis: the bias scale is roughly a third of Box B's. Compare the boxes through the standardized column of the tables, not across these figures."
 
-mm.plot_continuous_bias(est, "boxA")
+mm.plot_continuous_bias(est, "boxA", ref)
 plt.show()
 ```
 
@@ -602,7 +606,7 @@ plt.show()
 #| label: tbl-bias-a
 #| echo: false
 
-HTML(fmt(mm.continuous_bias_table(est, "boxA"), 4))
+HTML(fmt(mm.continuous_bias_table(est, "boxA", ref), 4))
 ```
 
 : Box A bias distribution by analysis year. {#tbl-bias-a}
@@ -613,13 +617,12 @@ HTML(fmt(mm.continuous_bias_table(est, "boxA"), 4))
 $0.012\,\sigma_k$ in Box B and $0.019\,\sigma_k$ in Box A — a few hundredths of a GJ/m$^2$ — while the
 across-realization spread $\mathrm{sd}(B^{(d)}_k)$ is $0.32$–$0.37$ GJ/m$^2$ in Box B and $0.08$–$0.10$
 in Box A, an order of magnitude larger than the mean. The displacement is a property of the ensemble,
-invisible in any single deployment. The **uniform mean B** column and the dashed overlays show the
-$n$-matched reference is unbiased ($\mathbb{E}[B]=0$ by construction, and verified to
-$<\!0.002$ GJ/m$^2$ by a large-ensemble draw); at the $100$ realizations shown its mean still carries
-Monte-Carlo noise of a few hundredths of a GJ/m$^2$, so only advective departures beyond that floor —
-Box A 2017 and Box B 2018 most clearly — are resolved as signal. At $100$ realizations the advective
-mean is itself resolved only to a Monte-Carlo se of $\sim\!0.03$ GJ/m$^2$ in Box B and $\sim\!0.01$ in
-Box A, so more realizations are the way to separate the two.
+invisible in any single deployment. The **uniform mean B** column and the dashed overlays confirm the
+$n$-matched null is unbiased — its large-ensemble mean sits on zero (95% CI covering zero every year).
+Resolution is then limited by the *advective* side: at $100$ realizations its mean has a Monte-Carlo se
+of $\sim\!0.03$ GJ/m$^2$ in Box B and $\sim\!0.01$ in Box A, so its $95\%$ CI clears zero only where
+the bias is largest — Box A 2017 and Box B 2018 most clearly — while the marginal years overlap zero.
+More advective realizations are the way to resolve the rest.
 
 ## Within-design dependence
 
@@ -639,7 +642,7 @@ $n$.
 #| label: setup-deff
 #| include: false
 
-deff = mm.continuous_deff_table("_pilot")
+deff = mm.continuous_deff_table("_pilot", ref=ref)
 ```
 
 ```{python}
