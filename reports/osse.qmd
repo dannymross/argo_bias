@@ -553,20 +553,46 @@ it further.
 
 ## Within-design dependence
 
+A design's $n$ profiles are not $n$ independent draws: each float profiles every $10$ days and
+lingers, so its consecutive cycles are near-replicates of one location. The float-clustered **design
+effect** is the resulting variance inflation,
+
+$$\mathrm{deff}_k \;=\; \frac{\sum_f \big(\sum_{i \in f}(\tilde Z_i - \hat Z)\big)^2}
+{\sum_i (\tilde Z_i - \hat Z)^2}, \qquad n_{\mathrm{eff}} = \frac{n}{\mathrm{deff}_k},$$
+
+summing over floats $f$: if a float's cycles were identical it contributes its cluster size to
+$\mathrm{deff}$, if independent it contributes $\approx 1$. The effective sample size is $n/\mathrm{deff}$,
+and the per-deployment spread inflates by $\approx\!\sqrt{\mathrm{deff}}$ over an iid design of the same
+$n$.
+
+```{python}
+#| label: setup-deff
+#| include: false
+
+deff = mm.continuous_deff_table("_pilot")
+```
+
 ```{python}
 #| label: tbl-deff
 #| echo: false
 
-HTML(fmt(mm.continuous_deff_table("_pilot"), 3))
+HTML(fmt(deff, 3))
 ```
 
-: Float-clustered design effect
-$\sum_f (\sum_{i \in f}(\tilde Z_i - \hat Z))^2 / \sum_i (\tilde Z_i - \hat Z)^2$ over floats $f$, and
-the advective/uniform width ratio, by box and year. {#tbl-deff}
+: Median design effect and the advective/uniform width ratio, by box and year. {#tbl-deff}
 
-Consecutive cycles of one float are near-replicates, so a design of $n$ profiles carries fewer than
-$n$ independent observations and the advective spread runs wider than its $n$-matched uniform
-counterpart. The effect is stronger in Box A (design effect $4.9$–$5.9$, width ratio $2.2$–$2.5$) than
-in Box B ($2.8$–$3.7$, $1.7$–$2.0$): Box A's quiescent flow holds each float in the box for many more
-consecutive cycles, so its larger $n$ does not buy proportionally more independent information. This
-inflates the width without moving the mean, and the two must not be read as one effect.
+```{python}
+#| label: fig-deff
+#| echo: false
+#| fig-cap: "Design-effect summary. Left: median design effect n/n_eff by year (dotted line at 1 = no clustering). Right: the advective/uniform spread ratio (solid) against the sqrt(deff) prediction (dashed); their agreement confirms the clustering inflates the spread, not the mean."
+
+mm.plot_design_effect(deff)
+plt.show()
+```
+
+Box A clusters more — $\mathrm{deff}\approx 5$ against Box B's $\approx 3$ — because its quiescent flow
+holds each float in the box for many more consecutive cycles; its larger $n$ ($\sim\!2800$ vs
+$\sim\!1460$) therefore buys little more independent information ($n_{\mathrm{eff}}\sim 550$ in both).
+The width ratio tracks $\sqrt{\mathrm{deff}}$ (@fig-deff, right), confirming the clustering inflates the
+*spread* of a single deployment without moving its *mean* — dependence, not bias, and the two must not
+be read as one effect.

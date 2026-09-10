@@ -1909,6 +1909,37 @@ def plot_bias_intervals(est, boxes=("boxB", "boxA"), figsize=(11, 4.0)):
     return fig
 
 
+def plot_design_effect(d, boxes=("boxB", "boxA"), figsize=(10, 3.6)):
+    """Chart of the design-effect table `d` (from continuous_deff_table): the
+    effect by year (left) and the advective/uniform width ratio against the
+    sqrt(deff) prediction (right), both boxes."""
+    import matplotlib.pyplot as plt
+    color = {"boxB": "tab:blue", "boxA": "tab:orange"}
+    years = sorted(int(y) for y in d["year"].unique())
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=figsize, sharex=True)
+    for b in boxes:
+        g = d[d["box"] == b].sort_values("year")
+        c = color.get(b)
+        a1.plot(g["year"], g["median design effect"], "o-", color=c, label=b)
+        a2.plot(g["year"], g["ratio"], "o-", color=c, label=b)
+        a2.plot(g["year"], np.sqrt(g["median design effect"]), "--", color=c, alpha=0.55)
+    a1.axhline(1.0, color="crimson", lw=1.2, ls=":")
+    a1.set_ylabel("design effect  n / n_eff")
+    a1.set_title("Design effect", fontsize=10)
+    a1.set_ylim(bottom=0)
+    a1.legend(fontsize=8)
+    a2.axhline(1.0, color="crimson", lw=1.2, ls=":")
+    a2.set_ylabel("sd ratio  advective / uniform")
+    a2.set_title("Width ratio (solid) vs sqrt(deff) (dashed)", fontsize=10)
+    a2.set_ylim(bottom=0)
+    for ax in (a1, a2):
+        ax.set_xlabel("analysis year")
+        ax.set_xticks(years)
+        ax.set_xticklabels([str(y) for y in years], rotation=45, fontsize=8)
+    fig.tight_layout()
+    return fig
+
+
 def plot_continuous_stock(est, boxes=("boxB", "boxA"), figsize=(11, 3.6)):
     """Virtual (mean +/- sd over realizations) against real Argo standing stock."""
     import matplotlib.pyplot as plt
