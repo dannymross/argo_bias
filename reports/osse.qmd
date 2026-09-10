@@ -440,25 +440,33 @@ $1000$ m park depth, not a sampling choice.
 
 ## Bias as a covariance
 
-Write the sampling density ratio as the Radon–Nikodym derivative $r = \mathrm{d}w/\mathrm{d}p$
-($r_{c,d} = w_{c,d}/p_{c,d}$, so $\mathbb{E}_p[r] = 1$). The bias is then exactly a covariance under
-the uniform measure,
+Take the $L^2(\mathbb{P})$ inner product $\langle f, g\rangle_{\mathbb{P}} = \int_{\mathcal{X}} f g\,
+\mathrm{d}\mathbb{P}$, and let $q = w/p$ be the sampling frequency of each cell-day relative to its
+uniform share — the over/under-sampling factor mapped in @fig-wspace and distributed in @fig-whist,
+equal to $1$ under uniform sampling and with $\int q\,\mathrm{d}\mathbb{P} = 1$. The bias is the inner
+product of the field with the sampling excess,
 
-$$B_k \;=\; \langle \tilde Z_k,\, w - p\rangle \;=\; \operatorname{Cov}_p\!\big(r,\, \tilde Z_k\big)
-\;=\; \rho_k \,\operatorname{sd}_p(r)\,\sigma_k,$$
+$$B_k \;=\; \langle \tilde Z_k,\, q - 1\rangle_{\mathbb{P}}
+       \;=\; \langle \tilde Z_k - \bar Z_k,\, q - 1\rangle_{\mathbb{P}},$$
 
-with $\sigma_k = \operatorname{sd}_p(\tilde Z_k)$ (@tbl-truth) and $\rho_k$ the weight–field correlation.
-Cauchy–Schwarz gives the distribution-free cap $|B_k| \le \operatorname{sd}_p(r)\,\sigma_k$. **Zero bias
-does not require uniform sampling** — it requires only $\rho_k = 0$, the excess weight orthogonal to
-the field; a strongly non-uniform array can be unbiased for this functional.
+the second equality because $\langle 1, q-1\rangle_{\mathbb{P}} = 0$ — a spatially uniform field is
+sampled without bias. Cauchy–Schwarz for this inner product gives the cap
 
-Two caveats make this operational. A finite design is discrete, so the pointwise $r$ is unbounded and
-the exact joint $\operatorname{sd}_p(r)$ is not cleanly estimable at a fixed realization count — a tight
-distribution-free bound instead rests on a smoothness class for $\tilde Z_k$. And $B_k$ is a *joint*
-spacetime covariance, so it does not reduce to the marginals mapped above. We therefore report its
-exact split into a spatial-marginal covariance (the weight map against the time-mean field), a
-temporal-marginal covariance (the seasonal weight against the daily domain mean), and the space–time
-interaction that remains.
+$$|B_k| \;\le\; \lVert \tilde Z_k - \bar Z_k\rVert_{\mathbb{P}}\,\lVert q - 1\rVert_{\mathbb{P}}
+         \;=\; \sigma_k \, \operatorname{sd}_{\mathbb{P}}(q),$$
+
+with $\sigma_k = \operatorname{sd}_{\mathbb{P}}(\tilde Z_k)$ (@tbl-truth) and $\operatorname{sd}_{\mathbb{P}}(q)$
+the spread of the over/under-sampling factor (@fig-whist), attained only when $q-1$ is proportional to
+the field anomaly. **Zero bias does not require uniform sampling** — it requires only that $q - 1$ be
+orthogonal to $\tilde Z_k$ in $L^2(\mathbb{P})$; a strongly non-uniform array
+($\operatorname{sd}_{\mathbb{P}}(q) \gg 0$) can still be unbiased for this functional.
+
+$B_k$ is a *joint* spacetime inner product, so it does not reduce to the marginals mapped above, and
+the joint $\operatorname{sd}_{\mathbb{P}}(q)$ over the full cell-day grid is not cleanly estimable at a
+fixed realization count (a finite array occupies each cell-day at most a few times). We therefore
+report $B_k$'s exact split into a spatial-marginal covariance (the weight map against the time-mean
+field), a temporal-marginal covariance (the seasonal weight against the daily domain mean), and the
+space–time interaction that remains.
 
 ```{python}
 #| label: tbl-decomp
@@ -477,7 +485,7 @@ component is real but modest, and the **space–time interaction is often the la
 is almost entirely interaction):
 the array's spatial preference co-varies with the field's day-to-day structure, so the bias is a
 genuinely spatiotemporal covariance that the time-averaged weight map understates. On the scored years
-the spatial weight dispersion is $\operatorname{sd}_p(r) \approx 0.46$ (Box B) and $0.37$ (Box A)
+the spatial weight dispersion is $\operatorname{sd}_{\mathbb{P}}(q) \approx 0.46$ (Box B) and $0.37$ (Box A)
 against $\sigma_k$ of $6.3$–$7.6$ and $1.7$–$2.4$ GJ/m$^2$, so the Cauchy–Schwarz scale is a few
 GJ/m$^2$ and the realized $|B_k|$ is $\sim\!1$–$5\%$ of it: the sampling non-uniformity is largely,
 though not perfectly, orthogonal to the field.
@@ -681,7 +689,7 @@ Monte-Carlo standard errors, so the array is weakly preferential in effect, at a
 small fraction of the field's own variability.
 
 **Strong non-uniform sampling, nearly orthogonal to the field.** The array samples space genuinely
-non-uniformly (on-mask up to $\sim\!3.6\times$ over-sampling, $\operatorname{sd}_p(r)\approx0.4$;
+non-uniformly (on-mask up to $\sim\!3.6\times$ over-sampling, $\operatorname{sd}_{\mathbb{P}}(q)\approx0.4$;
 @fig-whist), yet the bias is only $\sim\!1$–$5\%$ of the Cauchy–Schwarz ceiling that non-uniformity
 permits, i.e. a weight–field correlation $|\rho_k|\approx0.02$. Preferential sampling does not imply
 preferential bias for this functional — the estimand-level bias is the covariance
