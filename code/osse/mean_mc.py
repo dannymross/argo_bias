@@ -2162,10 +2162,10 @@ def trajectory_divergence(tol_days=6, max_days=None, tracks=None, pool=None, cle
     pl = pool if pool is not None else pd.read_csv(
         os.path.join(cfg.OUT_DIR, "argo_actual_pool.csv"), parse_dates=["date"])
     real = clean_argo() if cleaned is None else cleaned
-    to_naive = lambda s: pd.to_datetime(s, utc=True).dt.tz_convert("UTC").dt.tz_localize(None)
+    to_naive = lambda s: pd.to_datetime(s, utc=True, format="ISO8601").dt.tz_localize(None)
     real = real.assign(date=to_naive(real["date"]))
     pl = pl.assign(date=to_naive(pl["date"]))
-    tr = tr.assign(time=pd.to_datetime(tr["time"]).astype("datetime64[ns]"))
+    tr = tr.assign(time=pd.to_datetime(tr["time"], format="ISO8601").astype("datetime64[ns]"))
     realg = {int(f): g.sort_values("date") for f, g in real.groupby("float_id")}
     simg = {int(s): g.sort_values("time") for s, g in tr.groupby("seed_id")}
 

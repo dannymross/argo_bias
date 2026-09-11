@@ -45,8 +45,7 @@ CYCLE_DAYS = 10          # Argo surfacing cadence: one profile per cycle
 N_FLOATS = 50            # osse.tex: ~45-50 resident floats per box
 # Seed beyond the box: floats advect in and out, and observed rms displacement
 # is ~730 km (~6.6 deg) per year, so 4 deg out is genuinely reachable. It also
-# widens the real-deployment pool from 104 to 153, which matters because
-# replicate realisations are drawn from that finite pool.
+# widens the finite real-deployment pool that replicate realisations draw from.
 SEED_MARGIN = 4.0
 # The uniform arm must not starve the box of inflow, so its margin exceeds the
 # annual rms displacement (4 deg is only 0.6x of it in lat, 0.5x in lon).
@@ -58,8 +57,8 @@ JITTER_KM = 5.0          # per-replicate seed perturbation
 # Steady-state arm: deploy from SPIN_DAYS before the analysis year, on a release
 # schedule calibrated (calibrate_release.py) to hold the in-box standing stock
 # flat across [0, run_days). A CONSTANT rate does not work -- the empirical
-# lifespan pool has a median of 1339 d, so floats keep re-entering for years and
-# the stock is still ramping 1.4x after 900 d of spin-up. The spin-up runs on
+# lifespan pool's median is multi-year, so floats keep re-entering for years and
+# the stock is still ramping after ~900 d of spin-up. The spin-up runs on
 # the PRECEDING years' velocity; cycling the analysis year's own flow would send
 # floats through the same eddies twice and inflate exactly the aligned coupling
 # the experiment is built to measure.
