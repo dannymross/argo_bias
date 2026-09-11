@@ -512,7 +512,7 @@ plt.show()
 ```{python}
 #| label: fig-twins
 #| echo: false
-#| fig-cap: "Two long-lived real Argo floats (solid) and their GLORYS-park sim twins (dashed) from a shared deployment (star; real end a filled circle, sim end an open square). Blue is a Box A float (~8 yr, subtropical gyre); purple a Box B float (~6 yr, NAC / Gulf Stream)."
+#| fig-cap: "Two long-lived real Argo floats and their GLORYS-park sim twins from a shared deployment (star; real end a filled circle, sim end an open square). Each float is a matched colour pair -- real the darker solid line, sim twin the lighter dashed line: a Box A float in blue/cyan (~8 yr, subtropical gyre) and a Box B float in purple/pink (~6 yr, NAC / Gulf Stream)."
 
 mm.plot_trajectory_twins()
 plt.show()

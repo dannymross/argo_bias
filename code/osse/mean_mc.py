@@ -1118,20 +1118,23 @@ def plot_trajectory_twins(pairs=((295, 6901117), (68, 4901217)), tracks=None,
     dep = {int(r.seed_id): r for r in pl.itertuples()}
 
     fig, ax, pc, e = _domain_base(boxes, figsize)
-    colors = ["#1f77b4", "#9467bd", "#17becf", "#8c564b"]
+    # (real, sim twin) colour per float: matched hue families so the pairing reads,
+    # distinct shades so real vs twin stay apart where the tracks overlap.
+    pair_colors = [("#08519c", "#41b6c4"), ("#6a1b9a", "#ec7fc3"),
+                   ("#1b7837", "#a6d96a"), ("#8c510a", "#dfc27d")]
     for k, (sid, fid) in enumerate(pairs):
-        c = colors[k % len(colors)]
+        cr, cs = pair_colors[k % len(pair_colors)]
         d = dep[int(sid)]
         rt = realg[int(fid)]; rt = rt[rt["date"] >= d.date]
         st = simg[int(sid)]
         yrs = (rt["date"].max() - d.date).days / 365.25
-        ax.plot(rt["lon"], rt["lat"], "-", color=c, lw=1.0, transform=pc, zorder=3,
+        ax.plot(rt["lon"], rt["lat"], "-", color=cr, lw=1.0, transform=pc, zorder=3,
                 label=f"real {fid} ({yrs:.1f} yr)")
-        ax.plot(st["lon"], st["lat"], "--", color=c, lw=1.0, alpha=0.9, transform=pc,
+        ax.plot(st["lon"], st["lat"], "--", color=cs, lw=1.0, transform=pc,
                 zorder=3, label=f"sim twin {fid}")
-        ax.plot(rt["lon"].iloc[-1], rt["lat"].iloc[-1], "o", color=c, ms=6,
+        ax.plot(rt["lon"].iloc[-1], rt["lat"].iloc[-1], "o", color=cr, ms=6,
                 transform=pc, zorder=4)
-        ax.plot(st["lon"].iloc[-1], st["lat"].iloc[-1], "s", mfc="none", mec=c,
+        ax.plot(st["lon"].iloc[-1], st["lat"].iloc[-1], "s", mfc="none", mec=cs,
                 mew=1.4, ms=7, transform=pc, zorder=4)
         ax.plot(d.lon, d.lat, "*", color="k", ms=13, mec="w", mew=0.6,
                 transform=pc, zorder=5, label="deployment" if k == 0 else None)
