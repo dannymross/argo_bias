@@ -73,7 +73,7 @@ lost from the box.
 ```{python}
 #| label: fig-domain
 #| echo: false
-#| fig-cap: "Analysis boxes inside the two downloaded GLORYS regions. Dashed: the velocity region driving advection, and the thetao region from which OHC truth and the mean field are built. Filled: the two analysis boxes."
+#| fig-cap: "The two analysis boxes (filled) inside the downloaded GLORYS velocity and thetao regions (dashed)."
 
 mm.plot_domain_map()
 plt.show()
@@ -82,7 +82,7 @@ plt.show()
 ```{python}
 #| label: fig-bathy
 #| echo: false
-#| fig-cap: "GLORYS ocean depth over the advection domain. Left: deptho in km, capped at 6 km for display so the shelf break is resolved rather than compressed against the abyssal plain. Right: the ocean cells shallower than the 2000 m analysis cut, which are excluded from the OHC integral and from the measure P. Both analysis boxes are outlined. Land is grey in both panels."
+#| fig-cap: "GLORYS ocean depth over the advection domain (left) and the sub-2000 m cells excluded from the analysis (right), both boxes outlined."
 
 mm.plot_bathymetry()
 plt.show()
@@ -103,7 +103,7 @@ Retained area is $92.35\%$ and $99.77\%$ against $92.83\%$ and $99.92\%$ from de
 ```{python}
 #| label: fig-days
 #| echo: false
-#| fig-cap: "Residual field Z on single unaveraged days, in GJ per m2. Each day is the one whose P-weighted spatial standard deviation is nearest the 5th, 50th and 95th percentile of that box's 3,650 daily values, so the columns span typical low, median and high spatial variability. Rows carry their own colour scale, since the boxes differ several-fold in amplitude. Panel titles give the day and its spatial sd."
+#| fig-cap: "Residual field Z (GJ per m2) on days at the 5th, 50th and 95th percentile of each box's daily spatial dispersion; rows use independent colour scales."
 
 mm.plot_quantile_days()
 plt.show()
@@ -223,7 +223,7 @@ field whose domain mean the sampling must recover.
 ```{python}
 #| label: fig-ohc-series
 #| echo: false
-#| fig-cap: "Domain-mean OHC 0-2000 m over each box, daily 2010-2019. Top: total OHC (solid) and the fitted mean field (dashed); the mean field carries the seasonal cycle and the warming trend. Bottom, same date axis: the domain-mean anomaly (total minus mean field) per box. Box B (NAC) has a larger seasonal swing (~6 GJ/m2, harmonics plus trend) and a larger, more variable anomaly than the subtropical Box A (~2.5)."
+#| fig-cap: "Daily domain-mean OHC with the fitted mean field (top) and their difference, the domain-mean anomaly (bottom), per box over 2010-2019 in GJ per m2."
 
 mm.plot_ohc_timeseries()
 plt.show()
@@ -237,7 +237,7 @@ variable in Box B than in Box A.
 stationary-in-form choice; OHC is strongly non-stationary across these current regions, so a
 covariance-aware mean is a likely refinement. It does not threaten $B$: a spatially uniform misfit in
 $\tilde Z_k$ differences out of $B$ identically, and the per-year residual offsets it leaves are
-carried explicitly in @tbl-truth rather than assumed zero.
+carried explicitly in the residual-field table rather than assumed zero.
 
 # Estimand, truth, and estimator
 
@@ -262,17 +262,13 @@ $x_i$ is the cell-day lookup of the *containing* cell, not an interpolation — 
 enters.
 
 ```{python}
-#| label: tbl-truth
 #| echo: false
 
 HTML(fmt(mm.truth_table()))
 ```
 
-: Domain mean and dispersion of the residual field, by analysis year, both boxes.
-$\bar Z_k$ and $\mathrm{sd}_{\mathbb{P}}(\tilde Z_k)$ are in GJ/m$^2$; the third column of each pair
-standardizes the first by the second. {#tbl-truth}
 
-$\bar Z_k$ would be zero if the 1995–2019 mean-field fit were exact on the analysis years; @tbl-truth
+$\bar Z_k$ would be zero if the 1995–2019 mean-field fit were exact on the analysis years; the table above
 carries the small per-year misfit (largest $\bar Z_{2011} = -1.63$ GJ/m$^2$ in Box B), which is
 mean-field misfit, not sampling, and cancels from $B$ by construction (@sec-meanfield). The dispersion
 $\mathrm{sd}_{\mathbb{P}}(\tilde Z_k)$ — $6.3$–$7.6$ GJ/m$^2$ in Box B against $1.7$–$2.4$ in Box A,
@@ -311,7 +307,7 @@ simplification matters is exactly what the real-deployment comparison below test
 ```{python}
 #| label: fig-advection
 #| echo: false
-#| fig-cap: "One simulated deployment realization on the analysis-domain base map: float drift tracks and profile points (one per 10-day cycle at 1000 m park depth), coloured by the calendar year of the profile. 60 of the seeded floats are drawn; floats are seeded uniformly across the deep region spanning both boxes and advect through the North Atlantic, and only profiles inside a box (filled) enter an estimate."
+#| fig-cap: "One simulated deployment: 60 float drift tracks and their 10-day profile points coloured by year, only in-box profiles (filled) entering an estimate."
 
 mm.plot_deployment_advection_map(max_floats=60)
 plt.show()
@@ -322,7 +318,7 @@ plt.show()
 ```{python}
 #| label: fig-advection-argo
 #| echo: false
-#| fig-cap: "Real Argo trajectories over the same domain and years, same base map and year colouring, for comparison. Positions are the profile (surface) locations from the Argo record; 60 of the 740 floats present in the domain over 2010-2019 are drawn. Real deployment is programmatic and clustered rather than area-uniform, and coverage builds over the decade, whereas the simulated array is seeded uniformly in space-time by construction."
+#| fig-cap: "Real Argo trajectories over the same domain and years (60 of 740 floats) coloured by year, on the same base map for comparison."
 
 mm.plot_argo_trajectory_map(max_floats=60)
 plt.show()
@@ -367,8 +363,7 @@ area marginal $p^{\mathrm{sp}}_c = A_c / \sum_{c'} A_{c'}$, as the ratio
 $q_c = \mathbb{E}[w^{\mathrm{sp}}_c] / p^{\mathrm{sp}}_c$ ($=1$ under area-fair sampling). The temporal
 marginal is flat by construction — the fixed $10$-day cadence, uniform release phase, and equilibrium
 stock leave no seasonal preference — so it is not shown; note only that $B_k$ is the *joint* spacetime
-inner product and does not split additively into space and time, a space–time interaction remaining
-(@tbl-decomp).
+inner product and does not split additively into space and time, a space–time interaction remaining (the decomposition table).
 
 ## Spatial marginal
 
@@ -379,7 +374,7 @@ inner product and does not split additively into space and time, a space–time 
 ```{python}
 #| label: fig-wspace
 #| echo: false
-#| fig-cap: "Box B. Over- and under-sampling on the native 1/12 deg grid: log2 of the estimated sampling weight E[w] against the uniform weight, one panel per scored year, averaged over the 100 realizations. Red over-sampled, blue under-sampled, white uniform."
+#| fig-cap: "Box B over- and under-sampling on the native 1/12 deg grid: log2 of E[w] against the uniform weight per scored year, averaged over 100 realizations (red over, blue under)."
 
 mm.plot_sampling_weight_space("boxB", years=[2015, 2016, 2017, 2018, 2019])
 plt.show()
@@ -388,7 +383,7 @@ plt.show()
 ```{python}
 #| label: fig-whist
 #| echo: false
-#| fig-cap: "Box B. Distribution of the per-cell weight E[w]/uniform over native cells, one panel per year. Red line at 1 is the uniform weight; dotted black is the mean (1 by construction). The spread around 1 measures how preferential the sampling is."
+#| fig-cap: "Box B distribution of the per-cell weight E[w]/uniform over native cells per year, about the uniform value of 1 (red line)."
 
 mm.plot_sampling_weight_hist("boxB", years=[2015, 2016, 2017, 2018, 2019])
 plt.show()
@@ -440,7 +435,7 @@ sampled without bias. Cauchy–Schwarz for this inner product gives the cap
 $$|B_k| \;\le\; \lVert \tilde Z_k - \bar Z_k\rVert_{\mathbb{P}}\,\lVert q - 1\rVert_{\mathbb{P}}
          \;=\; \sigma_k \, \operatorname{sd}_{\mathbb{P}}(q),$$
 
-with $\sigma_k = \operatorname{sd}_{\mathbb{P}}(\tilde Z_k)$ (@tbl-truth) and $\operatorname{sd}_{\mathbb{P}}(q)$
+with $\sigma_k = \operatorname{sd}_{\mathbb{P}}(\tilde Z_k)$ (the residual-field table) and $\operatorname{sd}_{\mathbb{P}}(q)$
 the spread of the over/under-sampling factor (@fig-whist), attained only when $q-1$ is proportional to
 the field anomaly. **Zero bias does not require uniform sampling** — it requires only that $q - 1$ be
 orthogonal to $\tilde Z_k$ in $L^2(\mathbb{P})$; a strongly non-uniform array
@@ -454,14 +449,11 @@ field), a temporal-marginal covariance (the seasonal weight against the daily do
 space–time interaction that remains.
 
 ```{python}
-#| label: tbl-decomp
 #| echo: false
 
 HTML(fmt(mm.bias_decomposition_table("_pilot"), 4))
 ```
 
-: Space / time / interaction split of the measured bias, by box and analysis year, in GJ/m$^2$.
-The three components sum to the measured $B_k$. {#tbl-decomp}
 
 The temporal component is negligible in both boxes — zero seasonal preference is built into the design
 (fixed $10$-day cadence, uniform release phase, equilibrium stock), so this term is uninformative by
@@ -499,34 +491,25 @@ Years $2010$–$2014$ are the equilibration lead; bias is scored on **$2015$–$
 an estimate when it falls inside a box, so the one deployment feeds both.
 
 Across all $100$ realizations the pilot seeds $10^5$ float-deployments and scores about $2.15$ million
-in-box profiles (@tbl-size). Per realization, Box B holds $\sim\!90$ distinct floats (standing stock
+in-box profiles (the table below). Per realization, Box B holds $\sim\!90$ distinct floats (standing stock
 $\sim\!40$) giving $\sim\!1{,}410$–$1{,}490$ profiles a year; Box A holds $\sim\!145$ floats (stock
 $\sim\!78$) giving $\sim\!2{,}730$–$2{,}900$ — its quiescent flow retains more of the same deployment.
 
 ```{python}
-#| label: tbl-size
 #| echo: false
 
 HTML(fmt(mm.continuous_pilot_size_table(est), 1))
 ```
 
-: Pilot sample sizes by box and analysis year: mean in-box standing stock and distinct floats per
-realization, mean profile observations per realization, and the profile total over all $100$
-realizations. {#tbl-size}
 
 ## Standing stock against real Argo
 
 ```{python}
-#| label: tbl-stock
 #| echo: false
 
 HTML(fmt(mm.continuous_stock_table(est), 1))
 ```
 
-: Virtual against real Argo in-box standing stock, both boxes, by analysis year, with their ratio.
-Stock is the mean number of distinct floats reporting within a 10-day window — the quantity that
-compares across the two, since real and virtual floats cycle on different schedules. The last row is
-the per-year mean. {#tbl-stock}
 
 ```{python}
 #| label: fig-stock
@@ -550,7 +533,7 @@ real-density array would face.
 ```{python}
 #| label: fig-bias-intervals
 #| echo: false
-#| fig-cap: "Headline result. Sampling bias B = Zhat - Zbar_k by analysis year, one panel per box (note the differing y-axis scales). For each year the two intervals are the advective array (grey) and the n-matched uniform reference (blue): marker = ensemble mean over the 100 realizations, capped bar around it = 95 percent CI (mean +/- 1.96 Monte Carlo standard errors), so an interval clearing zero marks a mean distinguishable from zero at the 5 percent level; thin line = 5-95 percent of realizations (the scatter of a single deployment). Red line at zero is the target."
+#| fig-cap: "Sampling bias B = Zhat - Zbar by year and box (marker = ensemble mean, capped bar = 95 percent CI, thin line = 5-95 percent of realizations) for the advective array (grey) and n-matched uniform reference (blue)."
 
 mm.plot_bias_intervals(est, ref)
 plt.show()
@@ -563,7 +546,7 @@ estimate — has a $95\%$ CI that covers zero in every year, confirming the pipe
 advective interval clearing zero is therefore a resolved bias, not a reference artefact. What
 dominates each interval is the $5$–$95\%$ whisker: a *single* advective deployment scatters
 far more widely than the mean is displaced, and visibly wider than the uniform reference at the same
-$n$ — the within-float clustering quantified in @tbl-deff. The per-year detail and the shape of these
+$n$ — the within-float clustering quantified in the design-effect table below. The per-year detail and the shape of these
 distributions follow.
 
 ::: {.panel-tabset}
@@ -573,20 +556,18 @@ distributions follow.
 ```{python}
 #| label: fig-bias
 #| echo: false
-#| fig-cap: "Box B. Sampling distribution of B = Zhat - Zbar_k over the 100 realizations, one panel per year. Grey: the advective ensemble. Dashed blue: the n-matched uniform reference. Solid red: zero (the target). Dotted black: the ensemble mean. Solid green: the realized bias of the REAL, QC-cleaned Argo array (10-day thinning; gappy or short-span floats dropped) sampling the same GLORYS anomaly field (the x-axis is widened where it falls outside the simulated range)."
+#| fig-cap: "Box B sampling distribution of B over 100 realizations per year (grey), with the uniform reference (dashed blue), zero (red), the ensemble mean (dotted), and the real QC-cleaned Argo bias (green)."
 
 mm.plot_continuous_bias(est, "boxB", ref, argo=argo["boxB"])
 plt.show()
 ```
 
 ```{python}
-#| label: tbl-bias
 #| echo: false
 
 HTML(fmt(mm.continuous_bias_table(est, "boxB", ref), 4))
 ```
 
-: Box B bias distribution by analysis year. {#tbl-bias}
 
 ### Box A
 
@@ -600,13 +581,11 @@ plt.show()
 ```
 
 ```{python}
-#| label: tbl-bias-a
 #| echo: false
 
 HTML(fmt(mm.continuous_bias_table(est, "boxA", ref), 4))
 ```
 
-: Box A bias distribution by analysis year. {#tbl-bias-a}
 
 :::
 
@@ -655,18 +634,16 @@ deff = mm.continuous_deff_table("_pilot", ref=ref)
 ```
 
 ```{python}
-#| label: tbl-deff
 #| echo: false
 
 HTML(fmt(deff, 3))
 ```
 
-: Median design effect and the advective/uniform width ratio, by box and year. {#tbl-deff}
 
 ```{python}
 #| label: fig-deff
 #| echo: false
-#| fig-cap: "Design-effect summary. Left: median design effect n/n_eff by year (dotted line at 1 = no clustering). Right: the advective/uniform spread ratio (solid) against the sqrt(deff) prediction (dashed); their agreement confirms the clustering inflates the spread, not the mean."
+#| fig-cap: "Median design effect n/n_eff by year (left) and the advective/uniform spread ratio against its sqrt(deff) prediction (right)."
 
 mm.plot_design_effect(deff)
 plt.show()
@@ -692,20 +669,16 @@ replacement at the real rate ($100$ realizations, positions jittered), carrying 
 pattern with a Monte-Carlo spread.
 
 ```{python}
-#| label: tbl-argo-cmp
 #| echo: false
 
 HTML(fmt(mm.argo_comparison_table(est, argo_boot, argo_actual, argo), 3))
 ```
 
-: Sampling bias by box and analysis year (GJ/m$^2$) under three deployment laws: the uniform-seeded
-ensemble mean, the real-deployment bootstrap (mean and sd over $100$ reps), the single
-actual-deployment realization, and the real Argo array. {#tbl-argo-cmp}
 
 ```{python}
 #| label: fig-argo-cmp
 #| echo: false
-#| fig-cap: "Deployment-law comparison, one panel per box. Dodged intervals (marker = mean, capped bar = 95% CI, thin line = 5-95 percent of realizations) for the uniform ensemble (grey) and the real-deployment bootstrap (purple); open orange diamond = the single actual-deployment realization; green X = the real Argo array. Red line at zero."
+#| fig-cap: "Deployment-law comparison per box: uniform ensemble (grey) and real-deployment bootstrap (purple) intervals, the single actual-deployment realization (orange diamond), and real Argo (green X)."
 
 mm.plot_argo_comparison(est, argo_boot, argo_actual, argo)
 plt.show()
@@ -729,7 +702,7 @@ match ($\sim\!500$/yr), so the $n$-independent mean-bias comparison holds.
 From this $100$-realization pilot:
 
 **The advective sampling bias is small but not zero.** In both boxes $\mathbb{E}[B_k]$ stays within
-$\sim\!0.02\,\sigma_k$ (@tbl-bias) — a few hundredths of a GJ/m$^2$ against a field varying by $6$–$8$
+$\sim\!0.02\,\sigma_k$ (the bias tables) — a few hundredths of a GJ/m$^2$ against a field varying by $6$–$8$
 (Box B) and $2$ (Box A) GJ/m$^2$. It is not identically zero: several years are resolved at $2$–$4$
 Monte-Carlo standard errors, so the array is weakly preferential in effect, at a magnitude that is a
 small fraction of the field's own variability.
@@ -743,7 +716,7 @@ $\operatorname{Cov}_{\mathbb{P}}(q,\tilde Z_k)$, and the array sits near its nul
 non-uniformity per se.
 
 **The bias is irreducibly spatiotemporal.** The temporal marginal is zero by construction and the
-spatial marginal is modest; the space–time interaction dominates (@tbl-decomp). The bias comes from
+spatial marginal is modest; the space–time interaction dominates (the decomposition table). The bias comes from
 the array's spatial preference co-varying with the field's day-to-day structure, so a time-averaged
 sampling map understates it and any correction must be posed jointly in space–time.
 
@@ -754,14 +727,14 @@ bias.
 
 **Profile counts overstate information.** Within-float clustering gives design effects of $\approx3$
 (Box B) and $\approx5$ (Box A), so $n_{\mathrm{eff}}\sim550$ in both despite Box A's $\sim\!2\times$
-larger $n$ (@tbl-deff).
+larger $n$ (the design-effect table).
 
 **Both regimes are comparably biased once standardized.** Box B has larger raw bias and spread, but on
 the $\sigma_k$ scale the energetic western-boundary region is not disproportionately biased relative to
 the quiescent gyre.
 
 **The design and pipeline work.** Uniform space–time seeding plus a multi-year lead produces a stable
-equilibrium array with no calibrated schedule (@tbl-stock), and the $n$-matched uniform reference
+equilibrium array with no calibrated schedule (the standing-stock table), and the $n$-matched uniform reference
 recovers $\mathbb{E}[B]=0$, so any advective departure is signal.
 
 ## Caveats
@@ -775,7 +748,7 @@ recovers $\mathbb{E}[B]=0$, so any advective departure is signal.
 - **Five scored years.** Deployment from $2010$ scores $2015$–$2019$; the velocity record now reaches
   $2005$, so extending to $2010$–$2019$ would double the field years at no new modelling cost.
 - **Array density.** The virtual array holds $\sim\!40$ (Box B) / $\sim\!78$ (Box A) floats against
-  real Argo's $\sim\!27$ / $\sim\!30$ (@tbl-stock); $\mathbb{E}[B_k]$ is $n$-independent so it stands,
+  real Argo's $\sim\!27$ / $\sim\!30$ (the standing-stock table); $\mathbb{E}[B_k]$ is $n$-independent so it stands,
   but single-array spreads are density-specific.
 - **The mean field is a preliminary stationary trend-plus-harmonics fit** (@sec-meanfield); it sets the
   estimand's level but $B$ is invariant to it, so the conclusions above do not depend on it.
