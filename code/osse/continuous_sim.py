@@ -405,6 +405,57 @@ def run_illustration(out_csv=None, n_floats=100, rep=0, t_start=None, t_end=None
     return df
 
 
+def run_actual_trajectories(out_csv=None, pool_csv=None, t_start="2010-01-01",
+                            t_end=None, rep=0):
+    """Advect the real Argo deployments verbatim, keeping the FULL drift path.
+
+    Same seeds as the argo-actual arm (each cleaned float's first profile in the
+    seed region), but every 10-day position is kept, in-box or out, so the
+    GLORYS-park track can be compared against the same real float's actual profile
+    positions (the trajectory-divergence attribution). Writes the tracks and the
+    seed->real-float mapping (seed_id = Parcels trajectory index = pool row).
+    """
+    import shutil
+    os.makedirs(cfg.OUT_DIR, exist_ok=True)
+    scratch = os.path.join(cfg.OUT_DIR, "_traj")
+    os.makedirs(scratch, exist_ok=True)
+    if t_end is None:
+        yrs = sorted({int(os.path.basename(f).split("_")[-2])
+                      for f in glob.glob(os.path.join(di.VEL_DIR, "velocity_daily_park_*.nc"))})
+        yrs = [y for y in yrs
+               if len(glob.glob(os.path.join(di.VEL_DIR, f"velocity_daily_park_{y}_*.nc"))) == 12]
+        t_end = f"{yrs[-1]}-12-26"
+
+    pool = argo_deployment_pool(t_start=t_start, t_end=t_end).reset_index(drop=True)
+    pool.insert(0, "seed_id", np.arange(len(pool)))
+    pool_csv = pool_csv or os.path.join(cfg.OUT_DIR, "argo_actual_pool.csv")
+    pool.to_csv(pool_csv, index=False)
+    rel = pool["date"].dt.tz_localize(None).to_numpy().astype("datetime64[s]")
+    seeds = (pool["lat"].to_numpy(), pool["lon"].to_numpy(), rel, pool["lifespan"].to_numpy())
+
+    zpath = os.path.join(scratch, f"traj_actual_full_r{rep}.zarr")
+    shutil.rmtree(zpath, ignore_errors=True)
+    print(f"actual-full: {len(pool)} real deployments, {t_start}..{t_end}", flush=True)
+    run_continuous(rep, zpath, len(pool), t_start, t_end, seeds=seeds)
+
+    ds = xr.open_zarr(zpath)
+    lat, lon, time = ds["lat"].values, ds["lon"].values, ds["time"].values
+    pid = np.asarray(ds["trajectory"].values)
+    pid = (pid[:, 0] if pid.ndim == 2 else pid).astype(int)
+    ds.close()
+    n_traj, n_obs = lat.shape
+    df = pd.DataFrame({"seed_id": np.repeat(pid, n_obs),
+                       "cycle": np.tile(np.arange(n_obs), n_traj),
+                       "lat": lat.ravel(), "lon": lon.ravel(), "time": time.ravel()}
+                      ).dropna(subset=["lat", "lon", "time"])
+    df = df.sort_values(["seed_id", "time"]).reset_index(drop=True)
+    out_csv = out_csv or os.path.join(cfg.OUT_DIR, "actual_full_tracks.csv")
+    df.to_csv(out_csv, index=False)
+    shutil.rmtree(zpath, ignore_errors=True)
+    print(f"{len(df):,} positions, {df['seed_id'].nunique()} floats -> {out_csv}")
+    return df
+
+
 def argo_deployment_pool(cleaned=None, boxes=BOXES, margin=SEED_MARGIN,
                          t_start=None, t_end=None, deep=True):
     """Real Argo deployments (each cleaned float's first profile) in the seed region.
@@ -508,10 +559,15 @@ if __name__ == "__main__":
                     help="run one realization keeping all positions -> illustration_tracks.csv")
     ap.add_argument("--argo", choices=("actual", "boot"), default=None,
                     help="real-Argo deployment arm: 'actual' (verbatim) or 'boot' (resampled)")
+    ap.add_argument("--argo-traj", action="store_true",
+                    help="advect real deployments verbatim keeping full drift paths "
+                         "-> actual_full_tracks.csv (trajectory-divergence attribution)")
     a = ap.parse_args()
     sy = [int(y) for y in a.score_years.split(",")] if a.score_years else None
     if a.gather:
         gather_chunks(a.tag)
+    elif a.argo_traj:
+        run_actual_trajectories(t_start=a.start or "2010-01-01", t_end=a.end)
     elif a.illustrate:
         run_illustration(n_floats=a.n_floats, t_start=a.start, t_end=a.end)
     elif a.argo:

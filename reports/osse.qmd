@@ -369,18 +369,20 @@ inner product and does not split additively into space and time, a space–time 
 
 ## Spatial marginal
 
-::: {.panel-tabset}
-
-### Box B
-
 ```{python}
 #| label: fig-wspace
 #| echo: false
-#| fig-cap: "Box B over- and under-sampling on the native 1/12 deg grid: log2 of E[w] against the uniform weight per scored year, averaged over 100 realizations (red over, blue under)."
+#| fig-cap: "Over- and under-sampling log2(E[w]/uniform) on the native 1/12 deg grid, both boxes on one map per scored year and one shared scale (red over-sampled, blue under, white uniform)."
 
-mm.plot_sampling_weight_space("boxB", years=[2015, 2016, 2017, 2018, 2019])
+mm.plot_sampling_weight_space_combined(years=[2015, 2016, 2017, 2018, 2019])
 plt.show()
 ```
+
+The per-cell weight distribution about the uniform value of 1, one panel per year:
+
+::: {.panel-tabset}
+
+### Box B
 
 ```{python}
 #| label: fig-whist
@@ -394,18 +396,9 @@ plt.show()
 ### Box A
 
 ```{python}
-#| label: fig-wspace-a
-#| echo: false
-#| fig-cap: "Box A, same construction. The subtropical gyre spreads floats more evenly, so the weight sits closer to uniform than Box B's."
-
-mm.plot_sampling_weight_space("boxA", years=[2015, 2016, 2017, 2018, 2019])
-plt.show()
-```
-
-```{python}
 #| label: fig-whist-a
 #| echo: false
-#| fig-cap: "Box A, same construction as the Box B weight histogram."
+#| fig-cap: "Box A distribution of the per-cell weight E[w]/uniform, same construction as Box B."
 
 mm.plot_sampling_weight_hist("boxA", years=[2015, 2016, 2017, 2018, 2019])
 plt.show()

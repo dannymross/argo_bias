@@ -2136,6 +2136,114 @@ def clean_argo(path=None, min_spacing=10, max_gap=90, min_span=90):
     return d[d["doy"] >= 0]
 
 
+def _haversine_km(lat1, lon1, lat2, lon2):
+    """Great-circle distance (km) between arrays of lat/lon points."""
+    R = 6371.0088
+    p1, p2 = np.radians(lat1), np.radians(lat2)
+    dp = np.radians(np.asarray(lat2) - np.asarray(lat1))
+    dl = np.radians(np.asarray(lon2) - np.asarray(lon1))
+    a = np.sin(dp / 2) ** 2 + np.cos(p1) * np.cos(p2) * np.sin(dl / 2) ** 2
+    return 2 * R * np.arcsin(np.sqrt(np.clip(a, 0, 1)))
+
+
+def trajectory_divergence(tol_days=6, max_days=None, tracks=None, pool=None, cleaned=None):
+    """Separation between each real Argo float and its GLORYS-park sim twin.
+
+    The argo-actual full-trajectory run advects each real deployment verbatim; this
+    matches every real profile (after deployment) to the nearest sim position in
+    time (within tol_days) and returns the great-circle separation vs days since
+    deployment. Isolates real-vs-reanalysis drift: a park-only sim that tracked
+    real floats would stay small; one that diverges to the array's own scale shows
+    the residual bias gap is advection error, which a dive cycle cannot fix.
+    """
+    tr = tracks if tracks is not None else pd.read_csv(
+        os.path.join(cfg.OUT_DIR, "actual_full_tracks.csv"), parse_dates=["time"])
+    pl = pool if pool is not None else pd.read_csv(
+        os.path.join(cfg.OUT_DIR, "argo_actual_pool.csv"), parse_dates=["date"])
+    real = clean_argo() if cleaned is None else cleaned
+    to_naive = lambda s: pd.to_datetime(s, utc=True).dt.tz_convert("UTC").dt.tz_localize(None)
+    real = real.assign(date=to_naive(real["date"]))
+    pl = pl.assign(date=to_naive(pl["date"]))
+    tr = tr.assign(time=pd.to_datetime(tr["time"]).astype("datetime64[ns]"))
+    realg = {int(f): g.sort_values("date") for f, g in real.groupby("float_id")}
+    simg = {int(s): g.sort_values("time") for s, g in tr.groupby("seed_id")}
+
+    rows = []
+    for pr in pl.itertuples():
+        st = simg.get(int(pr.seed_id))
+        rt = realg.get(int(pr.float_id))
+        if st is None or rt is None:
+            continue
+        rt = rt[rt["date"] >= pr.date]
+        if len(rt) < 2 or len(st) < 2:
+            continue
+        s_t = st["time"].to_numpy()
+        r_t = rt["date"].to_numpy()
+        j = np.clip(np.searchsorted(s_t, r_t), 1, len(s_t) - 1)
+        pick = np.where(np.abs(r_t - s_t[j - 1]) <= np.abs(s_t[j] - r_t), j - 1, j)
+        gap = np.abs((s_t[pick] - r_t) / np.timedelta64(1, "D"))
+        ok = gap <= tol_days
+        if not ok.any():
+            continue
+        rows.append(pd.DataFrame({
+            "seed_id": int(pr.seed_id), "float_id": int(pr.float_id),
+            "elapsed_days": (r_t[ok] - np.datetime64(pr.date)) / np.timedelta64(1, "D"),
+            "sep_km": _haversine_km(rt["lat"].to_numpy()[ok], rt["lon"].to_numpy()[ok],
+                                    st["lat"].to_numpy()[pick][ok],
+                                    st["lon"].to_numpy()[pick][ok]),
+            "rlat": rt["lat"].to_numpy()[ok], "rlon": rt["lon"].to_numpy()[ok]}))
+    div = pd.concat(rows, ignore_index=True)
+    return div[div["elapsed_days"] <= max_days] if max_days else div
+
+
+def _decorrelation_km(div, seed=0, n=6000):
+    """Median great-circle distance between random pairs of the array's profile
+    positions -- the separation two independent floats reach, i.e. the no-skill floor."""
+    pts = div[["rlat", "rlon"]].drop_duplicates().to_numpy()
+    r = np.random.default_rng(seed)
+    i, j = r.integers(0, len(pts), n), r.integers(0, len(pts), n)
+    return float(np.median(_haversine_km(pts[i, 0], pts[i, 1], pts[j, 0], pts[j, 1])))
+
+
+def trajectory_divergence_summary(div=None, marks=(10, 30, 90, 180, 365, 730)):
+    """Median (IQR) sim-vs-real separation and n at a few elapsed-time marks."""
+    div = trajectory_divergence() if div is None else div
+    rows = []
+    for m in marks:
+        w = div[(div["elapsed_days"] > m - 15) & (div["elapsed_days"] <= m + 15)]["sep_km"]
+        if len(w):
+            rows.append({"days since deployment": m, "median sep (km)": w.median(),
+                         "IQR (km)": w.quantile(0.75) - w.quantile(0.25), "n": len(w)})
+    out = pd.DataFrame(rows)
+    out.attrs["decorrelation_km"] = _decorrelation_km(div)
+    return out
+
+
+def plot_trajectory_divergence(div=None, bin_days=20, figsize=(9.5, 5.2)):
+    """Sim-vs-real separation vs days since deployment: median + IQR, with the
+    decorrelated-floats floor. Rising to that floor = park advection loses the float."""
+    import matplotlib.pyplot as plt
+    div = trajectory_divergence() if div is None else div
+    b = (np.floor(div["elapsed_days"] / bin_days) * bin_days + bin_days / 2)
+    g = div.assign(b=b).groupby("b")["sep_km"]
+    med, q1, q3, n = g.median(), g.quantile(0.25), g.quantile(0.75), g.size()
+    x = med.index.to_numpy()[n.to_numpy() >= 20]
+    med, q1, q3 = med.loc[x], q1.loc[x], q3.loc[x]
+    sat = _decorrelation_km(div)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.fill_between(x, q1, q3, alpha=0.22, color="tab:blue", label="IQR")
+    ax.plot(x, med, color="tab:blue", lw=1.8, label="median separation")
+    ax.axhline(sat, ls="--", color="0.4",
+               label=f"decorrelated floats (~{sat:.0f} km)")
+    ax.set_xlabel("days since deployment")
+    ax.set_ylabel("real vs GLORYS-park separation (km)")
+    ax.set_ylim(0, None)
+    ax.legend(loc="lower right", fontsize=9)
+    fig.tight_layout()
+    return fig
+
+
 def argo_bias_by_year(box, cleaned=None, path=None):
     """Realized bias of the REAL Argo array sampling the GLORYS anomaly field:
     B_k = mean over that box's year-k Argo profiles of Z_k, minus Zbar_k (J/m^2).
@@ -2568,6 +2676,47 @@ def plot_sampling_weight_space(box, tag="_pilot", years=None, figsize=None):
     np.atleast_1d(axes)[0].set_ylabel("lat")
     fig.colorbar(pm, ax=list(np.atleast_1d(axes)), shrink=0.85,
                  label="log2( E[w] / uniform )")
+    return fig
+
+
+def plot_sampling_weight_space_combined(boxes=("boxB", "boxA"), tag="_pilot",
+                                        years=None, figsize=None):
+    """Over-/under-sampling map log2(E[w]/uniform), both boxes on one both-box base
+    map per year and one shared symmetric scale, so the two arrays' spatial
+    preference contrasts directly. Native 1/12 deg grid; red over-, blue under-sampled.
+    """
+    from matplotlib.colors import TwoSlopeNorm
+
+    data = {}
+    for b in boxes:
+        Ew, lat, lon, p = sampling_weight_space(b, tag)
+        logp = np.where(p > 0, np.log2(np.where(p > 0, p, np.nan)), np.nan)
+        yrs = years or sorted(int(y) for y in Ew.index.get_level_values("year").unique())
+        per = {}
+        for y in yrs:
+            w = Ew.xs(y, level="year")
+            i = w.index.get_level_values("ilat").to_numpy()
+            j = w.index.get_level_values("ilon").to_numpy()
+            v = w.to_numpy()
+            G = np.full(p.shape, np.nan)
+            pos = v > 0
+            G[i[pos], j[pos]] = np.log2(v[pos]) - logp[i[pos], j[pos]]
+            per[y] = xr.DataArray(G, dims=("latitude", "longitude"),
+                                  coords={"latitude": lat, "longitude": lon})
+        data[b] = per
+    years = years or sorted(next(iter(data.values())).keys())
+    finite = np.concatenate([data[b][y].values[np.isfinite(data[b][y].values)]
+                             for b in boxes for y in years])
+    vmax = float(np.percentile(np.abs(finite), 99))
+    norm = TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax)
+    ext = _both_box_extent(boxes)
+
+    figsize = figsize or (3.0 * len(years) + 1.5, 4.6)
+    fig, axes, caxes = _map_grid(1, len(years), figsize)
+    for c, y in enumerate(years):
+        im = _draw_domain_map(axes[0][c], [data[b][y] for b in boxes], norm, "RdBu_r",
+                              ext, str(y), True, c == 0, scale=1.0, boxes=boxes)
+    fig.colorbar(im, cax=caxes[0], label="log2( E[w] / uniform )")
     return fig
 
 
