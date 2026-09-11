@@ -479,6 +479,48 @@ bootstrap's in-box standing stock ($\sim\!15$) is below real Argo's ($\sim\!27$�
 array also draws floats deployed outside the seed region that drift in; in-box profile counts still
 match ($\sim\!500$/yr), so the $n$-independent mean-bias comparison holds.
 
+## Is the residual gap the missing dive cycle?
+
+The park-only sim omits the dive cycle — the ascent, the $\sim\!1$-day surface drift, and the descent
+— so one reading of the residual $\sim\!0.3$ GJ/m$^2$ is that a profile recorded at the $1000$ m park
+position sits systematically away from where a real float actually surfaces. To test this we advect
+each real deployment verbatim at park depth, keeping the full drift path, and compare the GLORYS-park
+track to the *same* real float's profile positions over time.
+
+```{python}
+#| label: load-divergence
+#| include: false
+
+div = mm.trajectory_divergence()
+```
+
+```{python}
+#| echo: false
+
+HTML(fmt(mm.trajectory_divergence_summary(div), 1))
+```
+
+```{python}
+#| label: fig-divergence
+#| echo: false
+#| fig-cap: "Great-circle separation between each real Argo float and its GLORYS-park sim twin vs days since deployment (median and IQR over 359 floats), against the level two independent floats reach (dashed)."
+
+mm.plot_trajectory_divergence(div)
+plt.show()
+```
+
+The sim loses the real float fast: median separation is already $\sim\!53$ km at one $10$-day cycle,
+$\sim\!135$ km at a month and $\sim\!290$ km at three, climbing through $\sim\!590$ km at a year
+(@fig-divergence). The field's mesoscale correlation length is $\sim\!50$–$100$ km, so the GLORYS-park
+position exceeds it *within a single cycle* and is several correlation lengths off well inside the
+analysis year — it samples effectively independent locations at the seasonal scale that sets the bias.
+A dive cycle would add only the $\sim\!1$-day surface excursion per cycle (tens of km, largely
+non-persistent), far too small to produce or repair a divergence that grows at $\sim\!5$ km/day. **So
+the drift residual is reanalysis and advection error — real $1000$ m currents and unresolved eddies,
+not the missing surfacing — and adding a dive cycle to the advection would not close it.** (The
+$\pm 6$-day matching tolerance inflates the $10$-day point; the month-plus separations dwarf it, and
+the separation also bundles the surface-vs-park offset, which only reinforces the conclusion.)
+
 # Conclusions
 
 From this $100$-realization pilot:
