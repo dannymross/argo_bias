@@ -308,12 +308,15 @@ def gather_chunks(tag):
 def _print_summary(est):
     from osse import mean_mc as mm
     print("\nPer-year bias, averaged over realisations (GJ/m2):")
+    has_u = "B_unif" in est.columns
     for box, g in est.groupby("box"):
-        s = (g.groupby("year").agg(mean_B=("B", "mean"), sd_B=("B", "std"),
-                                   mean_B_unif=("B_unif", "mean"),
-                                   mean_stock=("standing_stock", "mean"),
-                                   mean_n=("n", "mean"), reps=("rep", "nunique")))
-        s[["mean_B", "sd_B", "mean_B_unif"]] *= mm.J_TO_GJ
+        agg = dict(mean_B=("B", "mean"), sd_B=("B", "std"),
+                   mean_stock=("standing_stock", "mean"),
+                   mean_n=("n", "mean"), reps=("rep", "nunique"))
+        if has_u:
+            agg["mean_B_unif"] = ("B_unif", "mean")
+        s = g.groupby("year").agg(**agg)
+        s[["mean_B", "sd_B"] + (["mean_B_unif"] if has_u else [])] *= mm.J_TO_GJ
         print(f"\n[{box}]")
         print(s.round(3).to_string())
 
@@ -481,10 +484,10 @@ def main_argo(mode="actual", reps=1, rep_offset=0, n=None, t_start="2010-01-01",
             shutil.rmtree(zpath, ignore_errors=True)
 
     prof = pd.concat(all_prof, ignore_index=True)
-    prof.to_csv(os.path.join(cfg.OUT_DIR, f"design_profiles{sfx}.csv"), index=False)
+    prof.to_csv(os.path.join(cfg.OUT_DIR, f"design_profiles_continuous{sfx}.csv"), index=False)
     est, ndropped = diagonal_estimates(prof, score_years)
-    est.to_csv(os.path.join(cfg.OUT_DIR, f"estimates{sfx}.csv"), index=False)
-    print(f"{len(prof):,} in-box profiles, {ndropped:,} dropped -> estimates{sfx}.csv")
+    est.to_csv(os.path.join(cfg.OUT_DIR, f"estimates_continuous{sfx}.csv"), index=False)
+    print(f"{len(prof):,} in-box profiles, {ndropped:,} dropped -> estimates_continuous{sfx}.csv")
     _print_summary(est)
     return est
 
