@@ -110,7 +110,7 @@ plt.show()
 ```
 
 @fig-days is the field the designs actually sample, shown unaveraged: each panel is one real day,
-selected by where its spatial dispersion $\mathrm{sd}_{\mathbb{P}}(\tilde Z_k(\cdot,d))$ falls in the
+selected by where its spatial dispersion $\mathrm{sd}_{\mathbb{P}}(\tilde Z_k(\cdot,\tau))$ falls in the
 distribution of all $3{,}650$ days. 
 
 The same construction applied to the flow that moves the floats gives @fig-vel-u and @fig-vel-v: the
@@ -243,7 +243,7 @@ carried explicitly in @tbl-truth rather than assumed zero.
 
 Let $\mathbb{P}$ be the normalized area $\times$ time probability measure on the Box B analysis
 domain: the base measure is surface measure restricted to the wet native GLORYS cells
-($\mathrm{deptho} > 2000$ m, intersected with the data support), $A_j = e1t_j\,e2t_j$, tensored with
+($\mathrm{deptho} > 2000$ m, intersected with the data support), $A_c = e1t_c\,e2t_c$, tensored with
 counting measure on the $365$ days of the year and normalized. The target is the residual field's
 domain mean,
 
@@ -335,7 +335,7 @@ space–time; real Argo is deployed programmatically, so its coverage is patchie
 decade, but individual drift paths trace the same circulation — the contrast is in *where and when
 floats are placed*, not in the advection itself.
 
-**Reference.** An $n$-matched iid draw from $\mathbb{P}$ (cell $\propto A_j$, day-of-year uniform) is a
+**Reference.** An $n$-matched iid draw from $\mathbb{P}$ (cell $\propto A_c$, day-of-year uniform) is a
 genuine sample from $\mathbb{P}$ with $\mathbb{E}[B] = 0$ — the null reference and an end-to-end check
 of the gather, the day-of-year indexing, and the $\bar Z_k$ subtraction. Because it needs no advection
 it is drawn as a large ensemble ($2{,}000$ per box-year, at the year's median $n$), so its mean is a
@@ -344,17 +344,31 @@ array of the same size.
 
 # The sampling weight field
 
-The bias is a projection: $B^{(d)}_k = \langle \tilde Z_k,\, w^{(d)} - p\rangle$, the inner product of
-the residual field with the excess of the empirical sampling weight $w^{(d)}$ over the uniform weight
-$p_{c,d} = A_c / (\sum_c A_c \cdot 365)$. Averaging the empirical weight over realizations estimates
-$\mathbb{E}[w]$ — the normalized occupancy measure of the advective array — so
-$\mathbb{E}[B_k] = \langle \tilde Z_k,\, \mathbb{E}[w] - p\rangle$. This section shows $\mathbb{E}[w]$
-on the native $1/12^\circ \times$ daily grid for the scored years $2015$–$2019$.
+The bias is a projection, $B^{(d)}_k = \langle \tilde Z_k,\, w^{(d)} - p\rangle$, the inner product of
+the residual field with the excess of the empirical sampling weight over the uniform weight
+$p_{c,\tau} = A_c / (\sum_c A_c \cdot 365)$. One realization's sampling is the normalized empirical measure
 
-$\mathbb{E}[w]$ lives on spacetime, so it is shown through its spatial and temporal marginals. These
-are projections: the bias is the *joint* inner product, and does **not** split additively into a
-space and a time part — a space–time interaction remains, and only the temporal marginal carries an
-exact bias component $\sum_d (\mathbb{E}[w^t_d] - \tfrac1{365})\,\bar Z_k(d)$.
+$$w^{(d)} \;=\; \frac{1}{n}\sum_{i=1}^{n} \delta_{x_i}$$
+
+on the spacetime domain $\mathcal{X} = \mathcal{C} \times \mathcal{T}$ — the wet native cells
+$\mathcal{C}$ and the $365$ days $\mathcal{T}$ — and averaging it over realizations gives
+$\mathbb{E}[w]$, the normalized occupancy (intensity) measure of the advective array, with
+$\mathbb{E}[B_k] = \langle \tilde Z_k,\, \mathbb{E}[w] - p\rangle$.
+
+$\mathbb{E}[w]$ lives on spacetime; we show it through its **spatial marginal**, the pushforward of
+$w$ under the projection $\pi:(c,\tau)\mapsto c$,
+
+$$w^{\mathrm{sp}}_c \;=\; \sum_{\tau\in\mathcal{T}} w_{c,\tau} \;=\; \frac{\#\{\,i : x_i \in c\,\}}{n},$$
+
+the fraction of a realization's profiles that fall in cell $c$, summed over all days. The maps below
+show $\mathbb{E}[w^{\mathrm{sp}}_c]$ — the expected such fraction, i.e. the array's normalized spatial
+intensity — over the scored years $2015$–$2019$ on the native $1/12^\circ$ grid, against the uniform
+area marginal $p^{\mathrm{sp}}_c = A_c / \sum_{c'} A_{c'}$, as the ratio
+$q_c = \mathbb{E}[w^{\mathrm{sp}}_c] / p^{\mathrm{sp}}_c$ ($=1$ under area-fair sampling). The temporal
+marginal is flat by construction — the fixed $10$-day cadence, uniform release phase, and equilibrium
+stock leave no seasonal preference — so it is not shown; note only that $B_k$ is the *joint* spacetime
+inner product and does not split additively into space and time, a space–time interaction remaining
+(@tbl-decomp).
 
 ## Spatial marginal
 
@@ -408,47 +422,6 @@ factor of two and the 99th percentile near $2\times$. Box B is the more preferen
 its over-sampled cells cluster where the North Atlantic Current concentrates floats. The strongest
 concentration happens in shallow, sub-$2000$ m cells *outside* the mask, where it cannot enter $B$;
 what remains on-mask is the moderate structure shown here, consistent with the small measured bias.
-
-## Temporal marginal
-
-::: {.panel-tabset}
-
-### Box B
-
-```{python}
-#| label: fig-wtime
-#| echo: false
-#| fig-cap: "Box B. Seasonal marginal of the sampling weight: E[w] per day-of-year against uniform, one line per year. Near 1 throughout means no seasonal sampling bias."
-
-mm.plot_sampling_weight_time("boxB", years=[2015, 2016, 2017, 2018, 2019])
-plt.show()
-```
-
-### Box A
-
-```{python}
-#| label: fig-wtime-a
-#| echo: false
-#| fig-cap: "Box A, same construction."
-
-mm.plot_sampling_weight_time("boxA", years=[2015, 2016, 2017, 2018, 2019])
-plt.show()
-```
-
-:::
-
-The day-of-year weight stays within a few percent of uniform all year in both boxes. This is **by
-construction, and deliberately so**: floats profile on a fixed $10$-day cadence independent of season,
-release phases are uniform, and the multi-year lead holds the within-year standing stock flat, so no
-part of the design profiles preferentially in any season. We are therefore not modelling the
-mechanisms that drive *temporal* sampling bias in real observing systems — seasonal deployment surges,
-under-ice winter gaps, seasonally varying mortality or cycle timing — an assumption that is defensible
-for ice-free, mid-latitude Box B, where real Argo also cycles year-round, but is an assumption, not a
-result. Removing the seasonal marginal by design is the point: it isolates the two mechanisms that are
-genuinely dynamical — spatial preference and the space–time interaction — so that any bias the array
-shows is attributable to *where* it samples and to how that *where* co-varies with the field through
-the year, not to *when*. The residual few-percent wiggle is weak seasonal in/out-advection at the
-$1000$ m park depth, not a sampling choice.
 
 ## Bias as a covariance
 
@@ -637,16 +610,13 @@ HTML(fmt(mm.continuous_bias_table(est, "boxA", ref), 4))
 
 :::
 
-**The bias is small and the spread is large.** In standardized terms $\overline{B_k}$ stays within
-$0.012\,\sigma_k$ in Box B and $0.019\,\sigma_k$ in Box A — a few hundredths of a GJ/m$^2$ — while the
-across-realization spread $\mathrm{sd}(B^{(d)}_k)$ is $0.32$–$0.37$ GJ/m$^2$ in Box B and $0.08$–$0.10$
-in Box A, an order of magnitude larger than the mean. The displacement is a property of the ensemble,
-invisible in any single deployment. The **uniform mean B** column and the dashed overlays confirm the
-$n$-matched null is unbiased — its large-ensemble mean sits on zero (95% CI covering zero every year).
-Resolution is then limited by the *advective* side: at $100$ realizations its mean has a Monte-Carlo se
-of $\sim\!0.03$ GJ/m$^2$ in Box B and $\sim\!0.01$ in Box A, so its $95\%$ CI clears zero only where
-the bias is largest — Box A 2017 and Box B 2018 most clearly — while the marginal years overlap zero.
-More advective realizations are the way to resolve the rest.
+**The spread dwarfs the displacement.** The across-realization spread $\mathrm{sd}(B^{(d)}_k)$ is
+$0.32$–$0.37$ GJ/m$^2$ in Box B and $0.08$–$0.10$ in Box A — an order of magnitude larger than the mean
+bias, which is a property of the ensemble, invisible in any single deployment. Resolution is limited by
+the *advective* side: at $100$ realizations its mean has a Monte-Carlo se of $\sim\!0.03$ GJ/m$^2$ in
+Box B and $\sim\!0.01$ in Box A, so its $95\%$ CI clears zero only where the bias is largest — Box A
+2017 and Box B 2018 most clearly — while the marginal years overlap zero. More advective realizations
+would resolve the rest.
 
 **The real Argo array is more biased than the uniformly-seeded simulation.** The green lines apply the
 same estimator to the actual Argo profile positions sampling the GLORYS anomaly field, after QC
@@ -769,7 +739,7 @@ non-uniformly (on-mask up to $\sim\!3.6\times$ over-sampling, $\operatorname{sd}
 @fig-whist), yet the bias is only $\sim\!1$–$5\%$ of the Cauchy–Schwarz ceiling that non-uniformity
 permits, i.e. a weight–field correlation $|\rho_k|\approx0.02$. Preferential sampling does not imply
 preferential bias for this functional — the estimand-level bias is the covariance
-$\operatorname{Cov}_p(r,\tilde Z_k)$, and the array sits near its null space, not a property of sampling
+$\operatorname{Cov}_{\mathbb{P}}(q,\tilde Z_k)$, and the array sits near its null space, not a property of sampling
 non-uniformity per se.
 
 **The bias is irreducibly spatiotemporal.** The temporal marginal is zero by construction and the
