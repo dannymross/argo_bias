@@ -1096,6 +1096,49 @@ def plot_argo_trajectory_map(boxes=("boxA", "boxB"), years=(2010, 2019),
                            years=list(range(years[0], years[1] + 1)), subset_seed=0)
 
 
+def plot_trajectory_twins(pairs=((295, 6901117), (68, 4901217)), tracks=None,
+                          pool=None, cleaned=None, boxes=("boxA", "boxB"),
+                          figsize=(8.5, 7.2)):
+    """Real Argo float vs its GLORYS-park sim twin for a few long-lived floats,
+    to show the two tracks drift apart from a shared deployment. Each pair shares a
+    colour; real is solid, sim twin dashed; the shared deployment is a black star,
+    the real end a filled circle and the sim end an open square."""
+    import matplotlib.pyplot as plt
+    tr = tracks if tracks is not None else pd.read_csv(
+        os.path.join(cfg.OUT_DIR, "actual_full_tracks.csv"), parse_dates=["time"])
+    pl = pool if pool is not None else pd.read_csv(
+        os.path.join(cfg.OUT_DIR, "argo_actual_pool.csv"), parse_dates=["date"])
+    real = clean_argo() if cleaned is None else cleaned
+    to_naive = lambda s: pd.to_datetime(s, utc=True, format="ISO8601").dt.tz_localize(None)
+    real = real.assign(date=to_naive(real["date"]))
+    pl = pl.assign(date=to_naive(pl["date"]))
+    tr = tr.assign(time=pd.to_datetime(tr["time"], format="ISO8601").astype("datetime64[ns]"))
+    realg = {int(f): g.sort_values("date") for f, g in real.groupby("float_id")}
+    simg = {int(s): g.sort_values("time") for s, g in tr.groupby("seed_id")}
+    dep = {int(r.seed_id): r for r in pl.itertuples()}
+
+    fig, ax, pc, e = _domain_base(boxes, figsize)
+    colors = ["tab:blue", "black", "tab:purple", "saddlebrown"]
+    for k, (sid, fid) in enumerate(pairs):
+        c = colors[k % len(colors)]
+        d = dep[int(sid)]
+        rt = realg[int(fid)]; rt = rt[rt["date"] >= d.date]
+        st = simg[int(sid)]
+        yrs = (rt["date"].max() - d.date).days / 365.25
+        ax.plot(rt["lon"], rt["lat"], "-", color=c, lw=1.7, transform=pc, zorder=3,
+                label=f"real {fid} ({yrs:.1f} yr)")
+        ax.plot(st["lon"], st["lat"], "--", color=c, lw=1.7, alpha=0.85, transform=pc,
+                zorder=3, label=f"sim twin {fid}")
+        ax.plot(rt["lon"].iloc[-1], rt["lat"].iloc[-1], "o", color=c, ms=7,
+                transform=pc, zorder=4)
+        ax.plot(st["lon"].iloc[-1], st["lat"].iloc[-1], "s", mfc="none", mec=c,
+                mew=1.6, ms=8, transform=pc, zorder=4)
+        ax.plot(d.lon, d.lat, "*", color="k", ms=13, mec="w", mew=0.6,
+                transform=pc, zorder=5, label="deployment" if k == 0 else None)
+    ax.legend(loc="lower left", fontsize=7.5, framealpha=0.9)
+    return fig
+
+
 def bathymetry(tag="static_vel"):
     """GLORYS deptho over the velocity domain, on the native advection grid."""
     with xr.open_dataset(os.path.join(cfg.GLORYS_DIR, "static", f"{tag}_bathy.nc")) as ds:

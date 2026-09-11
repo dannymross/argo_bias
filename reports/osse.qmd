@@ -509,11 +509,22 @@ mm.plot_trajectory_divergence(div)
 plt.show()
 ```
 
+```{python}
+#| label: fig-twins
+#| echo: false
+#| fig-cap: "Two long-lived real Argo floats (solid) and their GLORYS-park sim twins (dashed) from a shared deployment (star; real end a filled circle, sim end an open square). Blue is a Box A float (~8 yr, subtropical gyre); black a Box B float (~6 yr, NAC / Gulf Stream)."
+
+mm.plot_trajectory_twins()
+plt.show()
+```
+
 The sim loses the real float fast: median separation is already $\sim\!53$ km at one $10$-day cycle,
 $\sim\!135$ km at a month and $\sim\!290$ km at three, climbing through $\sim\!590$ km at a year
 (@fig-divergence). The field's mesoscale correlation length is $\sim\!50$–$100$ km, so the GLORYS-park
 position exceeds it *within a single cycle* and is several correlation lengths off well inside the
 analysis year — it samples effectively independent locations at the seasonal scale that sets the bias.
+Individual twins make this concrete (@fig-twins): a subtropical-gyre float and its twin part slowly,
+while a NAC / Gulf-Stream float and its twin split early and end up in different parts of the basin.
 A dive cycle would add only the $\sim\!1$-day surface excursion per cycle (tens of km, largely
 non-persistent), far too small to produce or repair a divergence that grows at $\sim\!5$ km/day. **So
 the drift residual is reanalysis and advection error — real $1000$ m currents and unresolved eddies,
