@@ -755,8 +755,8 @@ def truth_table(boxes=("boxB", "boxA")):
         t = pd.read_csv(os.path.join(cfg.OUT_DIR, f"domain_means_{b}.csv"))
         t = pd.DataFrame({"year": t["year"],
                           f"Zbar {b}": t["zbar"] * J_TO_GJ,
-                          f"sd_P(Z) {b}": t["sd_Z"] * J_TO_GJ,
-                          f"Zbar/sd {b}": t["zbar"] / t["sd_Z"]})
+                          f"sd_k {b}": t["sd_Z"] * J_TO_GJ,
+                          f"Zbar/sd_k {b}": t["zbar"] / t["sd_Z"]})
         out = t if out is None else out.merge(t, on="year")
     return out
 
@@ -2031,6 +2031,7 @@ def continuous_bias_table(est, box, ref=None):
                      "5%": np.percentile(b, 5) * J_TO_GJ,
                      "95%": np.percentile(b, 95) * J_TO_GJ,
                      "P(B < 0)": float((b < 0).mean()),
+                     "sd_k": sd[int(k)] * J_TO_GJ,
                      "mean B / sd_k": b.mean() / sd[int(k)],
                      "uniform mean B": um * J_TO_GJ})
     return pd.DataFrame(rows)
@@ -2752,7 +2753,7 @@ def plot_sampling_weight_hist(box, tag="_pilot", years=None, figsize=None):
     import matplotlib.pyplot as plt
     ratio = sampling_weight_ratio(box, tag)
     years = years or sorted(ratio)
-    hi = np.percentile(np.concatenate([ratio[y] for y in years]), 99.5)
+    hi = np.max(np.concatenate([ratio[y] for y in years]))
     bins = np.linspace(0, hi, 40)
     fig, axes = plt.subplots(1, len(years), figsize=figsize or (2.4 * len(years) + 1.0, 3.0),
                              sharex=True, sharey=True)
