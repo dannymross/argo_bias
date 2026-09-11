@@ -103,19 +103,20 @@ Retained area is $92.35\%$ and $99.77\%$ against $92.83\%$ and $99.92\%$ from de
 ```{python}
 #| label: fig-days
 #| echo: false
-#| fig-cap: "Residual field Z (GJ per m2) on days at the 5th, 50th and 95th percentile of each box's daily spatial dispersion; rows use independent colour scales."
+#| fig-cap: "Residual field Z (GJ per m2) on days at the 5th, 50th and 95th percentile of the combined daily spatial dispersion, both boxes on one shared diverging scale."
 
 mm.plot_quantile_days()
 plt.show()
 ```
 
-@fig-days is the field the designs actually sample, shown unaveraged: each panel is one real day,
-selected by where its spatial dispersion $\mathrm{sd}_{\mathbb{P}}(\tilde Z_k(\cdot,\tau))$ falls in the
-distribution of all $3{,}650$ days. 
+@fig-days is the field the designs actually sample, shown unaveraged: each column is one real day
+with both boxes drawn on the same map, selected by where the combined-domain spatial dispersion
+$\mathrm{sd}_{\mathbb{P}}(\tilde Z_k(\cdot,\tau))$ falls in the distribution of all $3{,}650$ days. Both
+boxes share one colour scale, so the western-boundary and subtropical amplitudes contrast directly.
 
 The same construction applied to the flow that moves the floats gives @fig-vel-u and @fig-vel-v: the
-two park-depth velocity components, each on the day whose own $\mathbb{P}$-weighted spatial standard
-deviation sits at the 5th, 50th and 95th percentile of that component's $3{,}650$ daily values. The
+two park-depth velocity components, each on the day whose combined-domain $\mathbb{P}$-weighted spatial
+standard deviation sits at the 5th, 50th and 95th percentile of that component's $3{,}650$ daily values. The
 velocity archive is on the identical native grid and is defined at every cell of the analysis mask,
 so these are the same measure $\mathbb{P}$ and the same cells as @fig-days — no regridding and no
 second mask. Values are interpolated to the $1000$ m park depth between the two archived levels
@@ -124,7 +125,7 @@ second mask. Values are interpolated to the $1000$ m park depth between the two 
 ```{python}
 #| label: fig-vel-u
 #| echo: false
-#| fig-cap: "Eastward velocity at 1000 m in cm/s."
+#| fig-cap: "Eastward velocity at 1000 m (cm/s), both boxes on one shared diverging scale."
 mm.plot_velocity_quantile_days("uo")
 plt.show()
 ```
@@ -132,7 +133,7 @@ plt.show()
 ```{python}
 #| label: fig-vel-v
 #| echo: false
-#| fig-cap: "Northward velocity at 1000 m in cm/s."
+#| fig-cap: "Northward velocity at 1000 m (cm/s), both boxes on one shared diverging scale."
 mm.plot_velocity_quantile_days("vo")
 plt.show()
 ```
@@ -194,7 +195,7 @@ itself.
 ```{python}
 #| label: fig-meanfield
 #| echo: false
-#| fig-cap: "Fitted mean field (quadratic trend plus annual and semiannual harmonics) at mid-month, 2015, in GJ per m2."
+#| fig-cap: "Fitted mean field (quadratic trend plus annual and semiannual harmonics) at mid-month 2015, both boxes on one shared scale, in GJ per m2."
 
 mm.plot_mean_field_months()
 plt.show()
@@ -203,17 +204,18 @@ plt.show()
 ```{python}
 #| label: fig-decomp3
 #| echo: false
-#| fig-cap: "The decomposition on one day per box, in GJ per m2."
+#| fig-cap: "The OHC = mean field + residual decomposition on one shared day, both boxes drawn per field, in GJ per m2."
 
 mm.plot_ohc_decomposition()
 plt.show()
 ```
 
 In @fig-decomp3 the identity $\mathrm{OHC} = \hat m + \tilde Z$ holds exactly on the analysis mask:
-the top row is reconstructed from the other two rather than re-integrated from temperature, and
+the OHC panel is reconstructed from the other two rather than re-integrated from temperature, and
 reproduces the GLORYS field bitwise. OHC runs $60$–$90$ GJ/m$^2$ and is almost entirely captured by
-the smooth mean field; $\tilde Z$ is a few GJ/m$^2$ of mesoscale structure. On the Box B day shown,
-domain-mean OHC is $67.9$ GJ/m$^2$ against a mean field of $66.5$ and a residual of $+1.45$.
+the smooth mean field; $\tilde Z$ is a few GJ/m$^2$ of mesoscale structure. On the shared day shown
+($2010$-$02$-$26$), Box B's domain-mean OHC is $66.7$ GJ/m$^2$ against a mean field of $66.4$ (a $+0.3$
+residual) and Box A's $79.8$ against $80.2$ (a $-0.5$ residual).
 
 The mean field varies on two time scales, neither daily: the harmonics move the Box B domain mean by
 $3.80$ GJ/m$^2$ within a year ($1.50$ in Box A), the trend by $2.59$ across 2010–2019 ($0.96$), and
@@ -665,7 +667,9 @@ deployed from how much is real float motion diverging from the simplified advect
 cleaned float's first profile inside the box-plus-$8^\circ$ margin over $2010$–$2019$ ($359$
 deployments, with their real positions, dates, and lifespans). **argo-actual** advects that set
 verbatim — one realization, the direct fidelity check; **argo-bootstrap** resamples it with
-replacement at the real rate ($100$ realizations, positions jittered), carrying the real deployment
+replacement at the real rate ($100$ realizations), each drawn seed position perturbed by an
+independent Gaussian jitter of $5$ km standard deviation per axis (a few $1/12^\circ$ cells) so that
+repeated draws of the same real deployment are not exact duplicates, carrying the real deployment
 pattern with a Monte-Carlo spread.
 
 ```{python}

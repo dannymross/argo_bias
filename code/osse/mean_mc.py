@@ -353,32 +353,32 @@ def velocity_quantile_days(box, comp="uo", qs=(0.05, 0.5, 0.95)):
 
 
 def plot_velocity_quantile_days(comp="uo", boxes=("boxB", "boxA"), qs=(0.05, 0.5, 0.95),
-                                figsize=(12.5, 8.2), clip=0.995):
-    """Single-day park-depth velocity at quantiles of each box's daily spread.
+                                figsize=(13.5, 5.8), clip=0.995):
+    """Single-day park-depth velocity at quantiles of the combined daily spread.
 
-    One row per box on its own scale, as in plot_quantile_days: the boxes differ
-    several-fold in current strength and a shared scale would flatten Box A.
+    Both boxes on one both-box base map per column, one shared diverging scale.
     """
     from matplotlib.colors import TwoSlopeNorm
 
-    fig, axes, caxes = _map_grid(len(boxes), len(qs), figsize)
-    for r, box in enumerate(boxes):
-        sel = velocity_quantile_days(box, comp, qs)
-        days = []
-        for y, g in sel.groupby("year", sort=False):
-            d = _velocity_year(box, int(y))[comp]
-            days += [(i, d.isel(time=int(dd)) * M_S_TO_CM_S)
-                     for i, dd in zip(g.index, g["doy"])]
-        days = [d for _, d in sorted(days, key=lambda p: p[0])]
-        hi = max(float(np.nanquantile(np.abs(d.values), clip)) for d in days)
-        norm = TwoSlopeNorm(vmin=-hi, vcenter=0.0, vmax=hi)
-        for c, (ax, day, (_, s)) in enumerate(zip(axes[r], days, sel.iterrows())):
-            im = _draw_map(ax, day, norm, "RdBu_r", _box_extent(box),
-                           f"{box}  {int(s.q * 100)}th pctile day\n"
-                           f"{int(s.year)} doy {int(s.doy) + 1}, "
-                           f"sd {s.sd:.1f} cm/s", r == len(boxes) - 1, c == 0, scale=1.0)
-        fig.colorbar(im, cax=caxes[r],
-                     label=f"{VEL_COMPS[comp]} velocity at 1000 m (cm/s)")
+    sel = combined_velocity_quantile_days(comp, qs, boxes)
+    cols = {}
+    for y, g in sel.groupby("year", sort=False):
+        perbox = {b: _velocity_year(b, int(y))[comp] for b in boxes}
+        for idx, dd in zip(g.index, g["doy"]):
+            cols[idx] = [perbox[b].isel(time=int(dd)) * M_S_TO_CM_S for b in boxes]
+    cols = [cols[i] for i in sel.index]
+    hi = max(float(np.nanquantile(np.abs(da.values), clip))
+             for das in cols for da in das)
+    norm = TwoSlopeNorm(vmin=-hi, vcenter=0.0, vmax=hi)
+    ext = _both_box_extent(boxes)
+
+    fig, axes, caxes = _map_grid(1, len(qs), figsize)
+    for c, (das, (_, s)) in enumerate(zip(cols, sel.iterrows())):
+        im = _draw_domain_map(axes[0][c], das, norm, "RdBu_r", ext,
+                              f"{int(s.q * 100)}th pctile day\n"
+                              f"{int(s.year)} doy {int(s.doy) + 1}, "
+                              f"sd {s.sd:.1f} cm/s", True, c == 0, scale=1.0, boxes=boxes)
+    fig.colorbar(im, cax=caxes[0], label=f"{VEL_COMPS[comp]} velocity at 1000 m (cm/s)")
     return fig
 
 
@@ -455,23 +455,24 @@ def ohc_decomposition(box, year, doy):
     return (mhat + z).rename("ohc"), mhat.rename("mhat"), z, t
 
 
-def plot_ohc_decomposition(boxes=("boxB", "boxA"), q=0.5, figsize=(9.5, 11.0),
+def plot_ohc_decomposition(boxes=("boxB", "boxA"), q=0.5, figsize=(13.5, 6.4),
                            clip=0.995):
-    """OHC = mean field + residual on one representative day, per box.
+    """OHC = mean field + residual on one shared day, both boxes on one map per field.
 
-    Rows are the three fields; the first two share one sequential scale so the
-    residual's size relative to the OHC it came from is readable directly.
+    The day is the combined-domain q-quantile of daily spatial spread, so both
+    boxes are shown on the same date; OHC and mean field share one sequential
+    scale (the residual's size is then readable against the OHC it came from),
+    the residual its own diverging scale.
     """
+    import matplotlib.pyplot as plt
+    import cartopy.crs as ccrs
     from matplotlib.colors import Normalize, TwoSlopeNorm
 
-    parts, dates = {}, {}
-    for b in boxes:
-        d = quantile_days(b, (q,)).iloc[0]
-        *fields, t = ohc_decomposition(b, int(d.year), int(d.doy))
-        parts[b], dates[b] = fields, t
+    d = combined_quantile_days((q,), boxes).iloc[0]
+    parts = {b: ohc_decomposition(b, int(d.year), int(d.doy)) for b in boxes}
+    date = parts[boxes[0]][3]
 
-    flat = np.concatenate([np.ravel(p[i].values) for b in boxes for i in (0, 1)
-                           for p in [parts[b]]])
+    flat = np.concatenate([np.ravel(parts[b][i].values) for b in boxes for i in (0, 1)])
     lo, hi = (float(np.nanquantile(flat, x)) * J_TO_GJ for x in (0.005, 0.995))
     res = max(float(np.nanquantile(np.abs(parts[b][2].values), clip)) for b in boxes) * J_TO_GJ
     norms = [Normalize(lo, hi), Normalize(lo, hi),
@@ -480,13 +481,18 @@ def plot_ohc_decomposition(boxes=("boxB", "boxA"), q=0.5, figsize=(9.5, 11.0),
     labels = ["OHC 0-2000 m (GJ/m2)", "mean field (GJ/m2)", "residual Z (GJ/m2)"]
     names = ["OHC (observed)", "fitted mean field", "residual Z = OHC - mean"]
 
-    fig, axes, caxes = _map_grid(3, len(boxes), figsize, top=0.93, vgap=0.075)
-    for r in range(3):
-        for c, b in enumerate(boxes):
-            im = _draw_map(axes[r][c], parts[b][r], norms[r], cmaps[r], _box_extent(b),
-                           f"{b}  {names[r]}\n{dates[b]:%Y-%m-%d}",
-                           r == 2, c == 0)
-        fig.colorbar(im, cax=caxes[r], label=labels[r])
+    ext = _both_box_extent(boxes)
+    pc = ccrs.PlateCarree()
+    left, right, top, bottom, hgap = 0.04, 0.99, 0.90, 0.14, 0.03
+    w = (right - left - 2 * hgap) / 3
+    fig = plt.figure(figsize=figsize)
+    for c in range(3):
+        x = left + c * (w + hgap)
+        ax = fig.add_axes([x, bottom, w, top - bottom], projection=pc)
+        im = _draw_domain_map(ax, [parts[b][c] for b in boxes], norms[c], cmaps[c], ext,
+                              f"{names[c]}\n{date:%Y-%m-%d}", True, c == 0, boxes=boxes)
+        cax = fig.add_axes([x, bottom - 0.08, w, 0.02])
+        fig.colorbar(im, cax=cax, orientation="horizontal", label=labels[c])
     return fig
 
 
@@ -536,31 +542,155 @@ def _box_extent(box, pad=0.5):
     return [lo0 - pad, lo1 + pad, la0 - pad, la1 + pad]
 
 
-def plot_quantile_days(boxes=("boxB", "boxA"), qs=(0.05, 0.5, 0.95),
-                       figsize=(12.5, 8.2), clip=0.995):
-    """Single-day residual fields at quantiles of each box's daily spatial spread.
+def _raw_area(box):
+    """Wet-cell index and unnormalized cell areas (m^2) on the analysis mask."""
+    a = xr.open_dataset(os.path.join(cfg.OUT_DIR, f"cell_area_{box}.nc"))["cell_area"]
+    a = a.values.ravel()
+    wet = np.flatnonzero(np.isfinite(a))
+    return wet, a[wet]
 
-    One row per box on its own colour scale: the boxes differ several-fold in
-    amplitude, and a shared scale would flatten the within-box structure this
-    figure exists to show.
+
+def _both_box_extent(boxes=("boxB", "boxA"), pad=1.0):
+    """Map extent covering every box, padded, for a shared both-box view."""
+    la0 = min(cfg.BOXES[b]["lat_bounds"][0] for b in boxes)
+    la1 = max(cfg.BOXES[b]["lat_bounds"][1] for b in boxes)
+    lo0 = min(cfg.BOXES[b]["lon_bounds"][0] for b in boxes)
+    lo1 = max(cfg.BOXES[b]["lon_bounds"][1] for b in boxes)
+    return [lo0 - pad, lo1 + pad, la0 - pad, la1 + pad]
+
+
+def _draw_domain_map(ax, das, norm, cmap, extent, title, bottom_labels, left_labels,
+                     scale=J_TO_GJ, boxes=("boxB", "boxA")):
+    """Draw one or more per-box field patches on a shared both-box base map.
+
+    Each DataArray in `das` carries its own lat/lon, so the disjoint boxes land
+    in place on one map covering both; box outlines are added for orientation.
+    """
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+    from matplotlib.patches import Rectangle
+    pc = ccrs.PlateCarree()
+    ax.set_extent(extent, crs=pc)
+    ax.add_feature(cfeature.LAND, facecolor="0.88", zorder=0)
+    ax.add_feature(cfeature.COASTLINE, lw=0.4)
+    im = None
+    for da in das:
+        im = ax.pcolormesh(da["longitude"], da["latitude"], da.values * scale,
+                           cmap=cmap, norm=norm, transform=pc, shading="nearest",
+                           antialiased=False, linewidth=0, rasterized=True)
+    for b in boxes:
+        (la0, la1), (lo0, lo1) = cfg.BOXES[b]["lat_bounds"], cfg.BOXES[b]["lon_bounds"]
+        ax.add_patch(Rectangle((lo0, la0), lo1 - lo0, la1 - la0, transform=pc,
+                               fill=False, edgecolor="0.1", lw=0.8, zorder=4))
+    ax.set_title(title, fontsize=9)
+    _geo_ticks(ax, extent, bottom_labels, left_labels)
+    return im
+
+
+def combined_daily_spread(boxes=("boxB", "boxA"), path=None):
+    """sd_P(Z) per (year, doy) over the union of both boxes under one area measure."""
+    path = path or os.path.join(cfg.OUT_DIR, "daily_spread_combined.csv")
+    if os.path.exists(path):
+        return pd.read_csv(path)
+    fields = {}
+    for b in boxes:
+        z = xr.open_dataset(os.path.join(cfg.OUT_DIR, f"residual_field_{b}.nc"))["z"]
+        zf = z.values.reshape(z.sizes["year"], z.sizes["doy"], -1)
+        wet, area = _raw_area(b)
+        fields[b] = (zf, wet, area, [int(y) for y in z["year"].values])
+    years = sorted(set.intersection(*[set(f[3]) for f in fields.values()]))
+    w = np.concatenate([fields[b][2] for b in boxes])
+    w = w / w.sum()
+    ndoy = fields[boxes[0]][0].shape[1]
+    rows = []
+    for y in years:
+        vals = np.concatenate(
+            [fields[b][0][fields[b][3].index(y)][:, fields[b][1]].astype(np.float64)
+             for b in boxes], axis=1)
+        m1 = vals @ w
+        rows.append(pd.DataFrame({"year": y, "doy": np.arange(ndoy), "mean": m1,
+                                  "sd": np.sqrt(np.clip((vals * vals) @ w - m1**2, 0, None))}))
+    out = pd.concat(rows, ignore_index=True)
+    out.to_csv(path, index=False)
+    return out
+
+
+def combined_quantile_days(qs=(0.05, 0.5, 0.95), boxes=("boxB", "boxA")):
+    """The (year, doy) whose combined spatial sd is nearest each quantile."""
+    s = combined_daily_spread(boxes)
+    sd = s["sd"].to_numpy()
+    return pd.DataFrame([
+        {"q": q, "year": int(s["year"][i]), "doy": int(s["doy"][i]), "sd": sd[i]}
+        for q in qs for i in [int(np.argmin(np.abs(sd - np.quantile(sd, q))))]])
+
+
+def combined_velocity_daily_spread(comp="uo", boxes=("boxB", "boxA"), path=None):
+    """Spatial sd of a velocity component per (year, doy) over both boxes (cm/s)."""
+    path = path or os.path.join(cfg.OUT_DIR, f"daily_vel_spread_combined_{comp}.csv")
+    if os.path.exists(path):
+        return pd.read_csv(path)
+    areas = {b: _raw_area(b) for b in boxes}
+    w = np.concatenate([areas[b][1] for b in boxes])
+    w = w / w.sum()
+    years = sorted(set.intersection(*[set(_field_years(b)) for b in boxes]))
+    rows = []
+    for y in years:
+        cols, ndoy = [], None
+        for b in boxes:
+            d = _velocity_year(b, y)[comp]
+            ndoy = d.sizes["time"]
+            cols.append(d.values.reshape(ndoy, -1)[:, areas[b][0]].astype(np.float64))
+        vals = np.concatenate(cols, axis=1) * M_S_TO_CM_S
+        m1 = vals @ w
+        rows.append(pd.DataFrame({"year": y, "doy": np.arange(ndoy), "mean": m1,
+                                  "sd": np.sqrt(np.clip((vals * vals) @ w - m1**2, 0, None))}))
+    out = pd.concat(rows, ignore_index=True)
+    out.to_csv(path, index=False)
+    return out
+
+
+def combined_velocity_quantile_days(comp="uo", qs=(0.05, 0.5, 0.95),
+                                    boxes=("boxB", "boxA")):
+    """The (year, doy) whose combined velocity spatial sd is nearest each quantile."""
+    s = combined_velocity_daily_spread(comp, boxes)
+    sd = s["sd"].to_numpy()
+    return pd.DataFrame([
+        {"q": q, "year": int(s["year"][i]), "doy": int(s["doy"][i]), "sd": sd[i]}
+        for q in qs for i in [int(np.argmin(np.abs(sd - np.quantile(sd, q))))]])
+
+
+def plot_quantile_days(boxes=("boxB", "boxA"), qs=(0.05, 0.5, 0.95),
+                       figsize=(13.5, 5.8), clip=0.995):
+    """Single-day residual fields at quantiles of the combined daily spread.
+
+    Both boxes on one both-box base map per column, one shared diverging scale, so
+    the western-boundary and subtropical fields contrast directly; the quantile
+    days are chosen on the union-domain spatial dispersion.
     """
     from matplotlib.colors import TwoSlopeNorm
 
-    fig, axes, caxes = _map_grid(len(boxes), len(qs), figsize)
-    for r, box in enumerate(boxes):
-        sel = quantile_days(box, qs)
-        with xr.open_dataset(os.path.join(cfg.OUT_DIR, f"residual_field_{box}.nc")) as ds:
-            days = [ds["z"].sel(year=int(d.year)).isel(doy=int(d.doy)).load()
-                    for _, d in sel.iterrows()]
-        hi = max(float(np.nanquantile(np.abs(d.values), clip)) for d in days) * J_TO_GJ
-        norm = TwoSlopeNorm(vmin=-hi, vcenter=0.0, vmax=hi)
-        for c, (ax, day, (_, d)) in enumerate(zip(axes[r], days, sel.iterrows())):
-            im = _draw_map(ax, day, norm, "RdBu_r", _box_extent(box),
-                           f"{box}  {int(d.q * 100)}th pctile day\n"
-                           f"{int(d.year)} doy {int(d.doy) + 1}, "
-                           f"sd {d.sd * J_TO_GJ:.2f} GJ/m2",
-                           r == len(boxes) - 1, c == 0)
-        fig.colorbar(im, cax=caxes[r], label="Z (GJ/m2)")
+    sel = combined_quantile_days(qs, boxes)
+    opened = {b: xr.open_dataset(os.path.join(cfg.OUT_DIR, f"residual_field_{b}.nc"))
+              for b in boxes}
+    try:
+        cols = [[opened[b]["z"].sel(year=int(d.year)).isel(doy=int(d.doy)).load()
+                 for b in boxes] for _, d in sel.iterrows()]
+    finally:
+        for ds in opened.values():
+            ds.close()
+    hi = max(float(np.nanquantile(np.abs(da.values), clip))
+             for das in cols for da in das) * J_TO_GJ
+    norm = TwoSlopeNorm(vmin=-hi, vcenter=0.0, vmax=hi)
+    ext = _both_box_extent(boxes)
+
+    fig, axes, caxes = _map_grid(1, len(qs), figsize)
+    for c, (das, (_, d)) in enumerate(zip(cols, sel.iterrows())):
+        im = _draw_domain_map(axes[0][c], das, norm, "RdBu_r", ext,
+                              f"{int(d.q * 100)}th pctile day\n"
+                              f"{int(d.year)} doy {int(d.doy) + 1}, "
+                              f"sd {d.sd * J_TO_GJ:.2f} GJ/m2",
+                              True, c == 0, boxes=boxes)
+    fig.colorbar(im, cax=caxes[0], label="Z (GJ/m2)")
     return fig
 
 
@@ -789,21 +919,23 @@ def plot_deployment_advection(box="boxB", year=2015, reps=3, traj_rep=1,
 
 
 def plot_mean_field_months(boxes=("boxB", "boxA"), year=2015, months=(1, 4, 7, 10),
-                           figsize=(14.5, 8.2)):
-    """Fitted mean field at mid-month, one row per box on its own scale."""
+                           figsize=(14.5, 5.2)):
+    """Fitted mean field at mid-month, both boxes on one map per month, shared scale."""
     from matplotlib.colors import Normalize
     names = {1: "Jan", 4: "Apr", 7: "Jul", 10: "Oct"}
 
-    fig, axes, caxes = _map_grid(len(boxes), len(months), figsize)
-    for r, box in enumerate(boxes):
-        mf = mean_field_months(box, year, months)
-        lo, hi = (float(np.nanquantile(mf.values, q)) * J_TO_GJ for q in (0.01, 0.99))
-        norm = Normalize(vmin=lo, vmax=hi)
-        for c, ax in enumerate(axes[r]):
-            im = _draw_map(ax, mf.isel(month=c), norm, "viridis", _box_extent(box),
-                           f"{box}  {names.get(months[c], months[c])} {year}",
-                           r == len(boxes) - 1, c == 0)
-        fig.colorbar(im, cax=caxes[r], label="mean field (GJ/m2)")
+    mfs = {b: mean_field_months(b, year, months) for b in boxes}
+    flat = np.concatenate([np.ravel(mfs[b].values) for b in boxes])
+    lo, hi = (float(np.nanquantile(flat, q)) * J_TO_GJ for q in (0.01, 0.99))
+    norm = Normalize(vmin=lo, vmax=hi)
+    ext = _both_box_extent(boxes)
+
+    fig, axes, caxes = _map_grid(1, len(months), figsize)
+    for c, ax in enumerate(axes[0]):
+        im = _draw_domain_map(ax, [mfs[b].isel(month=c) for b in boxes], norm,
+                              "viridis", ext, f"{names.get(months[c], months[c])} {year}",
+                              True, c == 0, boxes=boxes)
+    fig.colorbar(im, cax=caxes[0], label="mean field (GJ/m2)")
     return fig
 
 
