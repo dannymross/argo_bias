@@ -1,4 +1,4 @@
----
+
 title: "Simulation Based Estimation of Sampling Bias"
 jupyter: python3
 fig-dpi: 300
@@ -273,9 +273,10 @@ HTML(fmt(mm.truth_table()))
 $\bar Z_k$ would be zero if the 1995–2019 mean-field fit were exact on the analysis years; the table above
 carries the small per-year misfit (largest $\bar Z_{2011} = -1.63$ GJ/m$^2$ in Box B), which is
 mean-field misfit, not sampling, and cancels from $B$ by construction (@sec-meanfield). The dispersion
-$\mathrm{sd}_{\mathbb{P}}(\tilde Z_k)$ — $6.3$–$7.6$ GJ/m$^2$ in Box B against $1.7$–$2.4$ in Box A,
-and rising through the decade in Box B — is the $\sigma_k$ that any cross-box comparison of $B$ must be
-standardized by.
+$\sigma_k = \mathrm{sd}_{\mathbb{P}}(\tilde Z_k)$ — $6.3$–$7.6$ GJ/m$^2$ in Box B against $1.7$–$2.4$ in
+Box A, and rising through the decade in Box B — is the scale any cross-box comparison of $B$ must be
+standardized by; it is the `sd_k` column here and the standardizing denominator in the bias tables
+below.
 
 # Deployment
 
@@ -400,6 +401,7 @@ plt.show()
 #| echo: false
 #| fig-cap: "Box A distribution of the per-cell weight E[w]/uniform, same construction as Box B."
 
+# force
 mm.plot_sampling_weight_hist("boxA", years=[2015, 2016, 2017, 2018, 2019])
 plt.show()
 ```
@@ -584,72 +586,6 @@ HTML(fmt(mm.continuous_bias_table(est, "boxA", ref), 4))
 
 :::
 
-**The spread dwarfs the displacement.** The across-realization spread $\mathrm{sd}(B^{(d)}_k)$ is
-$0.32$–$0.37$ GJ/m$^2$ in Box B and $0.08$–$0.10$ in Box A — an order of magnitude larger than the mean
-bias, which is a property of the ensemble, invisible in any single deployment. Resolution is limited by
-the *advective* side: at $100$ realizations its mean has a Monte-Carlo se of $\sim\!0.03$ GJ/m$^2$ in
-Box B and $\sim\!0.01$ in Box A, so its $95\%$ CI clears zero only where the bias is largest — Box A
-2017 and Box B 2018 most clearly — while the marginal years overlap zero. More advective realizations
-would resolve the rest.
-
-**The real Argo array is more biased than the uniformly-seeded simulation.** The green lines apply the
-same estimator to the actual Argo profile positions sampling the GLORYS anomaly field, after QC
-(profiles thinned to a $10$-day minimum spacing to drop near-duplicate surface fixes, and floats
-dropped if any gap exceeds $3$ months or their record spans under $3$ months). In Box B the realized
-Argo bias is negative in every year — $-0.32$ to $-0.96$ GJ/m$^2$, at the $0$th–$20$th percentile of
-the simulated ensemble (the $0$th in 2015 and 2017, i.e. below its entire simulated range); Box A is
-milder but 2015 is a clear negative outlier ($-0.37$, $0$th percentile). Each estimate rests on
-$\sim\!400$–$680$ profiles from $\sim\!45$–$70$ floats, and a uniform draw of that size would scatter
-only $\sim\!\pm\!0.4$ GJ/m$^2$, so Box B's values are several standard errors below zero: the real
-array samples the field preferentially in a way the uniform-in-space-time seeding does not reproduce.
-This points to real deployment non-uniformity — programmatic, clustered coverage (@fig-advection-argo)
-— adding bias beyond the advective mechanism alone, and is the clearest signal in the pilot that the
-idealized seeding *understates* the bias a real array carries. It warrants scrutiny (real park depths
-and coverage differ from the simulation) but is a concrete, testable difference.
-
-## Within-design dependence
-
-A design's $n$ profiles are not $n$ independent draws: each float profiles every $10$ days and
-lingers, so its consecutive cycles are near-replicates of one location. The float-clustered **design
-effect** is the resulting variance inflation,
-
-$$\mathrm{deff}_k \;=\; \frac{\sum_f \big(\sum_{i \in f}(\tilde Z_i - \hat Z)\big)^2}
-{\sum_i (\tilde Z_i - \hat Z)^2}, \qquad n_{\mathrm{eff}} = \frac{n}{\mathrm{deff}_k},$$
-
-summing over floats $f$: if a float's cycles were identical it contributes its cluster size to
-$\mathrm{deff}$, if independent it contributes $\approx 1$. The effective sample size is $n/\mathrm{deff}$,
-and the per-deployment spread inflates by $\approx\!\sqrt{\mathrm{deff}}$ over an iid design of the same
-$n$.
-
-```{python}
-#| label: setup-deff
-#| include: false
-
-deff = mm.continuous_deff_table("_pilot", ref=ref)
-```
-
-```{python}
-#| echo: false
-
-HTML(fmt(deff, 3))
-```
-
-
-```{python}
-#| label: fig-deff
-#| echo: false
-#| fig-cap: "Median design effect n/n_eff by year (left) and the advective/uniform spread ratio against its sqrt(deff) prediction (right)."
-
-mm.plot_design_effect(deff)
-plt.show()
-```
-
-Box A clusters more — $\mathrm{deff}\approx 5$ against Box B's $\approx 3$ — because its quiescent flow
-holds each float in the box for many more consecutive cycles; its larger $n$ ($\sim\!2800$ vs
-$\sim\!1460$) therefore buys little more independent information ($n_{\mathrm{eff}}\sim 550$ in both).
-The width ratio tracks $\sqrt{\mathrm{deff}}$ (@fig-deff, right), confirming the clustering inflates the
-*spread* of a single deployment without moving its *mean* — dependence, not bias, and the two must not
-be read as one effect.
 
 # Real-deployment comparison: deployment vs. drift
 
