@@ -1118,21 +1118,21 @@ def plot_trajectory_twins(pairs=((295, 6901117), (68, 4901217)), tracks=None,
     dep = {int(r.seed_id): r for r in pl.itertuples()}
 
     fig, ax, pc, e = _domain_base(boxes, figsize)
-    colors = ["tab:blue", "black", "tab:purple", "saddlebrown"]
+    colors = ["#1f77b4", "#9467bd", "#17becf", "#8c564b"]
     for k, (sid, fid) in enumerate(pairs):
         c = colors[k % len(colors)]
         d = dep[int(sid)]
         rt = realg[int(fid)]; rt = rt[rt["date"] >= d.date]
         st = simg[int(sid)]
         yrs = (rt["date"].max() - d.date).days / 365.25
-        ax.plot(rt["lon"], rt["lat"], "-", color=c, lw=1.7, transform=pc, zorder=3,
+        ax.plot(rt["lon"], rt["lat"], "-", color=c, lw=1.0, transform=pc, zorder=3,
                 label=f"real {fid} ({yrs:.1f} yr)")
-        ax.plot(st["lon"], st["lat"], "--", color=c, lw=1.7, alpha=0.85, transform=pc,
+        ax.plot(st["lon"], st["lat"], "--", color=c, lw=1.0, alpha=0.9, transform=pc,
                 zorder=3, label=f"sim twin {fid}")
-        ax.plot(rt["lon"].iloc[-1], rt["lat"].iloc[-1], "o", color=c, ms=7,
+        ax.plot(rt["lon"].iloc[-1], rt["lat"].iloc[-1], "o", color=c, ms=6,
                 transform=pc, zorder=4)
         ax.plot(st["lon"].iloc[-1], st["lat"].iloc[-1], "s", mfc="none", mec=c,
-                mew=1.6, ms=8, transform=pc, zorder=4)
+                mew=1.4, ms=7, transform=pc, zorder=4)
         ax.plot(d.lon, d.lat, "*", color="k", ms=13, mec="w", mew=0.6,
                 transform=pc, zorder=5, label="deployment" if k == 0 else None)
     ax.legend(loc="lower left", fontsize=7.5, framealpha=0.9)
