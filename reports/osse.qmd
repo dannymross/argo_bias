@@ -259,6 +259,75 @@ mm.plot_deployment_positions_map()
 plt.show()
 ```
 
+## A single deployment cluster {#sec-cluster}
+
+Six floats were deployed within a $\sim\!14$-hour window on $27$–$28$ September $2015$ in a tight
+cluster in the NW corner of Box B ($43.4$–$44.3^\circ$ N, $-55.8$ to $-57.8^\circ$ W), on the Grand
+Banks / Gulf Stream–Labrador confluence. They are a clean natural experiment in deployment geometry:
+a common release point and time, whose per-float sampling bias we can then follow profile by profile.
+
+For a single profile at position $x_i$ in year $k$, its bias as an estimate of the domain mean is
+$Z_k(x_i) - \bar Z_k$; the charts track that quantity along each float's life (in-box profiles only,
+where the residual field is defined), with the cluster mean over-plotted. The two tabs evaluate it at
+the *real* Argo positions and at the *GLORYS park-advection* sim-twin positions of the same floats,
+so their divergence is the same real-vs-reanalysis gap the trajectory maps show.
+
+::: {.panel-tabset}
+
+### Real Argo
+
+```{python}
+#| label: fig-cluster-bias
+#| echo: false
+#| fig-cap: "Single-profile bias Z(x_i) - Zbar_k (GJ per m2) vs profile number for each of the six floats at their real Argo positions, with the cluster mean (black). Only in-box profiles carry a defined bias."
+
+mm.plot_float_bias_profile(source="real")
+plt.show()
+```
+
+### GLORYS advection
+
+```{python}
+#| label: fig-cluster-bias-sim
+#| echo: false
+#| fig-cap: "The same single-profile bias evaluated at the GLORYS 1000 m park-advection sim-twin positions of the six floats. In-box counts differ from the real tab because the park tracks drift out of the box on a different schedule."
+
+mm.plot_float_bias_profile(source="sim")
+plt.show()
+```
+
+:::
+
+The two trajectory maps below trace the same six floats (one colour each; deployment a star, last fix
+an open circle): the GLORYS park-advection sim twin against the real Argo path from the shared
+deployment.
+
+::: {.panel-tabset}
+
+### GLORYS advection
+
+```{python}
+#| label: fig-cluster-sim
+#| echo: false
+#| fig-cap: "GLORYS 1000 m park-advection sim-twin trajectories of the six floats from their real deployment positions."
+
+mm.plot_cluster_sim_tracks()
+plt.show()
+```
+
+### Real Argo
+
+```{python}
+#| label: fig-cluster-real
+#| echo: false
+#| fig-cap: "Real Argo trajectories of the same six floats on the same base map."
+
+mm.plot_cluster_real_tracks()
+plt.show()
+```
+
+:::
+
 
 # The sampling weight field
 

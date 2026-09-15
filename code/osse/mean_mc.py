@@ -1096,6 +1096,151 @@ def plot_argo_trajectory_map(boxes=("boxA", "boxB"), years=(2010, 2019),
                            years=list(range(years[0], years[1] + 1)), subset_seed=0)
 
 
+# Six real Argo floats deployed 27-28 Sep 2015 in a tight cluster in the NW corner
+# of Box B (lat 43.4-44.3 N, lon -55.8 to -57.8 W) -- one deployment leg on the
+# Grand Banks / Gulf Stream-Labrador confluence, used for the per-float bias study.
+NW_BOXB_2015 = (6902632, 6902634, 6902635, 6902633, 4902099, 4902100)
+
+
+def _cluster_colors(float_ids):
+    import matplotlib.pyplot as plt
+    cyc = plt.get_cmap("tab10")
+    return {int(f): cyc(i % 10) for i, f in enumerate(float_ids)}
+
+
+def _delta_frame(d, box):
+    """Attach per-profile delta = Z(x_i) - Zbar_k to positions with float_id, lat,
+    lon, year, doy, age, pnum. Restricts to `box` support and the field's years."""
+    from osse import sample_residuals as sr
+    set_box(box)
+    (la0, la1) = cfg.BOXES[box]["lat_bounds"]; (lo0, lo1) = cfg.BOXES[box]["lon_bounds"]
+    d = d[d["lat"].between(la0, la1) & d["lon"].between(lo0, lo1)]
+    z = sr.load_residual_field(box)
+    zyears = [int(y) for y in z["year"].values]
+    d = d[d["year"].isin(zyears)]
+    sampled, _ = sr.gather(d, z)
+    col = {y: j for j, y in enumerate(zyears)}
+    zc = sampled[[f"z_{y}" for y in zyears]].to_numpy()
+    sampled["z_own"] = zc[np.arange(len(sampled)), [col[y] for y in sampled["year"].to_numpy()]]
+    zf, wet, w = load_field(box)
+    dm = domain_means(zf, wet, w)[0].set_index("year")
+    sampled["delta"] = sampled["z_own"] - sampled["year"].map(dm["zbar"])
+    sampled["delta_std"] = sampled["delta"] / sampled["year"].map(dm["sd_Z"])
+    return sampled[["float_id", "year", "doy", "lat", "lon", "age", "pnum",
+                    "delta", "delta_std"]].reset_index(drop=True)
+
+
+def float_bias_profile(float_ids, box="boxB", source="real", cleaned=None):
+    """Per-profile single-profile bias delta = Z(x_i) - Zbar_k for named floats.
+
+    source='real': QC-cleaned real Argo profiles (pnum = ordinal in the float's full
+    cleaned record). source='sim': GLORYS 1000 m park-advection sim-twin positions
+    (argo-actual arm, matched via the deployment pool; pnum = 10-day cycle). Both are
+    restricted to `box` (the field's support), so out-of-box profiles drop out.
+    """
+    ids = [int(f) for f in float_ids]
+    if source == "real":
+        d = (clean_argo() if cleaned is None else cleaned).copy()
+        d = d[d["float_id"].isin(ids)].sort_values(["float_id", "date"])
+        d["age"] = (d["date"] - d.groupby("float_id")["date"].transform("min")).dt.total_seconds() / 86400.0
+        d["pnum"] = d.groupby("float_id").cumcount() + 1
+    elif source == "sim":
+        from osse.continuous_sim import leap_dropped_doy
+        pool = pd.read_csv(os.path.join(cfg.OUT_DIR, "argo_actual_pool.csv"))
+        f2s = pool.set_index("seed_id")["float_id"]
+        tr = pd.read_csv(os.path.join(cfg.OUT_DIR, "actual_full_tracks.csv"), parse_dates=["time"])
+        tr = tr[tr["seed_id"].isin(pool.loc[pool["float_id"].isin(ids), "seed_id"])].copy()
+        tr["float_id"] = tr["seed_id"].map(f2s).astype(int)
+        tr = tr.sort_values(["float_id", "time"])
+        tr["age"] = (tr["time"] - tr.groupby("float_id")["time"].transform("min")).dt.total_seconds() / 86400.0
+        yr, doy = leap_dropped_doy(tr["time"].to_numpy())
+        tr["year"], tr["doy"], tr["pnum"] = yr, doy, tr["cycle"].astype(int)
+        d = tr[(tr["cycle"] > 0) & (tr["doy"] >= 0)]     # drop release record and Feb-29
+    else:
+        raise ValueError(f"source must be 'real' or 'sim', got {source!r}")
+    return _delta_frame(d, box)
+
+
+def plot_float_bias_profile(float_ids=NW_BOXB_2015, box="boxB", x="pnum",
+                            source="real", figsize=(11, 5.0)):
+    """Single-profile bias delta vs profile (or age) for each named float + the
+    cluster mean, in GJ/m2. Only in-box profiles carry a defined bias."""
+    import matplotlib.pyplot as plt
+    s = float_bias_profile(float_ids, box, source)
+    cols = _cluster_colors(float_ids)
+    fig, ax = plt.subplots(figsize=figsize)
+    for fid, g in s.groupby("float_id"):
+        g = g.sort_values(x)
+        ax.plot(g[x], g["delta"] * J_TO_GJ, "-o", ms=3, lw=1.0, color=cols[int(fid)],
+                alpha=0.85, label=f"{int(fid)} (n={len(g)})")
+    xb = np.linspace(s[x].min(), s[x].max(), 9)
+    s = s.assign(_b=pd.cut(s[x], xb))
+    m = s.groupby("_b", observed=True).agg(xc=(x, "mean"), mu=("delta", "mean"))
+    ax.plot(m["xc"], m["mu"] * J_TO_GJ, "k-", lw=2.5, zorder=5, label="cluster mean")
+    ax.axhline(0, color="0.4", lw=0.8)
+    xlab = {"pnum": "profile number (cleaned record, ~10-day cycles)",
+            "age": "days since deployment"}[x]
+    ax.set_xlabel(xlab)
+    ax.set_ylabel(r"single-profile bias  $Z(x_i)-\bar Z_k$  (GJ/m$^2$)")
+    src = {"real": "real Argo positions", "sim": "GLORYS park-advection positions"}[source]
+    ax.set_title(f"Per-float sampling bias over life, {box} ({src}, deployed 27-28 Sep 2015)")
+    ax.legend(fontsize=8, ncol=2, loc="lower right")
+    ax.grid(alpha=0.25)
+    fig.tight_layout()
+    return fig
+
+
+def _cluster_track_map(paths, float_ids, boxes=("boxA", "boxB"), figsize=(8.5, 7.2),
+                       title=""):
+    """Draw one colour-per-float trajectory set on the domain base map, with a black
+    star at each deployment (first point) and an open circle at the last point."""
+    fig, ax, pc, e = _domain_base(boxes, figsize)
+    cols = _cluster_colors(float_ids)
+    for fid in float_ids:
+        g = paths.get(int(fid))
+        if g is None or len(g) == 0:
+            continue
+        c = cols[int(fid)]
+        ax.plot(g["lon"], g["lat"], "-", color=c, lw=0.9, alpha=0.9, transform=pc,
+                zorder=3, label=str(int(fid)))
+        ax.plot(g["lon"].iloc[0], g["lat"].iloc[0], "*", color="k", mfc=c, ms=13,
+                mew=0.8, transform=pc, zorder=5)
+        ax.plot(g["lon"].iloc[-1], g["lat"].iloc[-1], "o", mfc="none", mec=c, mew=1.4,
+                ms=7, transform=pc, zorder=4)
+    ax.set_title(title)
+    ax.legend(loc="lower left", fontsize=7.5, framealpha=0.9, title="float")
+    return fig
+
+
+def plot_cluster_real_tracks(float_ids=NW_BOXB_2015, boxes=("boxA", "boxB"),
+                             figsize=(8.5, 7.2), path=None):
+    """Real Argo (raw) trajectories of the named floats, one colour each."""
+    path = path or os.path.join(os.path.dirname(cfg.GLORYS_DIR), "argo_ohc.csv")
+    d = pd.read_csv(path, usecols=["float_id", "lat", "lon", "date"])
+    d["date"] = pd.to_datetime(d["date"], format="ISO8601", utc=True)
+    d = d[d["float_id"].isin([int(f) for f in float_ids])].dropna(subset=["lat", "lon"])
+    paths = {int(f): g.sort_values("date") for f, g in d.groupby("float_id")}
+    return _cluster_track_map(paths, float_ids, boxes, figsize,
+                              "Real Argo trajectories (deployment star, last-fix circle)")
+
+
+def plot_cluster_sim_tracks(float_ids=NW_BOXB_2015, boxes=("boxA", "boxB"),
+                            figsize=(8.5, 7.2)):
+    """GLORYS park-advection sim-twin trajectories of the named floats (argo-actual
+    arm), matched to float_id through the deployment pool, one colour each."""
+    pool = pd.read_csv(os.path.join(cfg.OUT_DIR, "argo_actual_pool.csv"))
+    tr = pd.read_csv(os.path.join(cfg.OUT_DIR, "actual_full_tracks.csv"),
+                     parse_dates=["time"])
+    sid = pool.set_index("float_id")["seed_id"]
+    paths = {}
+    for fid in float_ids:
+        s = int(sid.get(int(fid), -1))
+        g = tr[tr["seed_id"] == s].sort_values("time")
+        paths[int(fid)] = g.dropna(subset=["lat", "lon"])
+    return _cluster_track_map(paths, float_ids, boxes, figsize,
+                              "GLORYS park-advection sim-twin trajectories")
+
+
 def raw_deployments(years=(2010, 2019), domain="velocity", boxes=("boxA", "boxB"), path=None):
     """First profile (deployment) of every float in argo_ohc.csv, NOT QC-cleaned.
 
