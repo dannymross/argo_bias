@@ -31,6 +31,7 @@ def fetch_subset(
     start_date=None,
     end_date=None,
     dataset_part=None,
+    compression_level=0,
     force=False,
 ):
     """Download one copernicusmarine subset to out_dir/out_file; return the path.
@@ -38,6 +39,8 @@ def fetch_subset(
     depth_bounds / start_date / end_date are optional so this also serves the
     2-D and time-less (static) datasets. dataset_part selects a part of a
     multi-part dataset (the static grid splits into 'bathy' and 'coords').
+    compression_level > 0 writes deflate-compressed NetCDF (lossless; the int16
+    packing is unchanged), halving on-disk size at a small read-time cost.
     Writes a <file>.json sidecar recording the request; skips the download if
     the file already exists and not force.
     """
@@ -65,6 +68,8 @@ def fetch_subset(
         kw["minimum_depth"], kw["maximum_depth"] = depth_bounds
     if dataset_part is not None:
         kw["dataset_part"] = dataset_part
+    if compression_level:
+        kw["netcdf_compression_level"] = compression_level
     if start_date is not None:
         kw["start_datetime"] = start_date
     if end_date is not None:
@@ -109,6 +114,7 @@ def fetch_monthly(
     start_month,
     end_month,
     depth_bounds=None,
+    compression_level=0,
     force=False,
 ):
     """One file per calendar month over [start_month, end_month]; return (paths, glob).
@@ -131,6 +137,7 @@ def fetch_monthly(
             depth_bounds=depth_bounds,
             start_date=f"{year:04d}-{month:02d}-01",
             end_date=f"{year:04d}-{month:02d}-{last:02d}",
+            compression_level=compression_level,
             force=force,
         )
         paths.append(path)
