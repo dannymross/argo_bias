@@ -244,6 +244,21 @@ plt.show()
 
 :::
 
+**Real deployment geometry.** The map below shows the raw (not QC-cleaned) deployment position of
+every real Argo float first observed inside the advection domain over $2010$–$2019$ ($418$ floats),
+coloured by deployment year — the release geometry the real-deployment arms (below) seed from, and
+the starting point for the per-float bias-over-time analysis. Deployment is taken as each float's
+earliest profile on record, so a float first observed before the file window is not resolved here.
+
+```{python}
+#| label: fig-deploy-positions
+#| echo: false
+#| fig-cap: "Raw Argo deployment positions in the advection domain, 2010-2019, coloured by deployment year, on the shared domain base map (dashed: velocity and thetao download regions; filled: the two analysis boxes)."
+
+mm.plot_deployment_positions_map()
+plt.show()
+```
+
 
 # The sampling weight field
 

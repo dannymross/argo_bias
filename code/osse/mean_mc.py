@@ -1096,6 +1096,54 @@ def plot_argo_trajectory_map(boxes=("boxA", "boxB"), years=(2010, 2019),
                            years=list(range(years[0], years[1] + 1)), subset_seed=0)
 
 
+def raw_deployments(years=(2010, 2019), domain="velocity", boxes=("boxA", "boxB"), path=None):
+    """First profile (deployment) of every float in argo_ohc.csv, NOT QC-cleaned.
+
+    Restricted to deployment years in [years[0], years[1]] and to `domain`:
+    'velocity' the advection domain, 'analysis' the union of the analysis boxes.
+    Deployment is the earliest profile on record, so a float first observed before
+    the file window is not resolved as deployed in-window -- see the report note.
+    Returns float_id, lat, lon, date, year.
+    """
+    path = path or os.path.join(os.path.dirname(cfg.GLORYS_DIR), "argo_ohc.csv")
+    d = pd.read_csv(path, usecols=["float_id", "lat", "lon", "date"])
+    d["date"] = pd.to_datetime(d["date"], format="ISO8601", utc=True)
+    d = d.dropna(subset=["lat", "lon", "date"])
+    dep = d.loc[d.groupby("float_id")["date"].idxmin()].copy()
+    dep["year"] = dep["date"].dt.year
+    e = domain_extents(boxes)
+    if domain == "velocity":
+        la0, la1, lo0, lo1 = e["velocity"]
+        m = dep["lat"].between(la0, la1) & dep["lon"].between(lo0, lo1)
+    else:
+        m = np.zeros(len(dep), bool)
+        for b in boxes:
+            la0, la1, lo0, lo1 = e[b]
+            m = m | (dep["lat"].between(la0, la1) & dep["lon"].between(lo0, lo1)).to_numpy()
+    dep = dep[m & dep["year"].between(years[0], years[1])]
+    return dep[["float_id", "lat", "lon", "date", "year"]].reset_index(drop=True)
+
+
+def plot_deployment_positions_map(years=(2010, 2019), domain="velocity",
+                                  boxes=("boxA", "boxB"), figsize=(8.5, 7.2)):
+    """Raw (not QC-cleaned) float deployment positions in the advection domain,
+    coloured by deployment year, on the shared domain base map."""
+    import matplotlib.pyplot as plt
+    import matplotlib as mpl
+    dep = raw_deployments(years, domain, boxes)
+    yr = list(range(years[0], years[1] + 1))
+    cmap = plt.get_cmap("turbo", len(yr))
+    norm = mpl.colors.BoundaryNorm(np.arange(yr[0], yr[-1] + 2) - 0.5, cmap.N)
+    fig, ax, pc, e = _domain_base(boxes, figsize)
+    ax.scatter(dep["lon"], dep["lat"], c=dep["year"], cmap=cmap, norm=norm, s=30,
+               alpha=0.9, edgecolor="k", linewidth=0.3, transform=pc, zorder=3)
+    cbar = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax,
+                        ticks=yr, shrink=0.8, pad=0.02)
+    cbar.set_label("deployment year")
+    ax.legend(loc="lower left", fontsize=7, framealpha=0.9)
+    return fig
+
+
 def plot_trajectory_twins(pairs=((295, 6901117), (68, 4901217)), tracks=None,
                           pool=None, cleaned=None, boxes=("boxA", "boxB"),
                           figsize=(8.5, 7.2)):
