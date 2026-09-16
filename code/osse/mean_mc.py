@@ -1296,6 +1296,65 @@ def plot_domain_exit_map(fates=None, boxes=("boxA", "boxB"), figsize=(8.5, 7.2))
     return fig
 
 
+def argo_actual_profile_bias(boxes=("boxB", "boxA")):
+    """Per-profile bias for every argo-actual (GLORYS park-advection of real
+    deployments) float, tagged by deployment-year cohort.
+
+    For an in-box profile in year k, delta = Z(x_i) - Zbar_k (J/m2), unnormalized:
+    the single-profile bias, comparable across years. Age is days since the float's
+    real deployment and runs continuously through any spell outside the domain
+    (out-of-box profiles carry no bias), so a float's in-box points join across
+    those gaps and across year boundaries over its whole life. Returns float_id,
+    box, deploy_year, year, age, delta.
+    """
+    from osse.continuous_sim import leap_dropped_doy
+    pool = pd.read_csv(os.path.join(cfg.OUT_DIR, "argo_actual_pool.csv"))
+    f2s = pool.set_index("seed_id")["float_id"]
+    dep = pd.to_datetime(pool.set_index("seed_id")["date"], format="ISO8601",
+                         utc=True).dt.tz_localize(None)
+    tr = pd.read_csv(os.path.join(cfg.OUT_DIR, "actual_full_tracks.csv"), parse_dates=["time"])
+    tr = tr[tr["cycle"] > 0].copy()
+    tr["float_id"] = tr["seed_id"].map(f2s).astype(int)
+    tr["deploy_year"] = tr["seed_id"].map(dep).dt.year
+    tr["age"] = (tr["time"] - tr["seed_id"].map(dep)).dt.total_seconds() / 86400.0
+    yr, doy = leap_dropped_doy(tr["time"].to_numpy())
+    tr["year"], tr["doy"], tr["pnum"] = yr, doy, 0
+    tr = tr[tr["doy"] >= 0]
+    dep_by_fid = tr.groupby("float_id")["deploy_year"].first()
+    cols = ["float_id", "lat", "lon", "year", "doy", "age", "pnum"]
+    out = []
+    for b in boxes:
+        d = _delta_frame(tr[cols], b)
+        d["box"] = b
+        d["deploy_year"] = d["float_id"].map(dep_by_fid)
+        out.append(d[["float_id", "box", "deploy_year", "year", "age", "delta"]])
+    return pd.concat(out, ignore_index=True)
+
+
+def plot_argo_actual_bias_cohort(deploy_year, bias=None, boxes=("boxB", "boxA"), figsize=(13, 5.0)):
+    """One panel per box for a deployment-year cohort: a thin line per argo-actual
+    float (deployed in `deploy_year`) of its per-profile bias Z(x_i)-Zbar_k (GJ/m2)
+    over its whole life, in-box profiles joined in age order across out-of-domain
+    gaps and year boundaries. Pass a precomputed `bias` frame
+    (argo_actual_profile_bias) to avoid recomputing per cohort."""
+    import matplotlib.pyplot as plt
+    s = argo_actual_profile_bias(boxes) if bias is None else bias
+    fig, axes = plt.subplots(1, len(boxes), figsize=figsize, sharex=True)
+    for ax, b in zip(np.atleast_1d(axes), boxes):
+        g = s[(s["box"] == b) & (s["deploy_year"] == int(deploy_year))]
+        for _, gg in g.groupby("float_id"):
+            gg = gg.sort_values("age")
+            ax.plot(gg["age"], gg["delta"] * J_TO_GJ, color="0.35", lw=0.4, alpha=0.55)
+        ax.axhline(0, color="crimson", lw=0.8)
+        ax.set_title(f"{b} ({g['float_id'].nunique()} floats, n={len(g)})", fontsize=10)
+        ax.set_xlabel("days since deployment")
+        ax.grid(alpha=0.25)
+    np.atleast_1d(axes)[0].set_ylabel(r"single-profile bias $Z(x_i)-\bar Z_k$ (GJ/m$^2$)")
+    fig.suptitle(f"Argo-actual per-float bias over life, {deploy_year} deployment cohort", fontsize=11)
+    fig.tight_layout()
+    return fig
+
+
 def raw_deployments(years=(2010, 2019), domain="velocity", boxes=("boxA", "boxB"), path=None):
     """First profile (deployment) of every float in argo_ohc.csv, NOT QC-cleaned.
 

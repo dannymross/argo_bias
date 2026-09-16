@@ -625,6 +625,126 @@ positive ($+0.64$), a single noisy realization. Box A stays small under both dep
 (A resampled real-deployment *bootstrap* ensemble, which puts a Monte-Carlo spread around this single
 realization, is being re-run on the expanded domain and will be restored here.)
 
+## Per-float bias over life, by deployment cohort
+
+Each argo-actual float's per-profile bias $Z(x_i) - \bar Z_k$ (unnormalized, in GJ/m$^2$; $k$ the
+profile's own year) over its **whole life**, one tab per **deployment-year cohort**. The $x$-axis is
+days since the float's real deployment and runs continuously across years and across any spell outside
+the domain -- so a float that profiles in-box, drifts out, and returns has its points joined across
+the gap (out-of-domain profiles carry no bias). If deployment bias washes out as floats mix into the
+flow, the lines should relax toward zero with age. Box B and Box A per tab.
+
+```{python}
+#| label: load-aa-bias
+#| include: false
+
+aa_bias = mm.argo_actual_profile_bias()
+```
+
+::: {.panel-tabset}
+
+### 2010
+
+```{python}
+#| label: fig-aa-bias-2010
+#| echo: false
+#| fig-cap: "Argo-actual per-float bias Z(x_i)-Zbar_k (GJ per m2) vs days since deployment, 2010 deployment cohort; one thin line per float over its whole life, in-box points joined across out-of-domain gaps and year boundaries."
+mm.plot_argo_actual_bias_cohort(2010, bias=aa_bias)
+plt.show()
+```
+
+### 2011
+
+```{python}
+#| label: fig-aa-bias-2011
+#| echo: false
+#| fig-cap: "As 2010, for the 2011 deployment cohort."
+mm.plot_argo_actual_bias_cohort(2011, bias=aa_bias)
+plt.show()
+```
+
+### 2012
+
+```{python}
+#| label: fig-aa-bias-2012
+#| echo: false
+#| fig-cap: "As 2010, for the 2012 deployment cohort."
+mm.plot_argo_actual_bias_cohort(2012, bias=aa_bias)
+plt.show()
+```
+
+### 2013
+
+```{python}
+#| label: fig-aa-bias-2013
+#| echo: false
+#| fig-cap: "As 2010, for the 2013 deployment cohort."
+mm.plot_argo_actual_bias_cohort(2013, bias=aa_bias)
+plt.show()
+```
+
+### 2014
+
+```{python}
+#| label: fig-aa-bias-2014
+#| echo: false
+#| fig-cap: "As 2010, for the 2014 deployment cohort."
+mm.plot_argo_actual_bias_cohort(2014, bias=aa_bias)
+plt.show()
+```
+
+### 2015
+
+```{python}
+#| label: fig-aa-bias-2015
+#| echo: false
+#| fig-cap: "As 2010, for the 2015 deployment cohort."
+mm.plot_argo_actual_bias_cohort(2015, bias=aa_bias)
+plt.show()
+```
+
+### 2016
+
+```{python}
+#| label: fig-aa-bias-2016
+#| echo: false
+#| fig-cap: "As 2010, for the 2016 deployment cohort."
+mm.plot_argo_actual_bias_cohort(2016, bias=aa_bias)
+plt.show()
+```
+
+### 2017
+
+```{python}
+#| label: fig-aa-bias-2017
+#| echo: false
+#| fig-cap: "As 2010, for the 2017 deployment cohort."
+mm.plot_argo_actual_bias_cohort(2017, bias=aa_bias)
+plt.show()
+```
+
+### 2018
+
+```{python}
+#| label: fig-aa-bias-2018
+#| echo: false
+#| fig-cap: "As 2010, for the 2018 deployment cohort."
+mm.plot_argo_actual_bias_cohort(2018, bias=aa_bias)
+plt.show()
+```
+
+### 2019
+
+```{python}
+#| label: fig-aa-bias-2019
+#| echo: false
+#| fig-cap: "As 2010, for the 2019 deployment cohort."
+mm.plot_argo_actual_bias_cohort(2019, bias=aa_bias)
+plt.show()
+```
+
+:::
+
 ## Is the residual gap the missing dive cycle?
 
 The park-only sim omits the dive cycle — the ascent, the $\sim\!1$-day surface drift, and the descent
