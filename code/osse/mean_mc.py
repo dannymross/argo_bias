@@ -1241,6 +1241,61 @@ def plot_cluster_sim_tracks(float_ids=NW_BOXB_2015, boxes=("boxA", "boxB"),
                               "GLORYS park-advection sim-twin trajectories")
 
 
+def domain_exit_fates(tracks_path=None, pool_path=None, end="2019-12-26", cycle_days=10.0):
+    """Classify each virtual float's fate from its FULL park-advection track.
+
+    A float leaves via one of three exits: deleted for advecting out of the
+    velocity domain (early, before lifespan and before the record ends), retired
+    at its drawn lifespan, or still alive at the record end. Classification is by
+    time, not boundary proximity (the out-of-bounds step itself is unrecorded), so
+    the exit point returned is the last in-domain 10-day position. Returns per-float
+    seed_id, float_id, last lat/lon/time, age_d, lifespan, fate.
+    """
+    tracks_path = tracks_path or os.path.join(cfg.OUT_DIR, "actual_full_tracks.csv")
+    pool_path = pool_path or os.path.join(cfg.OUT_DIR, "argo_actual_pool.csv")
+    pool = pd.read_csv(pool_path)
+    life = pool.set_index("seed_id")["lifespan"]
+    dep = pd.to_datetime(pool.set_index("seed_id")["date"], format="ISO8601",
+                         utc=True).dt.tz_localize(None)
+    fid = pool.set_index("seed_id")["float_id"]
+    tr = pd.read_csv(tracks_path, parse_dates=["time"])
+    tr = tr[tr["cycle"] > 0].sort_values(["seed_id", "time"])
+    last = tr.groupby("seed_id").tail(1).set_index("seed_id")
+    age = (last["time"] - dep.reindex(last.index)).dt.total_seconds() / 86400.0
+    lf = life.reindex(last.index)
+    endt = pd.Timestamp(end)
+    retired = age >= lf - cycle_days
+    survived = (~retired) & (last["time"] >= endt - pd.Timedelta(days=cycle_days))
+    fate = np.where(retired, "lifespan", np.where(survived, "record_end", "domain_exit"))
+    return pd.DataFrame({"seed_id": last.index, "float_id": fid.reindex(last.index).to_numpy(),
+                         "lat": last["lat"].to_numpy(), "lon": last["lon"].to_numpy(),
+                         "time": last["time"].to_numpy(), "age_d": age.to_numpy(),
+                         "lifespan": lf.to_numpy(), "fate": fate})
+
+
+def domain_exit_table(fates=None):
+    """Counts and fractions of each fate (domain_exit / lifespan / record_end)."""
+    f = domain_exit_fates() if fates is None else fates
+    t = f["fate"].value_counts().reindex(["domain_exit", "lifespan", "record_end"]).fillna(0).astype(int)
+    return pd.DataFrame({"fate": t.index, "floats": t.to_numpy(),
+                         "percent": (100 * t / len(f)).round(1).to_numpy()})
+
+
+def plot_domain_exit_map(fates=None, boxes=("boxA", "boxB"), figsize=(8.5, 7.2)):
+    """Last in-domain position of every float that advected OUT of the velocity
+    domain, on the shared base map -- where virtual floats hit the boundary."""
+    import matplotlib.pyplot as plt
+    f = domain_exit_fates() if fates is None else fates
+    ex = f[f["fate"] == "domain_exit"]
+    fig, ax, pc, e = _domain_base(boxes, figsize)
+    ax.scatter(ex["lon"], ex["lat"], c="red", s=45, marker="X", edgecolor="k",
+               linewidth=0.4, transform=pc, zorder=4,
+               label=f"domain exit (n={len(ex)})")
+    ax.set_title("Where virtual floats leave the velocity domain (last in-domain position)")
+    ax.legend(loc="lower left", fontsize=8, framealpha=0.9)
+    return fig
+
+
 def raw_deployments(years=(2010, 2019), domain="velocity", boxes=("boxA", "boxB"), path=None):
     """First profile (deployment) of every float in argo_ohc.csv, NOT QC-cleaned.
 

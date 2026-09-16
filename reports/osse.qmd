@@ -29,6 +29,7 @@ from osse import mean_mc as mm
 plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.alpha": 0.25})
 GJ = mm.J_TO_GJ
 BOXES = ("boxB", "boxA")
+PILOT = "_pilot_fulldom"   # expanded-velocity-domain pilot (preliminary 16-rep re-run)
 
 def fmt(df, dec=3):
     return df.round(dec).to_html(index=False, border=0)
@@ -50,10 +51,13 @@ function averaged over its month to match the monthly-mean response, then evalua
 day. @sec-meanfield gives the estimator and summarizes what it leaves.
 
 **Advection.** OceanParcels, park depth $1000$ m, advected by GLORYS daily $(u,v)$ over
-$15$–$50^\circ$ N, $70$–$30^\circ$ W. Floats advect continuously at park depth and record a position
-every $10$ days; there is no ascent, descent or surface drift, so a cycle is a position sample, not
-a simulated dive. Floats are deleted on leaving the velocity domain and retired at a lifespan drawn
-from the real Argo record for this region ($418$ deployments, median $\approx 1500$ d).
+$11$–$66^\circ$ N, $87$–$12^\circ$ W -- the full 2010-2019 footprint of every float that profiles an
+analysis box in 2015-2019, so simulated floats are not deleted for leaving the velocity domain (an
+earlier $15$–$50^\circ$ N, $70$–$30^\circ$ W domain lost most such floats at its western edge; see
+@sec-retention). Floats advect continuously at park depth and record a position every $10$ days;
+there is no ascent, descent or surface drift, so a cycle is a position sample, not a simulated dive.
+Floats are deleted on leaving the velocity domain and retired at a lifespan drawn from the real Argo
+record for this region (median $\approx 1500$ d).
 
 **Estimation.** $\hat Z_k$ is the unweighted mean of $\tilde Z_k$ at the profile positions for year $k$, and $\bar Z_k$ is the exact $\mathbb{P}$-weighted domain mean
 of the same field for year $k$.
@@ -210,11 +214,18 @@ park-depth position is taken as the profile — the point where a real float wou
 a cycle is a position sample, not a simulated dive. A float is deleted when it leaves the velocity
 domain and retired at a lifespan drawn from the real Argo record (median $\approx 1500$ d).
 
-The pilot is **$100$ independent realizations**. Each seeds **$1{,}000$ floats** uniformly over
-normalized space–time on the ($\mathrm{deptho}\ge 1000$ m) region spanning both boxes plus an
-$8^\circ$ margin, across $2010\text{-}01\text{-}01$ to $2019\text{-}12\text{-}26$, and advects them
-once at $1000$ m park depth ($10$-day profiling cycle, lifespans drawn from the real Argo record).
-Years $2010$–$2014$ are the equilibration lead; bias is calculated on **$2015$–$2019$**. 
+::: {.callout-note}
+This version reflects the **expanded velocity domain** ($11$–$66^\circ$ N, $87$–$12^\circ$ W). The
+pilot below is a **preliminary $16$-realization re-run** on that domain (the full $100$-rep run is
+pending); its confidence intervals are correspondingly wider. The real-deployment comparison arms
+(argo-bootstrap, argo-actual, @sec-argo-cmp) are **still on the old domain** and are being re-run.
+:::
+
+The pilot is **$16$ independent realizations** (preliminary; target $100$). Each seeds **$1{,}000$
+floats** uniformly over normalized space–time on the ($\mathrm{deptho}\ge 1000$ m) region spanning
+both boxes plus an $8^\circ$ margin, across $2010\text{-}01\text{-}01$ to $2019\text{-}12\text{-}26$,
+and advects them once at $1000$ m park depth ($10$-day profiling cycle, lifespans drawn from the real
+Argo record). Years $2010$–$2014$ are the equilibration lead; bias is calculated on **$2015$–$2019$**.
 
 
 
@@ -245,7 +256,7 @@ plt.show()
 :::
 
 **Real deployment geometry.** The map below shows the raw (not QC-cleaned) deployment position of
-every real Argo float first observed inside the advection domain over $2010$–$2019$ ($418$ floats),
+every real Argo float first observed inside the advection domain over $2010$–$2019$ ($1{,}014$ floats),
 coloured by deployment year — the release geometry the real-deployment arms (below) seed from, and
 the starting point for the per-float bias-over-time analysis. Deployment is taken as each float's
 earliest profile on record, so a float first observed before the file window is not resolved here.
@@ -266,11 +277,37 @@ cluster in the NW corner of Box B ($43.4$–$44.3^\circ$ N, $-55.8$ to $-57.8^\c
 Banks / Gulf Stream–Labrador confluence. They are a clean natural experiment in deployment geometry:
 a common release point and time, whose per-float sampling bias we can then follow profile by profile.
 
-For a single profile at position $x_i$ in year $k$, its bias as an estimate of the domain mean is
-$Z_k(x_i) - \bar Z_k$; the charts track that quantity along each float's life (in-box profiles only,
-where the residual field is defined), with the cluster mean over-plotted. The two tabs evaluate it at
-the *real* Argo positions and at the *GLORYS park-advection* sim-twin positions of the same floats,
-so their divergence is the same real-vs-reanalysis gap the trajectory maps show.
+For the simple-mean estimator the year-$k$ bias is an *exact* sum of per-profile contributions.
+Writing $n_k$ for the number of in-box profiles the array reports in year $k$,
+
+$$
+B_k \;=\; \hat Z_k - \bar Z_k
+\;=\; \frac{1}{n_k}\sum_{i=1}^{n_k}\bigl(\tilde Z_k(x_i) - \bar Z_k\bigr)
+\;=\; \sum_{i=1}^{n_k} c_i,
+\qquad
+c_i \;=\; \frac{1}{n_k}\,\underbrace{\bigl(\tilde Z_k(x_i) - \bar Z_k\bigr)}_{\delta_i},
+$$
+
+the centering being free because $\tfrac{1}{n_k}\sum_i \bar Z_k = \bar Z_k$. Every profile carries the
+*same* weight $1/n_k$ whatever float it came from — that equal weighting is what makes the estimator
+the simple (unweighted) mean, and it ties the normalization to the year, not the float. Grouping the
+contributions by float gives each float's share of the year's bias,
+
+$$
+C_{f,k} \;=\; \sum_{i\,\in\, f,\,k} c_i \;=\; \frac{n_{f,k}}{n_k}\bigl(\bar Z_{f,k} - \bar Z_k\bigr),
+\qquad \sum_f C_{f,k} = B_k,
+$$
+
+its profile share $n_{f,k}/n_k$ times its mean alignment $\bar Z_{f,k} - \bar Z_k$ (with
+$\bar Z_{f,k}$ the mean of $\tilde Z_k$ over that float's year-$k$ in-box profiles).
+
+The charts below plot the single-profile bias $\delta_i = \tilde Z_k(x_i) - \bar Z_k$ — one profile's
+alignment with the field — along each float's life (in-box profiles only, where the residual field is
+defined), with the cluster mean over-plotted. This is the contribution $c_i$ up to the $1/n_k$ weight;
+we show $\delta_i$ rather than $c_i$ so the curves stay comparable across years (the year's $n_k$ only
+rescales them). The two tabs evaluate $\delta_i$ at the *real* Argo positions and at the *GLORYS
+park-advection* sim-twin positions of the same floats, so their divergence is the same
+real-vs-reanalysis gap the trajectory maps show.
 
 ::: {.panel-tabset}
 
@@ -328,6 +365,34 @@ plt.show()
 
 :::
 
+## Domain retention {#sec-retention}
+
+The expanded velocity domain almost eliminates the loss of floats to advection out of bounds. The
+table and map below classify the fate of every virtual float in the **argo-actual arm** ($365$ floats
+seeded from real deployments, advected once over $2010$–$2019$ on the new domain): each either leaves
+the velocity domain early (deleted), retires at its drawn lifespan, or is still alive at the record
+end. Only **$3.6\%$** ($13/365$) exit the domain, and $12$ of those $13$ leave at the *southern* edge
+($\sim\!11^\circ$ N) -- the western edge that flushed floats on the old domain is now deep interior.
+
+(This is the single-realization argo-actual arm; a per-realization count for the uniform pilot needs
+its full trajectories, which the pilot run discards, so it is deferred to an instrumented re-run.)
+
+```{python}
+#| echo: false
+
+_fates = mm.domain_exit_fates()
+HTML(fmt(mm.domain_exit_table(_fates), 1))
+```
+
+```{python}
+#| label: fig-domain-exit
+#| echo: false
+#| fig-cap: "Last in-domain position of every argo-actual virtual float that advected out of the velocity domain (red X), on the shared base map. Almost all exits are at the southern boundary."
+
+mm.plot_domain_exit_map(_fates)
+plt.show()
+```
+
 
 # The sampling weight field
 
@@ -358,7 +423,7 @@ $q_c = \mathbb{E}[w^{\mathrm{sp}}_c] / p^{\mathrm{sp}}_c$ ($=1$ under area-fair 
 #| echo: false
 #| fig-cap: "Over- and under-sampling log2(E[w]/uniform) on the native 1/12 deg grid, both boxes on one map per scored year and one shared scale (red over-sampled, blue under, white uniform)."
 
-mm.plot_sampling_weight_space_combined(years=[2015, 2016, 2017, 2018, 2019])
+mm.plot_sampling_weight_space_combined(years=[2015, 2016, 2017, 2018, 2019], tag=PILOT)
 plt.show()
 ```
 
@@ -373,7 +438,7 @@ The per-cell weight distribution about the uniform value of 1, one panel per yea
 #| echo: false
 #| fig-cap: "Box B distribution of the per-cell weight E[w]/uniform over native cells per year, about the uniform value of 1 (red line)."
 
-mm.plot_sampling_weight_hist("boxB", years=[2015, 2016, 2017, 2018, 2019])
+mm.plot_sampling_weight_hist("boxB", years=[2015, 2016, 2017, 2018, 2019], tag=PILOT)
 plt.show()
 ```
 
@@ -384,7 +449,7 @@ plt.show()
 #| echo: false
 #| fig-cap: "Box A distribution of the per-cell weight E[w]/uniform, same construction as Box B."
 
-mm.plot_sampling_weight_hist("boxA", years=[2015, 2016, 2017, 2018, 2019])
+mm.plot_sampling_weight_hist("boxA", years=[2015, 2016, 2017, 2018, 2019], tag=PILOT)
 plt.show()
 ```
 
@@ -420,7 +485,7 @@ orthogonal to $\tilde Z_k$ in $L^2(\mathbb{P})$; a strongly non-uniform array
 #| label: load-continuous
 #| include: false
 
-est = mm.load_continuous("_pilot")
+est = mm.load_continuous(PILOT)
 ref = mm.uniform_reference_ensemble(est, R=2000)   # large n-matched uniform null
 argo_clean = mm.clean_argo()   # QC: 10-day thinning + drop gappy / short-span floats
 argo = {b: mm.argo_bias_by_year(b, cleaned=argo_clean) for b in ("boxB", "boxA")}
@@ -432,10 +497,10 @@ argo_actual = mm.load_continuous("_argo_actual")  # single actual-deployment rea
 
 
 
-Across all $100$ realizations the pilot seeds $10^5$ float-deployments and scores about $2.15$ million
-in-box profiles (the table below). Per realization, Box B holds $\sim\!90$ distinct floats (standing stock
-$\sim\!40$) giving $\sim\!1{,}410$–$1{,}490$ profiles a year; Box A holds $\sim\!145$ floats (stock
-$\sim\!78$) giving $\sim\!2{,}730$–$2{,}900$ — its quiescent flow retains more of the same deployment.
+Across the $16$ realizations the pilot seeds $1.6\times10^4$ float-deployments; per-box, per-year
+sample sizes are in the table below. On the expanded domain Box B retains slightly more floats than
+before (standing stock $\sim\!45$–$48$, $\sim\!1{,}640$–$1{,}750$ profiles a year); Box A holds stock
+$\sim\!75$–$80$ giving $\sim\!2{,}720$–$2{,}910$ — its quiescent flow retains more of the same deployment.
 
 ```{python}
 #| echo: false
@@ -520,7 +585,7 @@ HTML(fmt(mm.continuous_bias_table(est, "boxA", ref), 4))
 :::
 
 
-# Real-deployment comparison: deployment vs. drift
+# Real-deployment comparison: deployment vs. drift {#sec-argo-cmp}
 
 The real Argo array is markedly more biased than the uniform-seeded simulation (@fig-bias). Two
 experiments seed the *same* GLORYS park advection from the real Argo deployment record instead of
