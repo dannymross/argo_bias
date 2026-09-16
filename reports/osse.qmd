@@ -217,8 +217,9 @@ domain and retired at a lifespan drawn from the real Argo record (median $\appro
 ::: {.callout-note}
 This version reflects the **expanded velocity domain** ($11$–$66^\circ$ N, $87$–$12^\circ$ W). The
 pilot below is a **preliminary $16$-realization re-run** on that domain (the full $100$-rep run is
-pending); its confidence intervals are correspondingly wider. The real-deployment comparison arms
-(argo-bootstrap, argo-actual, @sec-argo-cmp) are **still on the old domain** and are being re-run.
+pending); its confidence intervals are correspondingly wider. The argo-actual comparison arm
+(@sec-argo-cmp) is on the new domain; the resampled argo-bootstrap ensemble has been removed pending
+its re-run.
 :::
 
 The pilot is **$16$ independent realizations** (preliminary; target $100$). Each seeds **$1{,}000$
@@ -489,8 +490,7 @@ est = mm.load_continuous(PILOT)
 ref = mm.uniform_reference_ensemble(est, R=2000)   # large n-matched uniform null
 argo_clean = mm.clean_argo()   # QC: 10-day thinning + drop gappy / short-span floats
 argo = {b: mm.argo_bias_by_year(b, cleaned=argo_clean) for b in ("boxB", "boxA")}
-argo_boot = mm.load_continuous("_argo_boot")     # real-deployment bootstrap ensemble
-argo_actual = mm.load_continuous("_argo_actual")  # single actual-deployment realization
+argo_actual = mm.load_continuous("_argo_actual")  # single actual-deployment realization (new domain)
 ```
 
 ## Pilot specification
@@ -587,46 +587,43 @@ HTML(fmt(mm.continuous_bias_table(est, "boxA", ref), 4))
 
 # Real-deployment comparison: deployment vs. drift {#sec-argo-cmp}
 
-The real Argo array is markedly more biased than the uniform-seeded simulation (@fig-bias). Two
-experiments seed the *same* GLORYS park advection from the real Argo deployment record instead of
-uniformly in space–time, to separate how much of that gap is the *geometry* of where and when Argo is
-deployed from how much is real float motion diverging from the simplified advection. The pool is each
-cleaned float's first profile inside the box-plus-$8^\circ$ margin over $2010$–$2019$ ($359$
-deployments, with their real positions, dates, and lifespans). **argo-actual** advects that set
-verbatim — one realization, the direct fidelity check; **argo-bootstrap** resamples it with
-replacement at the real rate ($100$ realizations), each drawn seed position perturbed by an
-independent Gaussian jitter of $5$ km standard deviation per axis (a few $1/12^\circ$ cells) so that
-repeated draws of the same real deployment are not exact duplicates, carrying the real deployment
-pattern with a Monte-Carlo spread.
+The real Argo array is markedly more biased than the uniform-seeded simulation (@fig-bias). To
+separate how much of that gap is the *geometry* of where and when Argo is deployed from how much is
+real float motion diverging from the simplified advection, the **argo-actual** arm seeds the *same*
+GLORYS park advection from the real Argo deployment record instead of uniformly in space–time: each
+cleaned float's first profile inside the box-plus-$8^\circ$ margin over $2010$–$2019$ ($365$
+deployments, with their real positions, dates, and lifespans), advected verbatim (one realization,
+the direct fidelity check). On the expanded velocity domain almost none of these floats are lost to
+domain exit (@sec-retention), so the arm now scores far more of each real deployment's in-box life
+than it could before.
 
 ```{python}
 #| echo: false
 
-HTML(fmt(mm.argo_comparison_table(est, argo_boot, argo_actual, argo), 3))
+HTML(fmt(mm.argo_comparison_table(est, argo_actual, argo), 3))
 ```
 
 
 ```{python}
 #| label: fig-argo-cmp
 #| echo: false
-#| fig-cap: "Deployment-law comparison per box: uniform ensemble (grey) and real-deployment bootstrap (purple) intervals, the single actual-deployment realization (orange diamond), and real Argo (green X)."
+#| fig-cap: "Deployment-law comparison per box: uniform ensemble (grey) intervals, the single actual-deployment realization (orange diamond), and real Argo (green X), all on the expanded velocity domain."
 
-mm.plot_argo_comparison(est, argo_boot, argo_actual, argo)
+mm.plot_argo_comparison(est, argo_actual, argo)
 plt.show()
 ```
 
-Seeding from the real deployments moves the Box B bias from essentially zero (uniform) to negative in
-every year — bootstrap mean $\approx -0.37$ GJ/m$^2$, against the real array's $\approx -0.66$. So
-**roughly half of the real Box B bias is deployment geometry**: where and when Argo is actually put in
-the water, carried by the flow, lands profiles preferentially over cold anomalies, something
-uniform-in-space–time seeding does not reproduce. The remaining $\sim\!0.3$ GJ/m$^2$ is the residual
-the park-only advection cannot capture — real trajectories diverging from GLORYS (ascent/surface
-drift/descent, real currents $\neq$ reanalysis). The actual-deployment realization tracks the real
-sign and magnitude in $2015$–$2018$ but is one noisy draw ($2019$ swings to $+1.9$), and the real
-values sit within the bootstrap spread. Box A stays small under every deployment law. One caveat: the
-bootstrap's in-box standing stock ($\sim\!15$) is below real Argo's ($\sim\!27$–$30$) because the real
-array also draws floats deployed outside the seed region that drift in; in-box profile counts still
-match ($\sim\!500$/yr), so the $n$-independent mean-bias comparison holds.
+Seeding from the real deployments moves the Box B bias from essentially zero (uniform) to negative:
+the argo-actual mean over $2015$–$2019$ is $\approx -0.48$ GJ/m$^2$, against the real array's
+$\approx -0.73$ — so the verbatim park advection of the real deployments reproduces **roughly two
+thirds of the real Box B bias**. Where and when Argo is actually put in the water, carried by the
+flow, lands profiles preferentially over cold anomalies, something uniform-in-space–time seeding does
+not reproduce. The remaining $\sim\!0.25$ GJ/m$^2$ is the residual the park-only advection cannot
+capture — real trajectories diverging from GLORYS (ascent/surface drift/descent, real currents
+$\neq$ reanalysis). Year by year the sign matches the real array in $2015$–$2018$; only $2019$ flips
+positive ($+0.64$), a single noisy realization. Box A stays small under both deployment laws.
+(A resampled real-deployment *bootstrap* ensemble, which puts a Monte-Carlo spread around this single
+realization, is being re-run on the expanded domain and will be restored here.)
 
 ## Is the residual gap the missing dive cycle?
 
@@ -652,7 +649,7 @@ HTML(fmt(mm.trajectory_divergence_summary(div), 1))
 ```{python}
 #| label: fig-divergence
 #| echo: false
-#| fig-cap: "Great-circle separation between each real Argo float and its GLORYS-park sim twin vs days since deployment (median and IQR over 359 floats), against the level two independent floats reach (dashed)."
+#| fig-cap: "Great-circle separation between each real Argo float and its GLORYS-park sim twin vs days since deployment (median and IQR over 365 floats), against the level two independent floats reach (dashed)."
 
 mm.plot_trajectory_divergence(div)
 plt.show()

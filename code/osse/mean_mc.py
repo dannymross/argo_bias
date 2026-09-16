@@ -2739,33 +2739,36 @@ def plot_design_effect(d, boxes=("boxB", "boxA"), figsize=(10, 3.6)):
     return fig
 
 
-def argo_comparison_table(uniform, boot, actual, real, boxes=("boxB", "boxA")):
-    """Bias by box/year across the three deployment laws (GJ/m2): the uniform-seeded
-    ensemble mean, the real-deployment bootstrap ensemble (mean and sd over reps),
-    the single actual-deployment realization, and the real Argo array."""
+def argo_comparison_table(uniform, actual, real, boot=None, boxes=("boxB", "boxA")):
+    """Bias by box/year across deployment laws (GJ/m2): the uniform-seeded ensemble
+    mean, the single actual-deployment realization, and the real Argo array. Pass
+    `boot` (the resampled real-deployment ensemble) to add its mean/sd columns."""
     rows = []
     for b in boxes:
         u = uniform[uniform["box"] == b].groupby("year")["B"].mean()
-        bt = boot[boot["box"] == b].groupby("year")["B"]
         ac = actual[actual["box"] == b].set_index("year")["B"]
+        bt = boot[boot["box"] == b].groupby("year")["B"] if boot is not None else None
         rr = real[b]
         for y in sorted(int(v) for v in u.index):
-            rows.append({"box": b, "year": y,
-                         "uniform": u[y] * J_TO_GJ,
-                         "argo-boot mean": bt.mean().get(y, np.nan) * J_TO_GJ,
-                         "argo-boot sd": bt.std().get(y, np.nan) * J_TO_GJ,
-                         "argo-actual": ac.get(y, np.nan) * J_TO_GJ,
-                         "real Argo": rr.get(y, np.nan) * J_TO_GJ})
+            row = {"box": b, "year": y, "uniform": u[y] * J_TO_GJ}
+            if bt is not None:
+                row["argo-boot mean"] = bt.mean().get(y, np.nan) * J_TO_GJ
+                row["argo-boot sd"] = bt.std().get(y, np.nan) * J_TO_GJ
+            row["argo-actual"] = ac.get(y, np.nan) * J_TO_GJ
+            row["real Argo"] = rr.get(y, np.nan) * J_TO_GJ
+            rows.append(row)
     return pd.DataFrame(rows)
 
 
-def plot_argo_comparison(uniform, boot, actual, real, boxes=("boxB", "boxA"), figsize=(11, 4.2)):
+def plot_argo_comparison(uniform, actual, real, boot=None, boxes=("boxB", "boxA"), figsize=(11, 4.2)):
     """Deployment-law comparison, one panel per box: dodged 95% CI + 5-95% intervals
-    for the uniform ensemble and the real-deployment bootstrap, with the single
-    actual-deployment realization and the real Argo array overlaid as markers."""
+    for the uniform ensemble (and the real-deployment bootstrap if `boot` is given),
+    with the single actual-deployment realization and real Argo overlaid as markers."""
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
-    ens = [(uniform, "0.45", -0.18), (boot, "tab:purple", 0.18)]
+    ens = [(uniform, "0.45", -0.18 if boot is not None else 0.0)]
+    if boot is not None:
+        ens.append((boot, "tab:purple", 0.18))
     fig, axes = plt.subplots(1, len(boxes), figsize=figsize)
     for ax, box in zip(np.atleast_1d(axes), boxes):
         years = sorted(int(y) for y in uniform.loc[uniform["box"] == box, "year"].unique())
@@ -2792,10 +2795,11 @@ def plot_argo_comparison(uniform, boot, actual, real, boxes=("boxB", "boxA"), fi
         ax.set_title(box, fontsize=10)
         ax.set_xlabel("analysis year", fontsize=9)
     np.atleast_1d(axes)[0].set_ylabel("sampling bias B (GJ/m2)")
-    handles = [Line2D([0], [0], color="0.45", lw=1.4, marker="o", label="uniform sim"),
-               Line2D([0], [0], color="tab:purple", lw=1.4, marker="o", label="argo-bootstrap"),
-               Line2D([0], [0], color="tab:orange", lw=0, marker="D", mfc="none", label="argo-actual (1 real.)"),
-               Line2D([0], [0], color="tab:green", lw=0, marker="X", label="real Argo")]
+    handles = [Line2D([0], [0], color="0.45", lw=1.4, marker="o", label="uniform sim")]
+    if boot is not None:
+        handles.append(Line2D([0], [0], color="tab:purple", lw=1.4, marker="o", label="argo-bootstrap"))
+    handles += [Line2D([0], [0], color="tab:orange", lw=0, marker="D", mfc="none", label="argo-actual (1 real.)"),
+                Line2D([0], [0], color="tab:green", lw=0, marker="X", label="real Argo")]
     np.atleast_1d(axes)[0].legend(handles=handles, fontsize=7, loc="best")
     fig.tight_layout()
     return fig
