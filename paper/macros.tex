@@ -1,95 +1,27 @@
-% --- Simulation study ---
-\newcommand{\Dl}{\mathcal{D}}                  % deployment law (frees D for replicate count)
-\newcommand{\Z}{\tilde{Z}}                     % residual field, used as \Z_k
-\newcommand{\Rstar}{\Theta^{\star}}            % idealized contrast against \M
-\newcommand{\sd}{\operatorname{sd}}
-\newcommand{\se}{\operatorname{se}}
-
-
 \newcommand{\ohcbar}{\overline{\mathrm{OHC}}}
 \newcommand{\ohchat}{\widehat{\mathrm{OHC}}}
-\newcommand{\tS}{\tilde{S}}
-\newcommand{\ts}{\tilde{s}}
-\newcommand{\tB}{\tilde{B}}
-\newcommand{\tV}{\tilde{V}}
-\newcommand{\tZ}{\tilde{Z}}
-\newcommand{\tv}{\tilde{v}}
-\newcommand{\tz}{\tilde{z}}
-
-\newcommand{\obs}{\mathrm{obs}}
-
-\renewcommand{\t}{\mathsf{T}}
-\newcommand{\G}{\mathcal{G}}
 
 \renewcommand{\P}{\mathbf{P}}
 \newcommand{\Q}{\mathbf{Q}}
-\newcommand{\D}{\mathcal{D}}
-\newcommand{\R}{\mathbf{R}}
-\newcommand{\M}{\mathbf{M}}
-\renewcommand{\L}{\mathcal{L}}
 
+\newcommand{\bb}[1]{\mathbb{#1}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
 
 \newcommand{\C}{\mathcal{C}}
 \newcommand{\X}{\mathcal{X}}
-\newcommand{\bX}{\mathbf{X}}
 \newcommand{\T}{\mathcal{T}}
 \newcommand{\F}{\mathcal{F}}
 \newcommand{\B}{\mathcal{B}}
-\newcommand{\N}{\mathbb{N}}
+
 \newcommand{\E}{\mathbb{E}}
 \newcommand{\Prob}{\mathbb{P}}
 \renewcommand{\Pr}{\operatorname{Pr}}
 \newcommand{\Cov}{\operatorname{Cov}}
 \newcommand{\Var}{\operatorname{Var}}
-\newcommand{\dd}{\,d}
-
+\newcommand{\sd}{\operatorname{sd}}
+\newcommand{\se}{\operatorname{se}}
 \newcommand{\e}{\varepsilon}
 
-\newcommand{\PP}{\mathcal{P}}
-\newcommand{\PK}{\mathsf{P}}
-\newcommand{\PKp}{\mathsf{P}^{\perp}}
+\newcommand{\dd}{\,d}
 
-\newcommand{\1}{\mathbbm{1}}
-
-\newtoks\deferredProofsToks
-\deferredProofsToks{}
-\newcommand{\deferproof}[2]{%
-  \hyperref[proof:#1]{\emph{Proof.}}%
-  \global\deferredProofsToks=\expandafter{\the\deferredProofsToks
-    \phantomsection\label{proof:#1}#2}%
-}
-\newcommand{\printdeferredproofs}{\the\deferredProofsToks}
-
-\newcommand{\sigwhat}{\hat\sigma_{w^{\star}}}
-\newcommand{\sigwhatsq}{\hat\sigma_{w^{\star}}^2}
-\newcommand{\sigwhatsqplug}{\hat\sigma_{w^{\star}}^{2\,\mathrm{plug}}}
-\newcommand{\sigwhatsqbf}{\hat\sigma_{w^{\star}}^{2\,\mathrm{bf}}}
-
-\newcommand{\sigYhat}{\hat\sigma_{Y^{\star}}}
-\newcommand{\sigYhatsq}{\hat\sigma_{Y^{\star}}^2}
-\newcommand{\sigYperphat}{\hat\sigma_{Y^{\perp}}}
-\newcommand{\sigYperphatsq}{\hat\sigma_{Y^{\perp}}^2}
-
-% RKHS / kernel-discrepancy section
-\newcommand{\Hk}{\mathcal{H}_k}
-\newcommand{\inner}[2]{\langle #1,\,#2\rangle_{\Hk}}
-\newcommand{\normH}[1]{\lVert #1\rVert_{\Hk}}
-\newcommand{\MMD}{\mathrm{MMD}}
-\newcommand{\xipi}{\xi_{\pi}}
-\newcommand{\xinu}{\xi_{\nu}}
-\newcommand{\psihat}{\hat\psi}
-\newcommand{\normpsihat}{\widehat{\normH{\psi}}}
-\newcommand{\normpsihatsq}{\widehat{\normH{\psi}^{2}}}
-
-% ---- Kernel-mean-embedding section (Muandet et al. 2017 notation) ----
-\newcommand{\Hcal}{\mathcal{H}}
-\newcommand{\Pb}{\mathbb{P}}          % sampling measure (floats)
-\newcommand{\Qb}{\mathbb{Q}}          % reference / target measure
-\newcommand{\mP}{\mu_{\Pb}}           % kernel mean embedding of P
-\newcommand{\mQ}{\mu_{\Qb}}           % kernel mean embedding of Q
-\newcommand{\innerHc}[2]{\langle #1,\,#2\rangle_{\Hcal}}
-\newcommand{\normHc}[1]{\lVert #1\rVert_{\Hcal}}
-\newcommand{\MMDpq}{\MMD[\Hcal,\Pb,\Qb]}
-\newcommand{\MMDhat}{\widehat{\MMD}}
-\newcommand{\kbarQ}{\bar k_{\Qb}}
-\newcommand{\kbbarQ}{\bar{\bar k}_{\Qb}}
