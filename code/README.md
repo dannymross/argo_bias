@@ -26,7 +26,7 @@ The pipeline runs in four stages; each writes to `data/osse/` and is resumable.
 | File | Purpose |
 |------|---------|
 | `osse/continuous_sim.py` | **Entry point.** One continuous Parcels advection per realization at 1000 m park depth. Records *every* profile, in or out of a box, so the analysis region can be widened without re-advecting. Profiles are Parquet. |
-| `osse/design_invariance.py` | Shared constants and helpers for the advection (park depth, cycle length, seed margin, `in_box`, velocity extent, the deployment pool). |
+| `osse/deployment.py` | Float-array constants and deployment helpers (park depth, cycle length, seed margin, `in_box`, velocity extent, the Argo lifespan pool). |
 | `osse/sample_residuals.py` | Evaluates `Z` at profile positions (cell-day lookup; masked positions are dropped, never filled from a neighbour). |
 
 ## 4. Estimators

@@ -15,8 +15,8 @@ sampling bias
 
 for every scored year and both boxes at once, flow and field the same calendar
 year by construction -- the diagonal of the old velocity-year x field-year grid.
-This replaces the per-box spin-up / release-schedule calibration of
-design_invariance.py's steady arm, which is left in place unused.
+This replaced the per-box spin-up / release-schedule calibration of the old
+steady arm, which has since been removed.
 
 Run from the repo root:
     python code/osse/continuous_sim.py [--n-floats 1000] [--reps 1] [--rep-offset 0]
@@ -36,7 +36,7 @@ import xarray as xr
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from osse import osse_config as cfg
-from osse import design_invariance as di
+from osse import deployment as di
 
 PARK_DEPTH = di.PARK_DEPTH
 CYCLE_DAYS = di.CYCLE_DAYS
