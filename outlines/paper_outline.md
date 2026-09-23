@@ -267,6 +267,71 @@ $$
 
 ---
 
+### 4.6 What the fitted covariance actually is *(measured, 2026-09)*
+
+The oracle covariance has been fitted on GLORYS. Three findings, all of which
+constrain how $B_{\text{geom}}$ and $B_{\text{cov}}$ can be read.
+
+**(a) A single global stationary exponential is not usable.** One
+`exponential_scaledim` fit over the whole conditioning buffer (14--55 N,
+$-72\ldots-32$ W, 2015--19) returns $\theta_{\text{lon}}=2.98^\circ$,
+$\theta_{\text{lat}}=2.08^\circ$, $\theta_t=154$ d, nugget $\approx0$, against
+empirical e-folds of $\sim\!1.3^\circ$ and $\sim\!20$ d. It predicts correlation
+$0.56$ at a 90-day lag where the field has $0.03$, and $0.51$ at $2^\circ$ where the
+field has $0.00$. This is the empirical case for the locally stationary construction,
+and is worth reporting as such rather than discarding.
+
+**(b) Localizing helps but does not remove a systematic range inflation.** The
+Kuusela fit ($\lambda_G=10^\circ$, $\lambda_t=45$ d, years as iid replicates, 1,320
+windows on a $2^\circ$ parameter grid, 100% converged) gives
+
+| | empirical | fitted | inflation |
+|---|---|---|---|
+| Box A (22--34 N) | $1.39^\circ$ / 36 d | $2.94^\circ$ / 81.9 d | 2.1x / 2.3x |
+| Box B (35--45 N) | $1.30^\circ$ / 19 d | $1.83^\circ$ / 27.9 d | 1.4x / 1.5x |
+
+Both boxes inflate in the same direction; localizing cut it from $\sim\!8\times$
+(global) to 1.4--2.3x. **The residual is kernel shape, not non-stationarity.** The
+field's correlation is *flatter than exponential at the origin* (0.997 vs 0.939 at
+$0.08^\circ$) and *far steeper in the tail* (0.022 vs 0.210 at $2^\circ$), i.e.
+smoother than a Matern-$\tfrac12$ process. An exponential cannot be flat at the
+origin, so the MLE stretches the range to limit the initial drop and pays for it at
+every lag that matters. Shrinking $\lambda_G$ to $5^\circ$ or $3^\circ$ does not fix
+it (and at $3^\circ$ some windows collapse to the parameter bound).
+
+Note the *temporal* exponential is excellent locally --- empirical/fitted ratios
+1.02, 1.03, 1.00, 1.02 out to 30 d --- so the misspecification is essentially
+spatial. That is physically sensible: temporal decorrelation by advection is a
+first-order process, spatial structure is not.
+
+**(c) The nugget goes to zero everywhere** (median exactly 0; at the lower bound in
+38% of windows). Same cause: an exponential's kink at the origin already supplies the
+drop a nugget would provide, and the oracle fit sees a smooth field with no
+measurement error. Kuusela's $\sigma_W^2$ absorbs Argo instrument error and
+sub-window variability, neither of which exists for an oracle fit on complete truth.
+
+**Consequences for the decomposition --- both push the same way.**
+1. Over-long ranges make kriging treat distant profiles as more informative than they
+   are, so the weights sum higher: **$m$ is biased up and the coverage term
+   $(m-1)\bar Z_k$ is understated.**
+2. A zero nugget makes $K$ near-singular for closely spaced profiles --- consecutive
+   cycles of one float are exactly that --- so a jitter or nugget floor is required,
+   and that choice itself moves $m$. It must be stated and its sensitivity reported.
+
+None of this is a defect to repair: §3.5 and §4 place *the estimator as actually
+used* in the class, and Kuusela's estimator is this kernel, so its misspecification is
+part of what generates the bias being measured. But the bias reported is that of a
+misspecified mapper, and must not be read as the coverage deficit of an optimal one.
+This is the §4.2 "model-misspecification diagnostic", now quantified.
+
+**Also measured, supporting Kuusela's own choices.** Seasonal spread of the fitted
+parameters across the 12 monthly windows is IQR/median 12--22%, so collapsing to the
+temporal median is justified on our field and not merely inherited. Caveat: adjacent
+monthly windows are 90 d wide and 30 d apart, sharing $\sim\!2/3$ of their data, so
+that spread *understates* true seasonal variation.
+
+---
+
 ## 5. Demonstration on GLORYS (truth)
 
 ### 5.1 Data and simulated array
