@@ -14,6 +14,7 @@ Pure xarray/numpy: no VirtualFleet import, so this stays importable on any machi
 import numpy as np
 import pandas as pd
 import xarray as xr
+from scipy.interpolate import PchipInterpolator
 
 # np.trapz was renamed to np.trapezoid in NumPy 2.0.
 _trapz = getattr(np, "trapezoid", None) or np.trapz
@@ -26,6 +27,10 @@ J_TO_GJ = 1e-9
 
 # Standard integration depths.
 DEPTHS = (700, 2000)
+
+# Layer edges for the split OHC integral: surface / lower / upper / deep. The
+# deep layer is where Argo thins out, so it is kept separable from the rest.
+OHC_LAYERS = (0.0, 15.0, 975.0, 1850.0, 2000.0)
 
 
 # ---- CORE INTEGRATION ----------------------------------------------------
@@ -71,16 +76,67 @@ def profile_ohc(depth, theta, zmax):
     return integ * CP * RHO
 
 
+def profile_ohc_layers(depth, theta, edges=OHC_LAYERS):
+    """OHC (J/m2) per layer ``(edges[i], edges[i+1]]``, depth along the last axis.
+
+    One shape-preserving PCHIP per column over the native levels, integrated
+    analytically, so the layers sum *exactly* to the ``[edges[0], edges[-1]]``
+    integral. ``theta[..., 0]`` is held constant over ``[edges[0], depth[0]]``
+    rather than extrapolated below the shallowest level. PCHIP is local, so
+    reaching ``edges[-1]`` needs one level beyond the pair bracketing it; if the
+    column stops short the last level is used as the endpoint instead, at a
+    median ~0.4% cost on the final layer.
+
+    The NaN rule is all-or-nothing across layers: a column missing any level up to
+    that depth returns NaN for *every* layer, not just the ones it cannot support.
+    The layers therefore share one mask, so they always sum to the full integral --
+    but a shallower column contributes nothing even where its upper layers are
+    fully resolved. Per-layer masks would need ``deptho`` above 18.5 / 1245.3 /
+    2225.1 / 2533.3 m respectively (92.9 / 84.4 / 82.3 / 81.2 % of the buffer).
+
+    Returns shape ``(len(edges) - 1,) + theta.shape[:-1]``.
+    """
+    depth = np.asarray(depth, dtype=float)
+    theta = np.asarray(theta, dtype=float)
+    edges = np.asarray(edges, dtype=float)
+
+    need = min(int(np.searchsorted(depth, edges[-1])) + 1, depth.size - 1)
+    if depth[need] < edges[-1]:
+        raise ValueError(f"levels reach {depth[-1]} m, short of edges[-1]={edges[-1]} m")
+    z = depth[: need + 1]
+
+    lead = theta.shape[:-1]
+    y = theta[..., : need + 1].reshape(-1, z.size).T
+    ok = np.isfinite(y).all(axis=0)
+
+    out = np.full((edges.size - 1, y.shape[1]), np.nan)
+    if ok.any():
+        p = PchipInterpolator(z, y[:, ok], axis=0)
+        out[:, ok] = [p.integrate(max(a, z[0]), b) for a, b in zip(edges[:-1], edges[1:])]
+        if edges[0] < z[0]:
+            out[0, ok] += y[0, ok] * (z[0] - edges[0])
+    return (out * CP * RHO).reshape((edges.size - 1,) + lead)
+
+
+def _profile_ohc_layers_core(theta, depth, edges):
+    """theta-first adapter, layers on a trailing axis for apply_ufunc."""
+    return np.moveaxis(profile_ohc_layers(depth, theta, edges), 0, -1)
+
+
 def _profile_ohc_core(theta, depth, zmax):
     """theta-first adapter so ``apply_ufunc`` can pass the field array positionally."""
     return profile_ohc(depth, theta, zmax)
 
 
 # ---- TRUTH FIELD ---------------------------------------------------------
-def truth_ohc_field(theta_ds, depths=DEPTHS, theta_var="thetao", depth_dim="depth"):
+def truth_ohc_field(theta_ds, depths=DEPTHS, theta_var="thetao", depth_dim="depth",
+                    layers=None):
     """Compute complete-coverage OHC fields from a GLORYS temperature dataset.
 
-    Returns ``ohc_700``, ``ohc_2000`` (J/m2) on (time, latitude, longitude).
+    Returns ``ohc_<zmax>`` per entry of ``depths`` (J/m2) on
+    (time, latitude, longitude). ``layers`` additionally emits one
+    ``ohc_<z0>_<z1>`` per PCHIP layer (see ``profile_ohc_layers``); pass
+    ``depths=()`` for layers only.
     """
     theta = theta_ds[theta_var] if isinstance(theta_ds, xr.Dataset) else theta_ds
     # Move depth to the last axis so profile_ohc integrates along it.
@@ -98,6 +154,20 @@ def truth_ohc_field(theta_ds, depths=DEPTHS, theta_var="thetao", depth_dim="dept
             output_dtypes=[float],
         )
         out[f"ohc_{zmax}"] = ohc
+    if layers is not None:
+        edges = np.asarray(layers, dtype=float)
+        names = [f"ohc_{a:g}_{b:g}" for a, b in zip(edges[:-1], edges[1:])]
+        stack = xr.apply_ufunc(
+            _profile_ohc_layers_core,
+            theta,
+            input_core_dims=[[depth_dim]],
+            output_core_dims=[["layer"]],
+            kwargs={"depth": z, "edges": edges},
+            dask="parallelized",
+            output_dtypes=[float],
+            dask_gufunc_kwargs={"output_sizes": {"layer": len(names)}},
+        )
+        out.update({n: stack.isel(layer=i, drop=True) for i, n in enumerate(names)})
     ds = xr.Dataset(out)
     ds.attrs["units"] = "J m-2"
     ds.attrs["cp"] = CP

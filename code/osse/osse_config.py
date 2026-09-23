@@ -11,7 +11,16 @@ OUT_DIR = os.path.join(REPO_ROOT, "data", "osse")
 BOXES = {
     "boxB": {"lat_bounds": (35.0, 45.0), "lon_bounds": (-60.0, -40.0)},
     "boxA": {"lat_bounds": (22.0, 34.0), "lon_bounds": (-60.0, -40.0)},
+    # The conditioning region: both boxes plus ~10 deg, trimmed to the deep basin.
+    # Kriging near a box edge needs profiles from outside it, so the residual field
+    # is built over this and the boxes are slices of it.
+    "buffer": {"lat_bounds": (14.0, 55.0), "lon_bounds": (-72.0, -32.0)},
 }
+
+# Depth-layer OHC store written by download_ohc_layers.py; the four layers sum to
+# the 0-2000 m integral.
+LAYER_DIR = "ohc_layers"
+STATIC_PREFIX = "static_buffer/buffer"
 
 ANALYSIS_YEARS = (2015, 2016, 2017, 2018, 2019)
 FIT_START_YEAR = 1995

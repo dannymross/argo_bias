@@ -1,4 +1,7 @@
 #!/bin/bash
+# SUPERSEDED by submit_ohc_layers.slurm. The raw thetao_daily store this backfills
+# has been deleted -- nothing reads it any more (build_residual_field.py now reads
+# data/glorys_osse/ohc_layers/). Running this would re-download ~27 GB for nothing.
 # Rebuild the residual field over a wider analysis window, then re-gather and
 # re-summarise every arm that depends on it. Queue this AFTER the download that
 # supplies the extra daily thetao:

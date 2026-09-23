@@ -250,7 +250,7 @@ def domain_extents(boxes=("boxA", "boxB")):
     data actually on disk.
     """
     out = {"velocity": _file_extent("velocity_daily/velocity_daily_park_*.nc"),
-           "thetao": _file_extent("thetao_daily/thetao_daily_*.nc")}
+           "thetao": _file_extent(f"{cfg.LAYER_DIR}/ohc_layers_daily_*.nc")}
     for b in boxes:
         (la0, la1), (lo0, lo1) = cfg.BOXES[b]["lat_bounds"], cfg.BOXES[b]["lon_bounds"]
         out[b] = (la0, la1, lo0, lo1)
@@ -2652,8 +2652,8 @@ def continuous_deff_table(tag="_pilot", boxes=("boxB", "boxA"), ref=None):
     """
     from osse import sample_residuals as sr
     est = load_continuous(tag)
-    prof = pd.read_csv(os.path.join(cfg.OUT_DIR, f"design_profiles_continuous{tag}.csv"),
-                       usecols=["rep", "float_id", "box", "year", "lat", "lon", "doy"])
+    from osse import continuous_sim as cs
+    prof = cs.read_profiles(tag, ["rep", "float_id", "box", "year", "lat", "lon", "doy"])
     rows = []
     for b in boxes:
         z = sr.load_residual_field(b)
@@ -2899,9 +2899,11 @@ def _profile_weights(box, tag):
     """
     a = xr.open_dataset(os.path.join(cfg.OUT_DIR, f"cell_area_{box}.nc"))["cell_area"]
     lat, lon, A = a["latitude"].values, a["longitude"].values, a.values
-    prof = pd.read_csv(os.path.join(cfg.OUT_DIR, f"design_profiles_continuous{tag}.csv"),
-                       usecols=["rep", "box", "year", "lat", "lon", "doy"])
-    prof = prof[prof["box"] == box].copy()
+    from osse import continuous_sim as cs
+    prof = cs.read_profiles(tag, ["rep", "box", "year", "lat", "lon", "doy"])
+    # doy = -1 marks Feb 29, which has no field slot; it must not become a
+    # day-of-year bin, nor count toward the per-realization normalizer n.
+    prof = prof[(prof["box"] == box) & (prof["doy"] >= 0)].copy()
     ii = cfg.containing_index(prof["lat"].to_numpy(), lat)
     jj = cfg.containing_index(prof["lon"].to_numpy(), lon)
     wet = (ii >= 0) & (jj >= 0)

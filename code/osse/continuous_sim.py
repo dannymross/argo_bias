@@ -42,10 +42,46 @@ PARK_DEPTH = di.PARK_DEPTH
 CYCLE_DAYS = di.CYCLE_DAYS
 SEED_MARGIN = di.SEED_MARGIN_UNIFORM
 BOXES = ("boxA", "boxB")  # both scored from one deployment
-BATHY_PATH = os.path.join(cfg.GLORYS_DIR, "static", "static_vel_bathy.nc")
+# Seed around the region the analysis READS OUT (the buffer), not the estimand.
+# Seeding on boxes+8 deg covered only 0.87x the buffer's own area, so the buffer
+# edge was populated by advective inflow alone -- a coverage deficit that is an
+# artefact of the seeding rectangle and would bias the kriging mass m.
+SEED_BOXES = ("buffer",)
+# Covers the whole velocity domain. The older static_vel_bathy.nc spans only
+# 15-50 N / -70..-30 W, so seed_region silently intersected with it and every run
+# to date was seeded 3 deg short in the north and 1 deg in the south of what the
+# margin asked for; seed_region now asserts coverage rather than clipping.
+BATHY_PATH = os.path.join(cfg.GLORYS_DIR, "static", "static_veldom_bathy.nc")
 
 
-def seed_region(boxes=BOXES, margin=SEED_MARGIN, min_depth=PARK_DEPTH):
+PROFILE_EXT = ".parquet"
+
+
+def profile_path(tag, chunk=None):
+    sfx = f"_c{chunk}" if chunk is not None else ""
+    return os.path.join(cfg.OUT_DIR, f"design_profiles_continuous{tag}{sfx}{PROFILE_EXT}")
+
+
+def write_profiles(df, tag, chunk=None):
+    """Profiles are ~3.3x larger now that the full footprint is kept, and every
+    report re-reads them; Parquet is ~10x smaller and ~20x faster than CSV here.
+    """
+    df.to_parquet(profile_path(tag, chunk), index=False, compression="zstd")
+    return profile_path(tag, chunk)
+
+
+def read_profiles(tag, columns=None):
+    """Parquet if present, else the legacy CSV so pre-existing arms still load."""
+    p = profile_path(tag)
+    if os.path.exists(p):
+        return pd.read_parquet(p, columns=columns)
+    csv = os.path.join(cfg.OUT_DIR, f"design_profiles_continuous{tag}.csv")
+    if not os.path.exists(csv):
+        raise FileNotFoundError(f"{p} (and no legacy {os.path.basename(csv)})")
+    return pd.read_csv(csv, usecols=columns)
+
+
+def seed_region(boxes=SEED_BOXES, margin=SEED_MARGIN, min_depth=PARK_DEPTH):
     """Deep native cells over (union of boxes + margin) cap velocity domain.
 
     The seed region is defined once from the bathymetry rather than as a
@@ -68,6 +104,13 @@ def seed_region(boxes=BOXES, margin=SEED_MARGIN, min_depth=PARK_DEPTH):
         lon = dep["longitude"].values.astype(float)
         deep = np.isfinite(dep.values) & (dep.values >= min_depth)
 
+    want = (max(la0, vla0), min(la1, vla1), max(lo0, vlo0), min(lo1, vlo1))
+    got = (lat.min(), lat.max(), lon.min(), lon.max())
+    if got[0] > want[0] + 0.5 or got[1] < want[1] - 0.5 or got[2] > want[2] + 0.5 or got[3] < want[3] - 0.5:
+        raise ValueError(f"{os.path.basename(BATHY_PATH)} covers lat {got[0]:.1f}-{got[1]:.1f}, "
+                         f"lon {got[2]:.1f}-{got[3]:.1f}, short of the requested seed window "
+                         f"lat {want[0]:.1f}-{want[1]:.1f}, lon {want[2]:.1f}-{want[3]:.1f}")
+
     late, lone = cfg.cell_edges(lat), cfg.cell_edges(lon)
     jla, jlo = np.where(deep)
     slat0, slat1 = np.sin(np.deg2rad(late[jla])), np.sin(np.deg2rad(late[jla + 1]))
@@ -76,7 +119,7 @@ def seed_region(boxes=BOXES, margin=SEED_MARGIN, min_depth=PARK_DEPTH):
             "w": area / area.sum(), "n_cells": int(deep.sum())}
 
 
-def deployment_plan(n_floats, rep, t_start, t_end, boxes=BOXES, margin=SEED_MARGIN):
+def deployment_plan(n_floats, rep, t_start, t_end, boxes=SEED_BOXES, margin=SEED_MARGIN):
     """One realisation's seeds: area-uniform in space over the deep region,
     uniform in release time over [t_start, t_end), lifespans from the Argo pool.
     """
@@ -174,8 +217,17 @@ def leap_dropped_doy(times):
 def profiles_from_zarr(path, rep, boxes=BOXES):
     """Trajectory output -> profile positions tagged with (box, year, doy).
 
-    Drops each float's release record and any Feb-29 profile, keeps profiles that
-    fall in one of the boxes. Scoring years are applied later, in the estimator.
+    Drops each float's release record and any Feb-29 profile, and keeps EVERY
+    remaining position, in or out of a box; `box` is NA outside. Recording the
+    whole footprint is what lets the analysis or conditioning region be widened
+    later without re-advecting -- an earlier version kept only in-box profiles
+    and discarded the trajectories, which cost a full re-run when the kriging
+    needed profiles from outside the boxes. Consumers filter on `box` (or on
+    lat/lon for an arbitrary region); scoring years are applied in the estimator.
+
+    Note this future-proofs the *readout* region only, up to wherever the seeded
+    array actually reaches -- widening beyond the seeding footprint still needs a
+    re-run (see SEED_MARGIN).
     """
     ds = xr.open_zarr(path)
     lat, lon, time = ds["lat"].values, ds["lon"].values, ds["time"].values
@@ -198,7 +250,9 @@ def profiles_from_zarr(path, rep, boxes=BOXES):
     df["box"] = pd.NA
     for b in boxes:
         df.loc[di.in_box(df, b), "box"] = b
-    df = df[(df["doy"] >= 0) & df["box"].notna()]
+    # Feb-29 rows are kept with doy = -1: they have no residual-field slot, but the
+    # exact `time` makes the position usable against any other discretization.
+    # sample_residuals.gather drops them via its (idoy >= 0) guard.
     # Raw `time` is kept alongside the leap-dropped (year, doy): the estimator uses
     # only (year, doy, lat, lon), but the absolute timestamp lets these positions
     # be re-scored against a residual field on a different time discretization
@@ -293,11 +347,10 @@ def gather_chunks(tag):
     out = os.path.join(cfg.OUT_DIR, f"estimates_continuous{tag}.csv")
     est.to_csv(out, index=False)
 
-    pp = sorted(glob.glob(os.path.join(cfg.OUT_DIR, f"design_profiles_continuous{tag}_c*.csv")))
+    pp = sorted(glob.glob(profile_path(tag, chunk="*")))
     if pp:
-        prof = pd.concat((pd.read_csv(f) for f in pp), ignore_index=True)
-        pout = os.path.join(cfg.OUT_DIR, f"design_profiles_continuous{tag}.csv")
-        prof.to_csv(pout, index=False)
+        prof = pd.concat((pd.read_parquet(f) for f in pp), ignore_index=True)
+        pout = write_profiles(prof, tag)
         print(f"{len(pp)} profile chunks, {len(prof):,} positions -> {pout}")
 
     _print_summary(est)
@@ -349,7 +402,7 @@ def main(n_floats=1000, reps=1, rep_offset=0, t_start=None, t_end=None,
             shutil.rmtree(zpath, ignore_errors=True)
 
     prof = pd.concat(all_prof, ignore_index=True)
-    prof.to_csv(os.path.join(cfg.OUT_DIR, f"design_profiles{sfx}.csv"), index=False)
+    write_profiles(prof, tag)
 
     est, ndropped = diagonal_estimates(prof, score_years)
     est = uniform_reference(est)
@@ -535,7 +588,7 @@ def main_argo(mode="actual", reps=1, rep_offset=0, n=None, t_start="2010-01-01",
             shutil.rmtree(zpath, ignore_errors=True)
 
     prof = pd.concat(all_prof, ignore_index=True)
-    prof.to_csv(os.path.join(cfg.OUT_DIR, f"design_profiles_continuous{sfx}.csv"), index=False)
+    write_profiles(prof, sfx)
     est, ndropped = diagonal_estimates(prof, score_years)
     est.to_csv(os.path.join(cfg.OUT_DIR, f"estimates_continuous{sfx}.csv"), index=False)
     print(f"{len(prof):,} in-box profiles, {ndropped:,} dropped -> estimates_continuous{sfx}.csv")
