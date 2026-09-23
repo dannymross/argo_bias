@@ -263,8 +263,22 @@ def _beta_ds(beta, shape, zda, t_ref, quadratic):
     return ds
 
 
+# netCDF's default chunking picks a near-cubic shape in INDEX space, which for a
+# (3652, 493, 481) field is ~(609, 71, 69) -- 609 time steps deep. Reading one
+# lat/lon slice then touches 49 chunks and decompresses ~600x the data wanted.
+# Cap every dimension instead, so time-slice, block and scattered-point reads are
+# all within a small factor of optimal.
+_CHUNK_CAP = {"time": 32, "year": 1, "doy": 64, "latitude": 64, "longitude": 64}
+
+
 def _write(ds, path):
-    ds.to_netcdf(path, encoding={v: {"zlib": True, "complevel": 4} for v in ds.data_vars})
+    enc = {}
+    for v in ds.data_vars:
+        da = ds[v]
+        enc[v] = {"zlib": True, "complevel": 4,
+                  "chunksizes": tuple(min(da.sizes[d], _CHUNK_CAP.get(d, da.sizes[d]))
+                                      for d in da.dims)}
+    ds.to_netcdf(path, encoding=enc)
     print(f"  -> {path} ({os.path.getsize(path) / 1e6:.0f} MB)")
 
 
