@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A research repo (Summer 2026) quantifying Argo float sampling bias in ocean heat content (OHC)
+A research repo  quantifying Argo float sampling bias in ocean heat content (OHC)
 estimates. GLORYS12 reanalysis provides "truth" (complete spatiotemporal coverage); real and
 VirtualFleet-simulated Argo floats sample it sparsely, and the study compares sparse-sampling
 (and interpolated) OHC estimates against that truth. Results are published as a Quarto website
@@ -54,14 +54,6 @@ distinct from ours (we bound preferential-sampling bias in an OHC integral; neit
   *phenomenon and its continuous definition*; note their remedy is **model-based** (fit a shared
   latent GP), whereas our sampling-bias bound is **design-based** (a distribution-free covariance
   identity + Cauchy--Schwarz/permutation caps) -- complementary lenses, not the same estimator.
-
-**Non-stationarity (flag).** The stationary Matern (`matern_spheretime`) used in `nac_gp.qmd` and
-assumed by the RKHS smoothness class in `bias_bound_methods.qmd` is a **preliminary-analysis choice
-only**. OHC is strongly non-stationary -- variance and correlation ranges vary sharply across
-current regions, and the NAC/Gulf-Stream box is exactly such a region (the Baugh & McKinnon paper
-models this explicitly with a non-stationary kernel-convolution covariance). The methodology needs
-to account for this non-stationarity; treat any result resting on stationarity as provisional and
-state the assumption explicitly.
 
 ## Environments
 
@@ -121,10 +113,10 @@ exist in CI (see below).
   package) gives a materially better result for the specific case — e.g. maps or other complex/
   layered graphics.
 
-## Rendering reports (the main dev loop)
+## Rendering quarto reports
 
 **Do not run `quarto render`/`quarto preview` and do not visually inspect rendered plots/reports
-unless explicitly directed to** — rendering is expensive (multi-GB `data/` access, GP fits) and
+unless explicitly directed to** — rendering is expensive  and
 the user typically reviews output themselves.
 
 ```bash
@@ -148,98 +140,14 @@ consequence: after editing a `.qmd` (or a `code/*.py`/`*.R` module a report depe
 source change** — otherwise CI publishes stale output, or the freeze cache silently drifts from
 the source.
 
-`reports/pilot_simulation.qmd` is currently commented out of `_quarto.yml`'s render list (to keep
-site preview fast) — re-enable that line if you need to render/publish it.
-
 **Organize reports for efficient, iterable rendering:** split expensive one-time computation into
 its own early chunk (cached to `data/` where reusable across reports — see `nac.qmd` publishing to
 `data/ohc_truth/`), keep plotting/formatting chunks cheap and separate so they re-run fast on
 their own, and lean on `execute: freeze: auto` rather than recomputing unchanged results.
 
-## Python ↔ R bridge (GP interpolation)
-
-The Gaussian-process interpolation (fit with `GpGp`, a Vecchia-approximated spatiotemporal
-Matérn kriging model) is implemented in R for `GpGp`'s speed, but orchestrated from Python. The
-pattern, in `code/ohc_climatology.py`:
-
-1. Python writes profile observations and a prediction grid to CSV (`write_profile_csv`,
-   `build_pred_grid`).
-2. Python calls `Rscript code/ohc_gp_fit.R <profiles.csv> <fit_summary.csv> <model_cache.rds>`
-   (via `run_gp_fit`, `subprocess.run(..., cwd=REPO_ROOT)`) — fits once, cached to `.rds`.
-3. Python calls `Rscript code/ohc_gp_predict.R <profiles.csv> <pred_grid.csv> <model_cache.rds>
-   <out.csv> [m|exact] [first|middle|last]` (via `run_gp_predict`) — reuses the cached fit to
-   predict mean + standard error on a grid, one call per resolution. `m=exact` conditions on every
-   observation (fine at ~35 points); a small integer `m` (e.g. 30) switches to a bounded-Vecchia
-   neighbourhood so it scales to the ~3,600-point native 1/12° grid.
-4. Python reads `out.csv` back (`load_gp_anomaly_field`) into an xarray field for plotting.
-
-`gp_audit_fields.R` (via `run_gp_audit_fields`) independently cross-checks GpGp's kriging against
-`fields::Krig` and a hand-rolled Cholesky solve. `ohc_levitus_interp.R` (via `run_levitus_interp`)
-is a simpler, non-GP interpolation baseline (fixed-radius Gaussian weighting, Levitus-style).
-
-**`cwd=REPO_ROOT` on every subprocess call is load-bearing**: R only auto-sources `.Rprofile`
-(which activates the `renv` project library) from the exact working directory, not an ancestor —
-and `reports/` has no `.Rprofile` of its own. File paths passed to the subprocess are made
-absolute first since cwd is being redirected.
-
-## Core Python modules (`code/`)
-
-- **`ohc.py`** — OHC = `trapz(z, T * cp * rho)` integrated 0–700 m and 0–2000 m (J/m², advisor's
-  seawater constants). `profile_ohc` does the core depth integration (vectorized over any leading
-  shape); `grid_cells`/`coarsen_truth` floor-bin points/gridded truth onto 1°×1° cells
-  (`cell = floor(x/deg)*deg + deg/2`). Truth and float estimates are **always coarsened through
-  the same `grid_cells` path** so cell-definition quirks (no cos(lat) area weighting, unweighted
-  means, per-depth NaN handling) apply identically to both sides and don't bias the truth-vs-float
-  comparison — see `docs/ohc_gridding_assumptions.md` for the full list of binning assumptions
-  before changing gridding logic.
-- **`ohc_bias.py`** — bias metrics (`compute_bias`: float vs. truth, decomposed into sampling bias
-  + grid bias) and nearly all plotting (`plot_monthly_cell_maps`, `plot_bias_se_violin`,
-  `compute_coverage_cells`/`monthly_coverage_rate`/`plot_coverage_by_month`, region/resolution
-  sweep plots). The common interchange format across this module is a **"cells table"**:
-  columns `month, cell_lat, cell_lon, <value_cols...>` — new metrics should conform to this shape
-  to reuse the existing plotting functions. Values are J/m² internally; `J_TO_GJ = 1e-9` converts
-  for display. **Caveat (bias decomposition):** the bias-decomposition code presently in the repo
-  (`compute_bias`'s sampling-bias/grid-bias split, and everything downstream of `grid_cells`) is
-  **exploratory only** — it is not rigorous enough to serve as the paper's bias decomposition. It
-  presupposes a fixed analysis grid, so the "sampled cells", sampled fraction, and the resulting
-  bias components are all resolution-dependent artifacts rather than well-defined functionals of the
-  continuous OHC field. Treat these outputs as diagnostics, not as the estimand-level decomposition;
-  the rigorous formulation (see `reports/bias_bound_methods.qmd`) is being reworked to define the
-  decomposition continuously, with any grid appearing only as an explicit quadrature approximation
-  carrying its own error term.
-- **`ohc_climatology.py`** — builds the RG Argo Climatology mean/anomaly field (Option A: seasonal
-  12-month climatology from `ARGO_TEMPERATURE_MEAN` + `ARGO_TEMPERATURE_ANOMALY`, recommended;
-  Option B: static 15-yr mean only — see the module docstring for why A is preferred), samples it
-  onto arbitrary points/grids, and owns the R-subprocess orchestration described above.
-- **`trajsim.py`** — VirtualFleet/Parcels compute library: float deployment plans, GLORYS velocity
-  field fetch/build, running a simulation batch. No plotting/notebook side effects, so it stays
-  lightweight on HPC compute nodes. `run_trajsim.py` is the CLI batch runner (auto-detects SLURM
-  array env); `run_experiment.sh <config.json> [local|slurm]` is the actual entry point most runs
-  should go through — it reads one JSON config (`code/configs/*.json`; see
-  `code/configs/nac_gs_1yr_wide.json` for the shape: experiment name, python interpreter,
-  velocity glob, deployment box/time, duration, batching, SLURM resources) and dispatches to
-  local multi-core or a SLURM array job. **Note:** `code/README.md` documents an older
-  `.conf`-file config format — the current format is JSON, read `run_experiment.sh` itself as the
-  source of truth if the two disagree.
-- **`trajplots.py`** — trajectory plotting only (matplotlib/cartopy); deliberately kept out of
-  `trajsim.py` so simulation runs don't need those deps on HPC compute nodes.
-- **`download_rg_monthly.py`**, **`download_gs_2021_2022.py`** — one-off/resumable data pulls
-  (RG Argo Climatology; GLORYS12V1 velocity+temperature via `copernicusmarine`), run directly with
-  `python code/download_*.py` from the repo root.
 
 ## Reports (`reports/`)
 
-- **`nac.qmd`** — North Atlantic Current analysis region setup + OHC anomaly derivation against
-  the RG climatology. Publishes the multi-year, analysis-domain-restricted truth field and
-  truth-vs-climatology anomaly cells to `data/ohc_truth/` for other reports to reuse directly
-  (skips re-running the expensive depth integration / RG reprocessing).
-- **`nac_gp.qmd`** — picks up `nac.qmd`'s cached truth field. Fits one pooled spatiotemporal GP
-  per depth (`matern_spheretime` covariance, all three years' real Argo profiles) and predicts OHC
-  directly (not an anomaly) on both a coarse 1° grid (exact conditioning) and the native 1/12°
-  grid (bounded Vecchia, `m=30`); compares predictions against truth via bias maps, SE maps, and
-  ±1 SE coverage-rate diagnostics.
-- **`pilot_simulation.qmd`** — earlier virtual-float pilot study; currently excluded from the
-  site build (see above).
 
 Reports share a small `_emit`/`_show_fig` helper pattern (defined in each report's first cell) for
 building Quarto panel-tabsets (`::: {.panel-tabset}`) programmatically from Python loops over
