@@ -2,7 +2,7 @@ project:
   type: website
   render:
     - "index.qmd"
-    - "reports/osse.qmd"
+    - "reports/osim.qmd"
 
 execute:
   freeze: auto
@@ -18,9 +18,9 @@ website:
     style: docked
     contents:
       - index.qmd
-      - section: "OSSE"
+      - section: "Float simulation"
         contents:
-          - reports/osse.qmd
+          - reports/osim.qmd
 
 format:
   html:

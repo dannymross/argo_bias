@@ -1,0 +1,825 @@
+---
+title: "Simulation Based Estimation of Sampling Bias"
+jupyter: python3
+fig-dpi: 300
+bibliography: ../paper/references.bib
+---
+
+```{=html}
+<style>
+table.dataframe { width: auto; max-width: 90%; font-size: 0.85em; margin-left: auto; margin-right: auto; }
+/* The field maps are native 1/12 deg cells drawn as hard-edged quads. Browsers
+   smooth-scale images by default, which blurs those cells into a continuous
+   field the data does not have; nearest-neighbour scaling keeps them discrete. */
+figure img, .quarto-figure img { image-rendering: pixelated; }
+</style>
+```
+
+```{python}
+#| label: setup
+#| include: false
+
+import os, sys
+sys.path.insert(0, os.path.abspath("../code"))
+
+import numpy as np, pandas as pd, matplotlib.pyplot as plt
+from IPython.display import HTML
+from osim import mean_mc as mm
+from osim import report as rp
+
+plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.alpha": 0.25})
+GJ = mm.J_TO_GJ
+BOXES = ("boxB", "boxA")
+PILOT = "_pilot_fulldom"   # expanded-velocity-domain pilot (preliminary 16-rep re-run)
+
+def fmt(df, dec=3):
+    return df.round(dec).to_html(index=False, border=0)
+
+mm.set_box("boxB")
+```
+
+# Data and models
+
+**Field.** GLORYS12V1 reanalysis on its native $1/12^\circ$ grid. OHC is the $0$–$2000$ m depth
+integral of potential temperature against constant $c_p\rho$ (`code/ohc.py`), evaluated daily over
+2010–2019. Cells enter the analysis only where $\mathrm{deptho} > 2000$ m *and* the integral is
+defined at every level.
+
+**Mean field.** OHC is split as $\mathrm{OHC} = \hat m + \tilde Z$ into a smooth climatological mean
+field $\hat m$, fitted once across $1995$–$2019$, and the residual anomaly field $\tilde Z$. $\hat m$ is a per-cell OLS on a quadratic trend
+plus annual and semiannual harmonics, fit against the GLORYS *monthly* record with each basis
+function averaged over its month to match the monthly-mean response, then evaluated pointwise per
+day. @sec-meanfield gives the estimator and summarizes what it leaves.
+
+**Advection.** OceanParcels, park depth $1000$ m, advected by GLORYS daily $(u,v)$ over
+$11$–$66^\circ$ N, $87$–$12^\circ$ W -- the full 2010-2019 footprint of every float that profiles an
+analysis box in 2015-2019, so simulated floats are not deleted for leaving the velocity domain (an
+earlier $15$–$50^\circ$ N, $70$–$30^\circ$ W domain lost most such floats at its western edge; see
+@sec-retention). Floats advect continuously at park depth and record a position every $10$ days;
+there is no ascent, descent or surface drift, so a cycle is a position sample, not a simulated dive.
+Floats are deleted on leaving the velocity domain and retired at a lifespan drawn from the real Argo
+record for this region (median $\approx 1500$ d).
+
+**Estimation.** $\hat Z_k$ is the unweighted mean of $\tilde Z_k$ at the profile positions for year $k$, and $\bar Z_k$ is the exact $\mathbb{P}$-weighted domain mean
+of the same field for year $k$.
+
+# The analysis domain
+
+Two analysis boxes sit inside the downloaded GLORYS region, both spanning $60^\circ$–$40^\circ$ W:
+**Box B** ($35$–$45^\circ$ N) straddles the North Atlantic Current and the Gulf Stream extension,
+and **Box A** ($22$–$34^\circ$ N) has milder currents and OHC variability. Temperature was downloaded for the analysis boxes and a small buffer; velocity was
+downloaded over a larger region to advect floats, which are lost if they exit the velocity domain.
+
+```{python}
+#| label: fig-domain
+#| echo: false
+#| fig-cap: "The two analysis boxes (filled) inside the downloaded GLORYS velocity and thetao regions (dashed)."
+
+rp.plot_domain_map()
+plt.show()
+```
+
+```{python}
+#| label: fig-bathy
+#| echo: false
+#| fig-cap: "GLORYS ocean depth over the advection domain (left) and the sub-2000 m cells excluded from the analysis (right), both boxes outlined."
+
+rp.plot_bathymetry()
+plt.show()
+```
+An analysis mask is placed on cells that must have temperature data for every depth level to $2000$m.
+Retained area is $92.35\%$ and $99.77\%$ for Box B and A respectively.
+
+The below figures show a single day's OHC anomaly and velocity fields for the analysis domain. A day was selected based on its percentile of spatial variability across cells for the given field over both analysis boxes.
+
+```{python}
+#| label: fig-days
+#| echo: false
+#| fig-cap: "Residual field Z (GJ per m2) on days at the 5th, 50th and 95th percentile of the combined daily spatial dispersion, both boxes on one shared diverging scale."
+
+rp.plot_quantile_days()
+plt.show()
+```
+
+```{python}
+#| label: fig-vel-u
+#| echo: false
+#| fig-cap: "Eastward velocity at 1000 m (cm/s), both boxes on one shared diverging scale."
+rp.plot_velocity_quantile_days("uo")
+plt.show()
+```
+
+```{python}
+#| label: fig-vel-v
+#| echo: false
+#| fig-cap: "Northward velocity at 1000 m (cm/s), both boxes on one shared diverging scale."
+rp.plot_velocity_quantile_days("vo")
+plt.show()
+```
+
+**The flow is roughly twice as variable in Box B.** Median daily $\mathrm{sd}_{\mathbb{P}}$ is $12.1$ cm/s eastward and $11.5$ northward in Box
+B against $5.5$ and $5.4$ in Box A.
+Over 2010-2019, the range of daily spatial standard deviation in cm/s is $9.7$–$14.8$ (eastward) and $9.0$–$14.7$ (northward) in Box B, $4.5$–$7.0$ (eastward) and $4.4$–$6.7$ (northward) in Box A. 
+
+
+# Mean field {#sec-meanfield}
+
+The sampling-bias question concerns the *residual anomaly* OHC field, not the total.  We therefore decompose
+
+$$\mathrm{OHC}(c,t) \;=\; \hat m(c,t) \;+\; \tilde Z(c,t),$$
+
+with $\hat m$ a mean field fitted per cell once across all years and $\tilde Z_k$ the year-$k$ residual the designs sample. 
+
+**Regression.** For each analysis cell $c$, OHC is modelled as
+$\mathrm{OHC}(c,t) = \phi(t)^\top \beta_c + \varepsilon(c,t)$ on the trend-plus-harmonics basis
+$\phi(t) = \bigl(1,\,t,\,t^2,\,\sin 2\pi t,\,\cos 2\pi t,\,\sin 4\pi t,\,\cos 4\pi t\bigr)^\top$
+($t$ in decimal years): a quadratic trend and the annual and semiannual cycles. The coefficients are
+fit by least squares to the $1995$–$2019$ GLORYS *monthly* mean record.
+
+A GLORYS monthly file holds the month *mean*
+OHC over $I_m = [t_0^m, t_1^m)$ but is time-stamped at its start $t_0^m$. So we regress
+on the **window-averaged basis** $\bar\phi(I_m) = |I_m|^{-1}\!\int_{I_m}\phi(t)\,dt$, so the OHC monthly response and seasonal basis are monthly averages. The design matrix is $\bar X = \bigl[\bar\phi(I_m)^\top\bigr]_m$ and the per-cell fit is 
+$\hat\beta_c = \bar X^{+} Y_c$. **Prediction is then pointwise:** the fitted field is evaluated at each instant on the daily grid, $\hat m(c,t) = \phi(t)^\top \hat\beta_c$, and subtracted from daily OHC to give $\tilde Z_k = \mathrm{OHC}_k - \hat m$ on the same mask. 
+
+```{python}
+#| label: fig-meanfield
+#| echo: false
+#| fig-cap: "Fitted mean field (quadratic trend plus annual and semiannual harmonics) at mid-month 2015, both boxes on one shared scale, in GJ per m2."
+
+rp.plot_mean_field_months()
+plt.show()
+```
+
+```{python}
+#| label: fig-decomp3
+#| echo: false
+#| fig-cap: "The OHC = mean field + residual decomposition on one shared day, both boxes drawn per field, in GJ per m2."
+
+rp.plot_ohc_decomposition()
+plt.show()
+```
+
+```{python}
+#| label: fig-ohc-series
+#| echo: false
+#| fig-cap: "Daily domain-mean OHC with the fitted mean field (top) and their difference, the domain-mean anomaly (bottom), per box over 2010-2019 in GJ per m2."
+
+rp.plot_ohc_timeseries()
+plt.show()
+```
+
+# Estimand, truth, and estimator
+
+Let $\mathbb{P}$ be the normalized area $\times$ time probability measure over the depth masked analysis domain.
+The target is the residual field's
+domain mean,
+
+$$\bar Z_k \;=\; \int_{\mathcal{X}} \tilde Z_k \, d\mathbb{P},$$
+
+for each analysis year $k$, where $\tilde Z_k$ is the year-$k$ OHC 0–2000 m field with the fitted mean
+field removed. A design is a finite point set $\{x_i\}_{i=1}^{n} \subset \mathcal{X}$ — the year-$k$
+in-box profiles of one deployment realization $d$; its estimator and bias are
+
+$$\hat Z^{(d)}_k \;=\; \frac{1}{n}\sum_{i=1}^{n} \tilde Z_k\!\left(x_i^{(d)}\right),
+\qquad
+B^{(d)}_k \;=\; \hat Z^{(d)}_k - \bar Z_k .$$
+
+$\tilde Z_k$ is a simple function on the native $1/12^\circ \times$ daily grid, so evaluating it at
+$x_i$ is the cell-day lookup of the *containing* cell.
+
+```{python}
+#| echo: false
+
+HTML(fmt(rp.truth_table()))
+```
+
+
+$\bar Z_k$ would be zero if the 1995–2019 mean-field fit were exact on the analysis years; the table above
+carries the small per-year misfit (largest $\bar Z_{2011} = -1.63$ GJ/m$^2$ in Box B), which is
+mean-field misfit, not sampling, and cancels from $B$ by construction (@sec-meanfield). The dispersion
+$\sigma_k = \mathrm{sd}_{\mathbb{P}}(\tilde Z_k)$ is $6.3$–$7.6$ GJ/m$^2$ in Box B and $1.7$–$2.4$ in
+Box A.
+
+# Deployment
+
+One continuous advection per realization generates the sampling. For realization $d$, $N$ floats are
+seeded uniformly over normalized spacetime across the velocity record of 2010-2019.
+Each realization therefore yields $B^{(d)}_k$ for
+every analysis year at once, flow and field the same calendar year. 
+
+**How a float is advected.** Each float is carried by GLORYS12V1 daily horizontal velocity $(u,v)$ at
+a fixed park depth of $1000$ m and held there for its whole life — there is *no dive cycle*. The two
+archived velocity levels bracketing $1000$ m ($902$ and $1062$ m) are linearly interpolated to the
+park depth (as OceanParcels does natively), and the float is stepped forward at a $1$-hour time step. Its position is written every $10$ days, and that recorded
+park-depth position is taken as the profile — the point where a real float would begin its ascent — so
+a cycle is a position sample, not a simulated dive. A float is deleted when it leaves the velocity
+domain and retired at a lifespan drawn from the real Argo record (median $\approx 1500$ d).
+
+::: {.callout-note}
+This version reflects the **expanded velocity domain** ($11$–$66^\circ$ N, $87$–$12^\circ$ W). The
+pilot below is a **preliminary $16$-realization re-run** on that domain (the full $100$-rep run is
+pending); its confidence intervals are correspondingly wider. The argo-actual comparison arm
+(@sec-argo-cmp) is on the new domain; the resampled argo-bootstrap ensemble has been removed pending
+its re-run.
+:::
+
+The pilot is **$16$ independent realizations** (preliminary; target $100$). Each seeds **$1{,}000$
+floats** uniformly over normalized space–time on the ($\mathrm{deptho}\ge 1000$ m) region spanning
+both boxes plus an $8^\circ$ margin, across $2010\text{-}01\text{-}01$ to $2019\text{-}12\text{-}26$,
+and advects them once at $1000$ m park depth ($10$-day profiling cycle, lifespans drawn from the real
+Argo record). Years $2010$–$2014$ are the equilibration lead; bias is calculated on **$2015$–$2019$**.
+
+
+
+::: {.panel-tabset}
+
+### Simulated advection
+
+```{python}
+#| label: fig-advection
+#| echo: false
+#| fig-cap: "One simulated deployment: 60 float drift tracks and their 10-day profile points coloured by year, only in-box profiles (filled) entering an estimate."
+
+rp.plot_deployment_advection_map(max_floats=60)
+plt.show()
+```
+
+### Real Argo
+
+```{python}
+#| label: fig-advection-argo
+#| echo: false
+#| fig-cap: "Real Argo trajectories over the same domain and years (60 of 740 floats) coloured by year, on the same base map for comparison."
+
+rp.plot_argo_trajectory_map(max_floats=60)
+plt.show()
+```
+
+:::
+
+**Real deployment geometry.** The map below shows the raw (not QC-cleaned) deployment position of
+every real Argo float first observed inside the advection domain over $2010$–$2019$ ($1{,}014$ floats),
+coloured by deployment year — the release geometry the real-deployment arms (below) seed from, and
+the starting point for the per-float bias-over-time analysis. Deployment is taken as each float's
+earliest profile on record, so a float first observed before the file window is not resolved here.
+
+```{python}
+#| label: fig-deploy-positions
+#| echo: false
+#| fig-cap: "Raw Argo deployment positions in the advection domain, 2010-2019, coloured by deployment year, on the shared domain base map (dashed: velocity and thetao download regions; filled: the two analysis boxes)."
+
+rp.plot_deployment_positions_map()
+plt.show()
+```
+
+## A single deployment cluster {#sec-cluster}
+
+Six floats were deployed within a $\sim\!14$-hour window on $27$–$28$ September $2015$ in a tight
+cluster in the NW corner of Box B ($43.4$–$44.3^\circ$ N, $-55.8$ to $-57.8^\circ$ W), on the Grand
+Banks / Gulf Stream–Labrador confluence. They are a clean natural experiment in deployment geometry:
+a common release point and time, whose per-float sampling bias we can then follow profile by profile.
+
+For the simple-mean estimator the year-$k$ bias is an *exact* sum of per-profile contributions.
+Writing $n_k$ for the number of in-box profiles the array reports in year $k$,
+
+$$
+B_k \;=\; \hat Z_k - \bar Z_k
+\;=\; \frac{1}{n_k}\sum_{i=1}^{n_k}\bigl(\tilde Z_k(x_i) - \bar Z_k\bigr)
+\;=\; \sum_{i=1}^{n_k} c_i,
+\qquad
+c_i \;=\; \frac{1}{n_k}\,\underbrace{\bigl(\tilde Z_k(x_i) - \bar Z_k\bigr)}_{\delta_i},
+$$
+
+the centering being free because $\tfrac{1}{n_k}\sum_i \bar Z_k = \bar Z_k$. Every profile carries the
+*same* weight $1/n_k$ whatever float it came from — that equal weighting is what makes the estimator
+the simple (unweighted) mean, and it ties the normalization to the year, not the float. Grouping the
+contributions by float gives each float's share of the year's bias,
+
+$$
+C_{f,k} \;=\; \sum_{i\,\in\, f,\,k} c_i \;=\; \frac{n_{f,k}}{n_k}\bigl(\bar Z_{f,k} - \bar Z_k\bigr),
+\qquad \sum_f C_{f,k} = B_k,
+$$
+
+its profile share $n_{f,k}/n_k$ times its mean alignment $\bar Z_{f,k} - \bar Z_k$ (with
+$\bar Z_{f,k}$ the mean of $\tilde Z_k$ over that float's year-$k$ in-box profiles).
+
+The charts below plot the single-profile bias $\delta_i = \tilde Z_k(x_i) - \bar Z_k$ — one profile's
+alignment with the field — along each float's life (in-box profiles only, where the residual field is
+defined), with the cluster mean over-plotted. This is the contribution $c_i$ up to the $1/n_k$ weight;
+we show $\delta_i$ rather than $c_i$ so the curves stay comparable across years (the year's $n_k$ only
+rescales them). The two tabs evaluate $\delta_i$ at the *real* Argo positions and at the *GLORYS
+park-advection* sim-twin positions of the same floats, so their divergence is the same
+real-vs-reanalysis gap the trajectory maps show.
+
+::: {.panel-tabset}
+
+### Real Argo
+
+```{python}
+#| label: fig-cluster-bias
+#| echo: false
+#| fig-cap: "Single-profile bias Z(x_i) - Zbar_k (GJ per m2) vs profile number for each of the six floats at their real Argo positions, with the cluster mean (black). Only in-box profiles carry a defined bias."
+
+rp.plot_float_bias_profile(source="real")
+plt.show()
+```
+
+### GLORYS advection
+
+```{python}
+#| label: fig-cluster-bias-sim
+#| echo: false
+#| fig-cap: "The same single-profile bias evaluated at the GLORYS 1000 m park-advection sim-twin positions of the six floats. In-box counts differ from the real tab because the park tracks drift out of the box on a different schedule."
+
+rp.plot_float_bias_profile(source="sim")
+plt.show()
+```
+
+:::
+
+The two trajectory maps below trace the same six floats (one colour each; deployment a star, last fix
+an open circle): the GLORYS park-advection sim twin against the real Argo path from the shared
+deployment.
+
+::: {.panel-tabset}
+
+### GLORYS advection
+
+```{python}
+#| label: fig-cluster-sim
+#| echo: false
+#| fig-cap: "GLORYS 1000 m park-advection sim-twin trajectories of the six floats from their real deployment positions."
+
+rp.plot_cluster_sim_tracks()
+plt.show()
+```
+
+### Real Argo
+
+```{python}
+#| label: fig-cluster-real
+#| echo: false
+#| fig-cap: "Real Argo trajectories of the same six floats on the same base map."
+
+rp.plot_cluster_real_tracks()
+plt.show()
+```
+
+:::
+
+## Domain retention {#sec-retention}
+
+The expanded velocity domain almost eliminates the loss of floats to advection out of bounds. The
+table and map below classify the fate of every virtual float in the **argo-actual arm** ($365$ floats
+seeded from real deployments, advected once over $2010$–$2019$ on the new domain): each either leaves
+the velocity domain early (deleted), retires at its drawn lifespan, or is still alive at the record
+end. Only **$3.6\%$** ($13/365$) exit the domain, and $12$ of those $13$ leave at the *southern* edge
+($\sim\!11^\circ$ N) -- the western edge that flushed floats on the old domain is now deep interior.
+
+(This is the single-realization argo-actual arm; a per-realization count for the uniform pilot needs
+its full trajectories, which the pilot run discards, so it is deferred to an instrumented re-run.)
+
+```{python}
+#| echo: false
+
+_fates = rp.domain_exit_fates()
+HTML(fmt(rp.domain_exit_table(_fates), 1))
+```
+
+```{python}
+#| label: fig-domain-exit
+#| echo: false
+#| fig-cap: "Last in-domain position of every argo-actual virtual float that advected out of the velocity domain (red X), on the shared base map. Almost all exits are at the southern boundary."
+
+rp.plot_domain_exit_map(_fates)
+plt.show()
+```
+
+
+# The sampling weight field
+
+The bias  $B^{(d)}_k = \langle \tilde Z_k,\, w^{(d)} - p\rangle$, the inner product of
+the residual field with the excess of the empirical sampling weight over the uniform weight p.
+One realization's sampling is the normalized empirical measure
+
+$$w^{(d)} \;=\; \frac{1}{n}\sum_{i=1}^{n} \delta_{x_i}$$
+
+on the spacetime domain $\mathcal{X} = \mathcal{A} \times \mathcal{T}$. Averaging it over realizations gives
+$\mathbb{E}[w]$, the normalized occupancy (intensity) measure of the advective array, with
+$\mathbb{E}[B_k] = \langle \tilde Z_k,\, \mathbb{E}[w] - p\rangle$.
+
+We define the spatial marginal sampling weight as
+
+$$w^{\mathrm{sp}}_c \;=\; \sum_{\tau\in\mathcal{T}} w_{c,\tau} \;=\; \frac{\#\{\,i : x_i \in c\,\}}{n},$$
+
+the fraction of a realization's profiles that fall in cell $c$, summed over all days. The maps below
+show $\mathbb{E}[w^{\mathrm{sp}}_c]$ — the expected such fraction, i.e. the array's normalized spatial
+intensity — over the years $2015$–$2019$ on the native $1/12^\circ$ grid, against the uniform
+area marginal $p^{\mathrm{sp}}_c = A_c / \sum_{c'} A_{c'}$, as the ratio
+$q_c = \mathbb{E}[w^{\mathrm{sp}}_c] / p^{\mathrm{sp}}_c$ ($=1$ under area-fair sampling). 
+
+## Spatial marginal
+
+```{python}
+#| label: fig-wspace
+#| echo: false
+#| fig-cap: "Over- and under-sampling log2(E[w]/uniform) on the native 1/12 deg grid, both boxes on one map per scored year and one shared scale (red over-sampled, blue under, white uniform)."
+
+rp.plot_sampling_weight_space_combined(years=[2015, 2016, 2017, 2018, 2019], tag=PILOT)
+plt.show()
+```
+
+The per-cell weight distribution about the uniform value of 1, one panel per year:
+
+::: {.panel-tabset}
+
+### Box B
+
+```{python}
+#| label: fig-whist
+#| echo: false
+#| fig-cap: "Box B distribution of the per-cell weight E[w]/uniform over native cells per year, about the uniform value of 1 (red line)."
+
+rp.plot_sampling_weight_hist("boxB", years=[2015, 2016, 2017, 2018, 2019], tag=PILOT)
+plt.show()
+```
+
+### Box A
+
+```{python}
+#| label: fig-whist-a
+#| echo: false
+#| fig-cap: "Box A distribution of the per-cell weight E[w]/uniform, same construction as Box B."
+
+rp.plot_sampling_weight_hist("boxA", years=[2015, 2016, 2017, 2018, 2019], tag=PILOT)
+plt.show()
+```
+
+:::
+
+
+## Bias as a covariance
+
+Let $q = w/p$ be the sampling frequency of each cell-day relative to its
+uniform share — the over/under-sampling factor mapped in @fig-wspace and distributed in @fig-whist,
+equal to $1$ under uniform sampling and with $\int q\,\mathrm{d}\mathbb{P} = 1$. The bias is the inner
+product of the field with the sampling excess,
+
+$$B_k \;=\; \langle \tilde Z_k,\, q - 1\rangle_{\mathbb{P}}
+       \;=\; \langle \tilde Z_k - \bar Z_k,\, q - 1\rangle_{\mathbb{P}},$$
+
+the second equality because $\langle 1, q-1\rangle_{\mathbb{P}} = 0$ — a spatially uniform field is
+sampled without bias. Cauchy–Schwarz for this inner product gives the cap
+
+$$|B_k| \;\le\; \lVert \tilde Z_k - \bar Z_k\rVert_{\mathbb{P}}\,\lVert q - 1\rVert_{\mathbb{P}}
+         \;=\; \sigma_k \, \operatorname{sd}_{\mathbb{P}}(q),$$
+
+with $\sigma_k = \operatorname{sd}_{\mathbb{P}}(\tilde Z_k)$ (the residual-field table) and $\operatorname{sd}_{\mathbb{P}}(q)$
+the spread of the over/under-sampling factor (@fig-whist), attained only when $q-1$ is proportional to
+the field anomaly. **Zero bias does not require uniform sampling** — it requires only that $q - 1$ be
+orthogonal to $\tilde Z_k$ in $L^2(\mathbb{P})$; a strongly non-uniform array
+($\operatorname{sd}_{\mathbb{P}}(q) \gg 0$) can still be unbiased for this functional.
+
+
+# Results
+
+```{python}
+#| label: load-continuous
+#| include: false
+
+est = mm.load_continuous(PILOT)
+ref = mm.uniform_reference_ensemble(est, R=2000)   # large n-matched uniform null
+argo_clean = rp.clean_argo()   # QC: 10-day thinning + drop gappy / short-span floats
+argo = {b: mm.argo_bias_by_year(b, cleaned=argo_clean) for b in ("boxB", "boxA")}
+argo_actual = mm.load_continuous("_argo_actual")  # single actual-deployment realization (new domain)
+```
+
+## Pilot specification
+
+
+
+Across the $16$ realizations the pilot seeds $1.6\times10^4$ float-deployments; per-box, per-year
+sample sizes are in the table below. On the expanded domain Box B retains slightly more floats than
+before (standing stock $\sim\!45$–$48$, $\sim\!1{,}640$–$1{,}750$ profiles a year); Box A holds stock
+$\sim\!75$–$80$ giving $\sim\!2{,}720$–$2{,}910$ — its quiescent flow retains more of the same deployment.
+
+```{python}
+#| echo: false
+
+HTML(fmt(rp.continuous_pilot_size_table(est), 1))
+```
+
+
+## Standing stock against real Argo
+
+```{python}
+#| echo: false
+
+HTML(fmt(rp.continuous_stock_table(est), 1))
+```
+
+
+```{python}
+#| label: fig-stock
+#| echo: false
+#| fig-cap: "In-box standing stock by analysis year: virtual array (mean +/- sd over the 100 realizations) against the real Argo record, one panel per box."
+
+rp.plot_continuous_stock(est)
+plt.show()
+```
+
+
+## Sampling bias
+
+```{python}
+#| label: fig-bias-intervals
+#| echo: false
+#| fig-cap: "Sampling bias B = Zhat - Zbar by year and box (marker = ensemble mean, capped bar = 95 percent CI, thin line = 5-95 percent of realizations) for the advective array (grey) and n-matched uniform reference (blue)."
+
+rp.plot_bias_intervals(est, ref)
+plt.show()
+```
+
+
+
+**Uniform Reference.** An $n$-matched iid draw from $\mathbb{P}$ with $\mathbb{E}[B] = 0$  Because it needs no advection
+it is drawn as a large ensemble ($2{,}000$ per box-year, at the year's median $n$).
+
+::: {.panel-tabset}
+
+### Box B
+
+```{python}
+#| label: fig-bias
+#| echo: false
+#| fig-cap: "Box B sampling distribution of B over 100 realizations per year (grey), with the uniform reference (dashed blue), zero (red), the ensemble mean (dotted), and the real QC-cleaned Argo bias (green)."
+
+rp.plot_continuous_bias(est, "boxB", ref, argo=argo["boxB"])
+plt.show()
+```
+
+```{python}
+#| echo: false
+
+HTML(fmt(rp.continuous_bias_table(est, "boxB", ref), 4))
+```
+
+
+### Box A
+
+```{python}
+#| label: fig-bias-a
+#| echo: false
+#| fig-cap: "Box A, same construction on its own axis (green: the real-Argo realized bias): the bias scale is roughly a third of Box B's. Compare the boxes through the standardized column of the tables, not across these figures."
+
+rp.plot_continuous_bias(est, "boxA", ref, argo=argo["boxA"])
+plt.show()
+```
+
+```{python}
+#| echo: false
+
+HTML(fmt(rp.continuous_bias_table(est, "boxA", ref), 4))
+```
+
+
+:::
+
+
+# Real-deployment comparison: deployment vs. drift {#sec-argo-cmp}
+
+The real Argo array is markedly more biased than the uniform-seeded simulation (@fig-bias). To
+separate how much of that gap is the *geometry* of where and when Argo is deployed from how much is
+real float motion diverging from the simplified advection, the **argo-actual** arm seeds the *same*
+GLORYS park advection from the real Argo deployment record instead of uniformly in space–time: each
+cleaned float's first profile inside the box-plus-$8^\circ$ margin over $2010$–$2019$ ($365$
+deployments, with their real positions, dates, and lifespans), advected verbatim (one realization,
+the direct fidelity check). On the expanded velocity domain almost none of these floats are lost to
+domain exit (@sec-retention), so the arm now scores far more of each real deployment's in-box life
+than it could before.
+
+```{python}
+#| echo: false
+
+HTML(fmt(rp.argo_comparison_table(est, argo_actual, argo), 3))
+```
+
+
+```{python}
+#| label: fig-argo-cmp
+#| echo: false
+#| fig-cap: "Deployment-law comparison per box: uniform ensemble (grey) intervals, the single actual-deployment realization (orange diamond), and real Argo (green X), all on the expanded velocity domain."
+
+rp.plot_argo_comparison(est, argo_actual, argo)
+plt.show()
+```
+
+Seeding from the real deployments moves the Box B bias from essentially zero (uniform) to negative:
+the argo-actual mean over $2015$–$2019$ is $\approx -0.48$ GJ/m$^2$, against the real array's
+$\approx -0.73$ — so the verbatim park advection of the real deployments reproduces **roughly two
+thirds of the real Box B bias**. Where and when Argo is actually put in the water, carried by the
+flow, lands profiles preferentially over cold anomalies, something uniform-in-space–time seeding does
+not reproduce. The remaining $\sim\!0.25$ GJ/m$^2$ is the residual the park-only advection cannot
+capture — real trajectories diverging from GLORYS (ascent/surface drift/descent, real currents
+$\neq$ reanalysis). Year by year the sign matches the real array in $2015$–$2018$; only $2019$ flips
+positive ($+0.64$), a single noisy realization. Box A stays small under both deployment laws.
+(A resampled real-deployment *bootstrap* ensemble, which puts a Monte-Carlo spread around this single
+realization, is being re-run on the expanded domain and will be restored here.)
+
+## Per-float bias over life, by deployment cohort
+
+Each argo-actual float's per-profile bias $Z(x_i) - \bar Z_k$ (unnormalized, in GJ/m$^2$; $k$ the
+profile's own year) over its **whole life**, one tab per **deployment-year cohort**. The $x$-axis is
+days since the float's real deployment and runs continuously across years and across any spell outside
+the domain -- so a float that profiles in-box, drifts out, and returns has its points joined across
+the gap (out-of-domain profiles carry no bias). If deployment bias washes out as floats mix into the
+flow, the lines should relax toward zero with age. Box B and Box A per tab.
+
+```{python}
+#| label: load-aa-bias
+#| include: false
+
+aa_bias = rp.argo_actual_profile_bias()
+```
+
+::: {.panel-tabset}
+
+### 2010
+
+```{python}
+#| label: fig-aa-bias-2010
+#| echo: false
+#| fig-cap: "Argo-actual per-float bias Z(x_i)-Zbar_k (GJ per m2) vs days since deployment, 2010 deployment cohort; one thin line per float over its whole life, in-box points joined across out-of-domain gaps and year boundaries."
+rp.plot_argo_actual_bias_cohort(2010, bias=aa_bias)
+plt.show()
+```
+
+### 2011
+
+```{python}
+#| label: fig-aa-bias-2011
+#| echo: false
+#| fig-cap: "As 2010, for the 2011 deployment cohort."
+rp.plot_argo_actual_bias_cohort(2011, bias=aa_bias)
+plt.show()
+```
+
+### 2012
+
+```{python}
+#| label: fig-aa-bias-2012
+#| echo: false
+#| fig-cap: "As 2010, for the 2012 deployment cohort."
+rp.plot_argo_actual_bias_cohort(2012, bias=aa_bias)
+plt.show()
+```
+
+### 2013
+
+```{python}
+#| label: fig-aa-bias-2013
+#| echo: false
+#| fig-cap: "As 2010, for the 2013 deployment cohort."
+rp.plot_argo_actual_bias_cohort(2013, bias=aa_bias)
+plt.show()
+```
+
+### 2014
+
+```{python}
+#| label: fig-aa-bias-2014
+#| echo: false
+#| fig-cap: "As 2010, for the 2014 deployment cohort."
+rp.plot_argo_actual_bias_cohort(2014, bias=aa_bias)
+plt.show()
+```
+
+### 2015
+
+```{python}
+#| label: fig-aa-bias-2015
+#| echo: false
+#| fig-cap: "As 2010, for the 2015 deployment cohort."
+rp.plot_argo_actual_bias_cohort(2015, bias=aa_bias)
+plt.show()
+```
+
+### 2016
+
+```{python}
+#| label: fig-aa-bias-2016
+#| echo: false
+#| fig-cap: "As 2010, for the 2016 deployment cohort."
+rp.plot_argo_actual_bias_cohort(2016, bias=aa_bias)
+plt.show()
+```
+
+### 2017
+
+```{python}
+#| label: fig-aa-bias-2017
+#| echo: false
+#| fig-cap: "As 2010, for the 2017 deployment cohort."
+rp.plot_argo_actual_bias_cohort(2017, bias=aa_bias)
+plt.show()
+```
+
+### 2018
+
+```{python}
+#| label: fig-aa-bias-2018
+#| echo: false
+#| fig-cap: "As 2010, for the 2018 deployment cohort."
+rp.plot_argo_actual_bias_cohort(2018, bias=aa_bias)
+plt.show()
+```
+
+### 2019
+
+```{python}
+#| label: fig-aa-bias-2019
+#| echo: false
+#| fig-cap: "As 2010, for the 2019 deployment cohort."
+rp.plot_argo_actual_bias_cohort(2019, bias=aa_bias)
+plt.show()
+```
+
+:::
+
+## Is the residual gap the missing dive cycle?
+
+The park-only sim omits the dive cycle — the ascent, the $\sim\!1$-day surface drift, and the descent
+— so one reading of the residual $\sim\!0.3$ GJ/m$^2$ is that a profile recorded at the $1000$ m park
+position sits systematically away from where a real float actually surfaces. To test this we advect
+each real deployment verbatim at park depth, keeping the full drift path, and compare the GLORYS-park
+track to the *same* real float's profile positions over time.
+
+```{python}
+#| label: load-divergence
+#| include: false
+
+div = rp.trajectory_divergence()
+```
+
+```{python}
+#| echo: false
+
+HTML(fmt(mm.trajectory_divergence_summary(div), 1))
+```
+
+```{python}
+#| label: fig-divergence
+#| echo: false
+#| fig-cap: "Great-circle separation between each real Argo float and its GLORYS-park sim twin vs days since deployment (median and IQR over 365 floats), against the level two independent floats reach (dashed)."
+
+rp.plot_trajectory_divergence(div)
+plt.show()
+```
+
+```{python}
+#| label: fig-twins
+#| echo: false
+#| fig-cap: "Two long-lived real Argo floats and their GLORYS-park sim twins from a shared deployment (star; real end a filled circle, sim end an open square). Each float is a matched colour pair -- real the darker solid line, sim twin the lighter dashed line: a Box A float in blue/cyan (~8 yr, subtropical gyre) and a Box B float in purple/pink (~6 yr, NAC / Gulf Stream)."
+
+rp.plot_trajectory_twins()
+plt.show()
+```
+
+The sim loses the real float fast: median separation is already $\sim\!53$ km at one $10$-day cycle,
+$\sim\!135$ km at a month and $\sim\!290$ km at three, climbing through $\sim\!590$ km at a year
+(@fig-divergence). The field's mesoscale correlation length is $\sim\!50$–$100$ km, so the GLORYS-park
+position exceeds it *within a single cycle* and is several correlation lengths off well inside the
+analysis year — it samples effectively independent locations at the seasonal scale that sets the bias.
+Individual twins make this concrete (@fig-twins): a subtropical-gyre float and its twin part slowly,
+while a NAC / Gulf-Stream float and its twin split early and end up in different parts of the basin.
+A dive cycle would add only the $\sim\!1$-day surface excursion per cycle (tens of km, largely
+non-persistent), far too small to produce or repair a divergence that grows at $\sim\!5$ km/day. **So
+the drift residual is reanalysis and advection error — real $1000$ m currents and unresolved eddies,
+not the missing surfacing — and adding a dive cycle to the advection would not close it.** (The
+$\pm 6$-day matching tolerance inflates the $10$-day point; the month-plus separations dwarf it, and
+the separation also bundles the surface-vs-park offset, which only reinforces the conclusion.)
+
+# Conclusions
+
+From this $100$-realization pilot:
+
+**The advective sampling bias is small but not zero.** In both boxes $\mathbb{E}[B_k]$ stays within
+$\sim\!0.02\,\sigma_k$ (the bias tables) — a few hundredths of a GJ/m$^2$ against a field varying by $6$–$8$
+(Box B) and $2$ (Box A) GJ/m$^2$. It is not identically zero: several years are resolved at $2$–$4$
+Monte-Carlo standard errors, so the array is weakly preferential in effect, at a magnitude that is a
+small fraction of the field's own variability.
+
+**Strong non-uniform sampling, nearly orthogonal to the field.** The array samples space genuinely
+non-uniformly (on-mask up to $\sim\!3.6\times$ over-sampling, $\operatorname{sd}_{\mathbb{P}}(q)\approx0.4$;
+@fig-whist), yet the bias is only $\sim\!1$–$5\%$ of the Cauchy–Schwarz ceiling that non-uniformity
+permits, i.e. a weight–field correlation $|\rho_k|\approx0.02$. Preferential sampling does not imply
+preferential bias for this functional — the estimand-level bias is the covariance
+$\operatorname{Cov}_{\mathbb{P}}(q,\tilde Z_k)$, and the array sits near its null space, not a property of sampling
+non-uniformity per se.
+
+**Both regimes are comparably biased once standardized.** Box B has larger raw bias and spread, but on
+the $\sigma_k$ scale the energetic western-boundary region is not disproportionately biased relative to
+the quiescent gyre.
+
+
+

@@ -420,7 +420,7 @@ that spread *understates* true seasonal variation.
 
 1. **§3 as propositions (proved) vs empirical demonstration.** Aim: stated + proved
    generally (identity + sufficient conditions), GLORYS *confirms*. This is what makes
-   it read as a methods paper rather than an OSSE.
+   it read as a methods paper rather than a simulation study.
 2. **Mean-field sub-split** $B_{\text{param}}^{\mu}$ vs $B_{\text{param}}^{\xi}$:
    keep both (recommended) or fold into one $B_{\text{param}}$ for the first paper.
 3. **$\mathcal{M}/\mathcal{G}$** defined per-realization (clean identity) vs
