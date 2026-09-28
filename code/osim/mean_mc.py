@@ -730,3 +730,101 @@ def sampling_weight_ratio(box, tag="_pilot"):
         r[pos] = w.to_numpy() / pw[pos]
         out[y] = r
     return out
+
+
+# ----------------------------------------------------------------------------
+# the simple-kriging estimator
+# ----------------------------------------------------------------------------
+
+
+def empirical_efolds(box, years=cfg.ANALYSIS_YEARS, stride=10, lags_deg=24, lags_day=90):
+    """Lag correlations of Z about its own mean, as e-folding scales.
+
+    Zonal/meridional in degrees, temporal in days. Correlations are taken about
+    the box mean, not a local mean: de-meaning locally removes the large-scale
+    structure the fitted ranges are partly describing and shortens the answer.
+    These are what the fitted th_* should reproduce if the exponential were the
+    right shape.
+    """
+    z = xr.open_dataset(os.path.join(cfg.OUT_DIR, f"residual_field_{box}.nc"))["z"]
+    v = z.sel(year=list(years)).values[:, ::stride]
+    v = v.reshape(-1, v.shape[2], v.shape[3])
+    a = v - np.nanmean(v)
+    var = np.nanvar(v)
+
+    def efold(pairs):
+        p = np.asarray(pairs)
+        k = np.flatnonzero(p[:, 1] < np.exp(-1))
+        if not k.size:
+            return np.nan
+        i = k[0]
+        if i == 0:
+            return p[0, 0]
+        f = (p[i - 1, 1] - np.exp(-1)) / (p[i - 1, 1] - p[i, 1])
+        return p[i - 1, 0] + f * (p[i, 0] - p[i - 1, 0])
+
+    deg = float(np.median(np.diff(z["latitude"].values)))
+    out = {}
+    for name, ax in (("zonal", 2), ("merid", 1)):
+        c = []
+        for L in range(1, lags_deg + 1, 2):
+            x = np.take(a, range(0, a.shape[ax] - L), axis=ax)
+            y = np.take(a, range(L, a.shape[ax]), axis=ax)
+            m = np.isfinite(x) & np.isfinite(y)
+            c.append((L * deg, np.mean(x[m] * y[m]) / var))
+        out[name] = efold(c)
+    ts = z.sel(year=list(years)).values
+    ts = ts[:, :, ::20, ::20].reshape(ts.shape[0], ts.shape[1], -1)
+    ok = np.isfinite(ts).all(axis=(0, 1))
+    ts = ts[:, :, ok] - np.nanmean(v)
+    c = [(L, np.mean([np.mean(ts[i, :-L] * ts[i, L:]) for i in range(ts.shape[0])]) / var)
+         for L in range(1, lags_day + 1, 3)]
+    out["time"] = efold(c)
+    return out
+
+
+def load_krige_params(tag="oracle"):
+    """Plug-in covariance parameters, one row per parameter-grid cell."""
+    return pd.read_csv(os.path.join(cfg.OUT_DIR, f"krige_plugin_{tag}.csv"))
+
+
+def load_krige(tag="_pilot_wide"):
+    """Per-(box, rep, year) kriging estimate, mass m and bias decomposition."""
+    return pd.read_csv(os.path.join(cfg.OUT_DIR, f"krige_est{tag}.csv"))
+
+
+def area_share(boxes=("boxA", "boxB")):
+    """Masked-area weights of each box within their union."""
+    a = {b: float(np.nansum(xr.open_dataset(
+        os.path.join(cfg.OUT_DIR, f"cell_area_{b}.nc"))["cell_area"].values)) for b in boxes}
+    tot = sum(a.values())
+    return {b: v / tot for b, v in a.items()}
+
+
+def union_bias(est, krige, boxes=("boxA", "boxB")):
+    """Bias over the union A u B, per realization and year, for both estimators.
+
+    The estimand is the area-weighted mean w_A Zbar^A + w_B Zbar^B. Kriging
+    already weights its prediction grid by area, so its bias is exactly the
+    area-weighted combination. The pooled simple mean weights by PROFILE COUNT,
+    so it carries a third term: with p_A the share of profiles falling in A,
+
+        B = p_A B^A + p_B B^B + (p_A - w_A)(Zbar^A - Zbar^B),
+
+    an allocation term that is zero only when the array samples the two boxes in
+    proportion to their areas.
+    """
+    w = area_share(boxes)
+    s = est.pivot_table(index=["rep", "year"], columns="box", values=["B", "n", "zbar"])
+    pA = s[("n", "boxA")] / (s[("n", "boxA")] + s[("n", "boxB")])
+    out = pd.DataFrame({
+        "p_A": pA,
+        "mean_within": pA * s[("B", "boxA")] + (1 - pA) * s[("B", "boxB")],
+        "mean_alloc": (pA - w["boxA"]) * (s[("zbar", "boxA")] - s[("zbar", "boxB")]),
+    })
+    out["mean_B"] = out["mean_within"] + out["mean_alloc"]
+    k = krige.pivot_table(index=["rep", "year"], columns="box",
+                          values=["B", "B_align", "B_cover", "m"])
+    for c in ("B", "B_align", "B_cover", "m"):
+        out["krige_" + c] = sum(w[b] * k[(c, b)] for b in boxes)
+    return out.reset_index()

@@ -30,7 +30,7 @@ from osim import report as rp
 plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.alpha": 0.25})
 GJ = mm.J_TO_GJ
 BOXES = ("boxB", "boxA")
-PILOT = "_pilot_fulldom"   # expanded-velocity-domain pilot (preliminary 16-rep re-run)
+PILOT = "_pilot_wide"   # 50 realizations, buffer-wide seeding
 
 def fmt(df, dec=3):
     return df.round(dec).to_html(index=False, border=0)
@@ -66,9 +66,17 @@ of the same field for year $k$.
 # The analysis domain
 
 Two analysis boxes sit inside the downloaded GLORYS region, both spanning $60^\circ$–$40^\circ$ W:
-**Box B** ($35$–$45^\circ$ N) straddles the North Atlantic Current and the Gulf Stream extension,
-and **Box A** ($22$–$34^\circ$ N) has milder currents and OHC variability. Temperature was downloaded for the analysis boxes and a small buffer; velocity was
-downloaded over a larger region to advect floats, which are lost if they exit the velocity domain.
+**Box B** ($34$–$45^\circ$ N) straddles the North Atlantic Current and the Gulf Stream extension,
+and **Box A** ($22$–$34^\circ$ N) has milder currents and OHC variability. The boxes are
+**contiguous** at $34^\circ$ N, so their union is a connected domain and $A\cup B$ is itself a
+well-defined estimand; the boundary row belongs to Box B, which is why Box A's stated upper bound
+is a fraction below $34^\circ$ (the bounds are inclusive and the native grid has a row exactly
+there, which would otherwise fall in both boxes and be counted twice in the union).
+
+The OHC field is built over a **conditioning buffer** ($14$–$55^\circ$ N, $72$–$32^\circ$ W),
+roughly ten degrees beyond the boxes on every side. Kriging a point near a box edge needs profiles
+from outside that box, so the buffer, not the box, sets how far the field must extend; velocity was
+downloaded over a larger region still, and floats are lost if they leave it.
 
 ```{python}
 #| label: fig-domain
@@ -187,6 +195,32 @@ B^{(d)}_k \;=\; \hat Z^{(d)}_k - \bar Z_k .$$
 $\tilde Z_k$ is a simple function on the native $1/12^\circ \times$ daily grid, so evaluating it at
 $x_i$ is the cell-day lookup of the *containing* cell.
 
+**A class of linear estimators.** Both estimators reported here are linear in the field,
+$\hat Z = \sum_i a_i \tilde Z(x_i)$, so each carries a signed *estimator measure*
+$\mathbb{Q} = \sum_i a_i \delta_{x_i}$ and the bias is an inner product,
+$B = \langle \tilde Z, \mathbb{Q} - \mathbb{P}\rangle$. Writing
+$m = \mathbb{E}\big[\sum_i a_i\big]$ for the expected total mass, the design-averaged bias splits as
+
+$$\mathbb{E}[B] \;=\; \underbrace{\int_{\mathcal{X}} \big(\tilde Z_k - \bar Z_k\big)\, d\,\mathbb{E}[\mathbb{Q}]}_{\text{alignment}}
+\;+\; \underbrace{(m-1)\,\bar Z_k}_{\text{coverage}} .$$
+
+The alignment term measures how far the expected sampling weight correlates with the field; the
+coverage term is a pure shrinkage, proportional to the estimand, that appears only when the estimator
+fails to conserve mass. The identity is stated density-free because
+$\mathbb{E}[\mathbb{Q}]$ need not be absolutely continuous with respect to $\mathbb{P}$ — the
+kriging estimator draws on profiles outside the box and outside year $k$ — and reduces to
+$\operatorname{Cov}_{\mathbb{P}}(w, \tilde Z_k) + (m-1)\bar Z_k$ with
+$w = d\mathbb{E}[\mathbb{Q}]/d\mathbb{P}$ whenever that density exists.
+
+*Simple mean.* $a_i = 1/n$, so $\sum_i a_i = 1$ for every realization: $m \equiv 1$, the coverage
+term vanishes identically, and the whole bias is alignment.
+
+*Simple kriging.* Predict on a $1^\circ \times 1^\circ \times$ month grid and average with
+area-time weights $c_g$ summing to one, giving $a_i = \sum_g c_g\,\alpha_i(x^*_g)$ with
+$\alpha_i(x^*)$ the kriging weights. Simple kriging reverts to its zero prior mean where
+under-informed, so $\sum_i a_i \le 1$ and the coverage term is live. @sec-krige gives the
+covariance model.
+
 ```{python}
 #| echo: false
 
@@ -215,19 +249,24 @@ park-depth position is taken as the profile — the point where a real float wou
 a cycle is a position sample, not a simulated dive. A float is deleted when it leaves the velocity
 domain and retired at a lifespan drawn from the real Argo record (median $\approx 1500$ d).
 
-::: {.callout-note}
-This version reflects the **expanded velocity domain** ($11$–$66^\circ$ N, $87$–$12^\circ$ W). The
-pilot below is a **preliminary $16$-realization re-run** on that domain (the full $100$-rep run is
-pending); its confidence intervals are correspondingly wider. The argo-actual comparison arm
-(@sec-argo-cmp) is on the new domain; the resampled argo-bootstrap ensemble has been removed pending
-its re-run.
-:::
+The ensemble is **$50$ independent realizations**. Each seeds **$1{,}000$ floats** uniformly over
+normalized space–time on the ($\mathrm{deptho}\ge 1000$ m) part of $11$–$63^\circ$ N,
+$80$–$24^\circ$ W — the conditioning buffer plus an $8^\circ$ advective margin, capped by the
+velocity domain — across $2010\text{-}01\text{-}01$ to $2019\text{-}12\text{-}26$, and advects them
+once at $1000$ m park depth ($10$-day profiling cycle, lifespans drawn from the real Argo record).
+Years $2010$–$2014$ are the equilibration lead; bias is calculated on **$2015$–$2019$**.
 
-The pilot is **$16$ independent realizations** (preliminary; target $100$). Each seeds **$1{,}000$
-floats** uniformly over normalized space–time on the ($\mathrm{deptho}\ge 1000$ m) region spanning
-both boxes plus an $8^\circ$ margin, across $2010\text{-}01\text{-}01$ to $2019\text{-}12\text{-}26$,
-and advects them once at $1000$ m park depth ($10$-day profiling cycle, lifespans drawn from the real
-Argo record). Years $2010$–$2014$ are the equilibration lead; bias is calculated on **$2015$–$2019$**.
+Seeding follows the region the analysis *reads out*, not the estimand: an array seeded only around
+the boxes leaves the buffer edge populated by advective inflow alone, a coverage deficit that is an
+artifact of the seeding rectangle rather than of the observing system. Widening the seed region to
+$1.86\times$ its previous area at a fixed float count also brings the in-box standing stock down
+close to the real Argo density (below), which matters because an over-dense array inflates $m$ and
+would understate the coverage term.
+
+**Every profile is recorded**, in or out of a box, with its exact timestamp — about $3.3\times$ as
+many rows as the in-box subset. Only in-box profiles enter the simple-mean estimate, but the kriging
+estimator conditions on profiles from the whole buffer, and keeping the full footprint means the
+analysis region can be changed later without re-advecting.
 
 
 
@@ -498,10 +537,12 @@ argo_actual = mm.load_continuous("_argo_actual")  # single actual-deployment rea
 
 
 
-Across the $16$ realizations the pilot seeds $1.6\times10^4$ float-deployments; per-box, per-year
-sample sizes are in the table below. On the expanded domain Box B retains slightly more floats than
-before (standing stock $\sim\!45$–$48$, $\sim\!1{,}640$–$1{,}750$ profiles a year); Box A holds stock
-$\sim\!75$–$80$ giving $\sim\!2{,}720$–$2{,}910$ — its quiescent flow retains more of the same deployment.
+Across the $50$ realizations the ensemble seeds $5\times10^4$ float-deployments; per-box, per-year
+sample sizes are in the table below. Box B holds a standing stock of $\sim\!32$–$35$ floats
+($\sim\!1{,}150$–$1{,}290$ profiles a year) and Box A $\sim\!43$–$48$ ($\sim\!1{,}560$–$1{,}720$).
+Per unit area the two are nearly identical — about $17$ floats per $10^6$ km$^2$ — which is what
+area-uniform seeding should give, and is the reason the pooled estimator below carries almost no
+allocation bias between the boxes.
 
 ```{python}
 #| echo: false
@@ -585,6 +626,189 @@ HTML(fmt(rp.continuous_bias_table(est, "boxA", ref), 4))
 
 :::
 
+
+
+# The simple-kriging estimator {#sec-krige}
+
+## Covariance model
+
+The kriging weights need a covariance for $\tilde Z$. Following Kuusela & Stein, it is fitted
+**locally**: for each centre $(x^*, y^*, \tau^*)$ on the prediction grid, the window
+
+$$\widetilde W = [x^*\pm\lambda_G]\times[y^*\pm\lambda_G]\times[t^*\pm\lambda_t],
+\qquad \lambda_G = 10^\circ,\ \lambda_t = 45\ \text{d},$$
+
+is collected over every year at the same yearday, and within it the year-$i$ anomaly is a zero-mean
+Gaussian process with an anisotropic exponential covariance
+$k = \phi_W\exp(-d)$,
+$d^2 = (\Delta x/\theta_{W,\text{lon}})^2 + (\Delta y/\theta_{W,\text{lat}})^2 + (\Delta t/\theta_{W,t})^2$,
+plus an i.i.d. nugget $\sigma^2_W$.
+
+Years enter as **i.i.d. replicates**, not pooled: the joint log-likelihood is the *sum* of the
+per-year log-likelihoods, so the covariance is block diagonal by year and no cross-year lag is ever
+formed. That is what anchors $\theta_{W,t}$ to lags $\le 2\lambda_t$ — a single pooled fit over the
+same field returns $\theta_t = 154$ d against an empirical $e$-fold near $20$ d, because it can see
+multi-year separations. Each block is small enough to factor exactly, so no Vecchia approximation
+enters. The sill is profiled out analytically,
+$\hat\phi_W = \sum_i z_i^\top K_i^{-1} z_i / \sum_i n_i$, leaving four free parameters; they are
+found by L-BFGS-B with analytic gradients. Windows are fitted on a $2^\circ$ grid — adjacent windows
+share about $81\%$ of their footprint, so the parameter field is smooth and each $1^\circ$ prediction
+point simply takes its containing cell's values, with no interpolation. Per Kuusela the final
+plug-ins are the **temporal medians** over the twelve monthly windows, so the fitted field varies
+spatially but not seasonally.
+
+Note the weights are invariant to the sill: since $\Sigma = \phi(R + \tau^2 I)$ and
+$k^* = \phi\,\bar r$, the kriging weights are $a = (R + \tau^2 I)^{-1}\bar r$. Only the ranges and
+the nugget *ratio* reach $m$, so nothing about $\hat\phi_W$ propagates into the bias.
+
+Fitting the covariance to the *complete* GLORYS field rather than to each realization's own profiles
+makes it an **oracle**: it is fixed across realizations, so the weights $a_i$ depend on design
+geometry alone, the estimator is genuinely linear, and $\mathbb{E}[B]$ splits into exactly the two
+terms above with no parameter-estimation term. Refitting per realization would add that third term —
+the Diggle preferential-estimation effect — and is deferred.
+
+```{python}
+#| label: load-krige
+#| include: false
+
+krige = mm.load_krige(PILOT)
+N_KRIGE, N_MEAN = krige["rep"].nunique(), est["rep"].nunique()
+```
+
+```{python}
+#| echo: false
+#| output: asis
+
+if N_KRIGE < N_MEAN:
+    print(f"::: {{.callout-warning}}\n"
+          f"The kriging ensemble below is **incomplete**: {N_KRIGE} of the {N_MEAN} realizations "
+          f"the simple mean uses. Its Monte-Carlo standard errors are correspondingly about "
+          f"{(N_MEAN / N_KRIGE) ** 0.5:.1f}x wider than the final figures will be, and the two "
+          f"estimators are not compared on identical samples. Treat the kriging numbers, and every "
+          f"comparison against them, as provisional.\n:::")
+```
+
+## Fitted parameters
+
+```{python}
+#| echo: false
+
+HTML(fmt(rp.krige_param_table(), 3))
+```
+
+```{python}
+#| label: fig-krige-params
+#| echo: false
+#| fig-cap: "The fitted covariance across the 2 deg parameter grid: sill as a standard deviation, and the three decorrelation scales. Analysis boxes outlined in white."
+
+rp.plot_krige_params()
+plt.show()
+```
+
+```{python}
+#| echo: false
+
+HTML(fmt(rp.krige_fit_diagnostics(), 3))
+```
+
+The seasonal spread across the twelve monthly windows is a small fraction of each cell's median,
+which is what justifies collapsing to the temporal median rather than carrying $\tau^*$ through.
+That spread is damped, though: consecutive monthly windows are $90$ d wide and $30$ d apart, so they
+share about two thirds of their data and the measured variation understates the true seasonal
+variation rather than overstating it.
+
+**Two properties of this fit constrain how the results below read.**
+
+```{python}
+#| echo: false
+
+HTML(fmt(rp.krige_vs_empirical_table(), 3))
+```
+
+For an exponential covariance the range *is* the $e$-folding distance, so the fitted and empirical
+columns above should agree. They do not: the ranges come out too long. The correlation is *flatter than
+exponential near the origin* and *far steeper in the tail*, so the likelihood stretches the range to
+limit the initial drop, and pays for it at every larger lag. Localizing reduced this from
+$\sim\!8\times$ for a single global fit but did not remove it, because it is a mismatch of kernel
+*shape*, not of stationarity — shrinking $\lambda_G$ does not help either. The mismatch is
+essentially spatial: locally the *temporal* exponential is excellent, reproducing the empirical
+correlation to within a few percent out to $30$ d. The nugget goes to zero almost everywhere, for the
+same reason plus the absence of measurement error in an oracle fit on
+complete truth. Both push the same way: ranges that are too long make kriging treat distant profiles
+as more informative than they are, so the weights sum higher, **$m$ is biased up and the coverage
+term is understated**. The bias reported here is therefore that of a *misspecified* mapper — which is
+the object of interest, since this is the covariance the deployed estimator uses — and is not the
+coverage deficit of an optimal one.
+
+## Bias and its decomposition
+
+```{python}
+#| echo: false
+
+HTML(fmt(rp.krige_bias_table(krige, "boxB"), 4))
+```
+
+```{python}
+#| echo: false
+
+HTML(fmt(rp.krige_bias_table(krige, "boxA"), 4))
+```
+
+```{python}
+#| label: fig-krige-decomp
+#| echo: false
+#| fig-cap: "Alignment and coverage contributions to E[B] per box-year (bars), with E[B] and its 95 percent Monte-Carlo interval (black). Coverage is (m-1) times the year's estimand, so it bites only where that estimand is far from zero."
+
+rp.plot_krige_decomposition(krige)
+plt.show()
+```
+
+## Against the simple mean
+
+```{python}
+#| label: fig-estimators
+#| echo: false
+#| fig-cap: "E[B] with 95 percent Monte-Carlo intervals for the simple mean (grey) and simple kriging (green), per box-year."
+
+rp.plot_estimator_comparison(est, krige)
+plt.show()
+```
+
+```{python}
+#| echo: false
+
+HTML(fmt(rp.estimator_table(est, krige, "boxB"), 4))
+```
+
+```{python}
+#| echo: false
+
+HTML(fmt(rp.estimator_table(est, krige, "boxA"), 4))
+```
+
+# The union estimand {#sec-union}
+
+The boxes are contiguous, so their union is a connected domain and
+$\bar Z^{A\cup B}_k = w_A \bar Z^A_k + w_B \bar Z^B_k$ with $w$ the masked-area shares. Whether the
+bias adds depends on the estimator.
+
+**Kriging adds exactly.** Its prediction grid is already weighted by area, so splitting
+$\sum_g c_g \hat Z(x^*_g)$ over the two boxes gives $\hat Z^{A\cup B} = w_A\hat Z^A + w_B\hat Z^B$,
+and likewise $m^{A\cup B} = w_A m^A + w_B m^B$. The alignment and coverage terms add the same way.
+
+**The simple mean does not.** Pooling the profiles weights each box by its *profile count*, not its
+area, so with $p_A$ the share of profiles falling in $A$,
+
+$$B^{A\cup B} \;=\; p_A B^A + p_B B^B \;+\; \underbrace{(p_A - w_A)\big(\bar Z^A_k - \bar Z^B_k\big)}_{\text{allocation}},$$
+
+a between-box version of the same preferential-sampling mechanism, which vanishes only when the array
+samples the two boxes in proportion to their areas.
+
+```{python}
+#| echo: false
+
+HTML(fmt(rp.union_table(est, krige), 4))
+```
 
 # Real-deployment comparison: deployment vs. drift {#sec-argo-cmp}
 

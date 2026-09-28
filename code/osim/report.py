@@ -15,6 +15,11 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from osim import osim_config as cfg
 from osim.mean_mc import (
+    load_krige,
+    empirical_efolds,
+    load_krige_params,
+    union_bias,
+    area_share,
     J_TO_GJ,
     M_S_TO_CM_S,
     NW_BOXB_2015,
@@ -1003,4 +1008,175 @@ def plot_velocity_quantile_days(comp="uo", boxes=("boxB", "boxA"), qs=(0.05, 0.5
                               f"{int(s.year)} doy {int(s.doy) + 1}, "
                               f"sd {s.sd:.1f} cm/s", True, c == 0, scale=1.0, boxes=boxes)
     fig.colorbar(im, cax=caxes[0], label=f"{VEL_COMPS[comp]} velocity at 1000 m (cm/s)")
+    return fig
+
+
+# ----------------------------------------------------------------------------
+# the simple-kriging estimator
+# ----------------------------------------------------------------------------
+
+
+def krige_param_table(tag="oracle"):
+    """Fitted covariance per box: median and inter-quartile range over cells.
+
+    sd is sqrt(phi), comparable to the field's own sd_P(Z); the nugget is
+    reported as the ratio tau^2, the absolute nugget variance being phi tau^2.
+    """
+    p = load_krige_params(tag)
+    p = p.assign(sd=np.sqrt(p["phi"]) * J_TO_GJ)
+    cols = ["sd", "th_lon", "th_lat", "th_t", "nugget_ratio"]
+    g = p.groupby("box")[cols]
+    out = g.median().round(4)
+    iqr = (g.quantile(0.75) - g.quantile(0.25)).round(4)
+    out.columns = ["sd (GJ/m2)", "th_lon (deg)", "th_lat (deg)", "th_t (d)", "nugget ratio"]
+    for c, s_ in zip(out.columns, cols):
+        out[c] = [f"{m:g} [{q:g}]" for m, q in zip(out[c], iqr[s_])]
+    out.insert(0, "cells", g.size())
+    return out.reset_index()
+
+
+def krige_vs_empirical_table(tag="oracle", boxes=("boxB", "boxA")):
+    """Fitted decorrelation scales against the field's own e-folding scales.
+
+    For an exponential covariance the range IS the e-folding distance, so these
+    should agree. They do not: the ratio column is the range inflation the
+    kernel-shape mismatch produces.
+    """
+    p = load_krige_params(tag)
+    rows = []
+    for b in boxes:
+        e = empirical_efolds(b)
+        f = p[p["box"] == b][["th_lon", "th_lat", "th_t"]].median()
+        for lab, emp, fit, unit in (("zonal", e["zonal"], f.th_lon, "deg"),
+                                    ("meridional", e["merid"], f.th_lat, "deg"),
+                                    ("temporal", e["time"], f.th_t, "d")):
+            rows.append({"box": b, "scale": f"{lab} ({unit})", "empirical e-fold": emp,
+                         "fitted range": fit, "ratio": fit / emp})
+    return pd.DataFrame(rows)
+
+
+def krige_fit_diagnostics(tag="oracle"):
+    """Per-box fit quality: windows, convergence, seasonal spread, nugget at bound."""
+    w = pd.read_csv(os.path.join(cfg.OUT_DIR, f"krige_local_{tag}.csv"))
+    g = w.groupby("box")
+    iqr = (w.groupby(["box", "lat", "lon"])[["th_lon", "th_t"]]
+             .agg(lambda x: (x.quantile(.75) - x.quantile(.25)) / max(abs(x.median()), 1e-30))
+             .groupby("box").median())
+    return pd.DataFrame({
+        "box": g.size().index, "windows": g.size().to_numpy(),
+        "cells": g["lat"].apply(lambda x: len(x.unique())).to_numpy() * 0 +
+                 w.groupby("box").apply(lambda d: len(d[["lat", "lon"]].drop_duplicates()),
+                                        include_groups=False).to_numpy(),
+        "converged": g["conv"].apply(lambda x: (x == 0).mean()).to_numpy(),
+        "median iters": g["nit"].median().to_numpy(),
+        "obs per window": g["n_obs"].median().to_numpy(),
+        "seasonal IQR/med th_lon": iqr["th_lon"].to_numpy(),
+        "seasonal IQR/med th_t": iqr["th_t"].to_numpy(),
+        "nugget at bound": g["nugget_ratio"].apply(lambda x: (x < 1e-6).mean()).to_numpy(),
+    })
+
+
+def plot_krige_params(tag="oracle", figsize=(12, 6.4)):
+    """The fitted covariance across the parameter grid, one panel per parameter."""
+    p = load_krige_params(tag).assign(sd=lambda d: np.sqrt(d["phi"]) * J_TO_GJ)
+    panels = [("sd", "sqrt(phi)  GJ per m2"), ("th_lon", "range lon  deg"),
+              ("th_lat", "range lat  deg"), ("th_t", "range time  d")]
+    fig, axes = plt.subplots(2, 2, figsize=figsize)
+    for ax, (col, lab) in zip(axes.ravel(), panels):
+        s = ax.scatter(p["lon"], p["lat"], c=p[col], s=190, marker="s",
+                       cmap="viridis", edgecolor="none")
+        for b in ("boxA", "boxB"):
+            (la0, la1), (lo0, lo1) = cfg.BOXES[b]["lat_bounds"], cfg.BOXES[b]["lon_bounds"]
+            ax.add_patch(plt.Rectangle((lo0, la0), lo1 - lo0, la1 - la0,
+                                       fill=False, ec="w", lw=1.2))
+        fig.colorbar(s, ax=ax, fraction=0.046)
+        ax.set_title(lab, fontsize=10); ax.set_xlabel("lon"); ax.set_ylabel("lat")
+        ax.grid(alpha=0.2)
+    fig.tight_layout()
+    return fig
+
+
+def krige_bias_table(krige, box):
+    """Per-year kriging mass, bias and its alignment / coverage split."""
+    g = krige[krige["box"] == box].groupby("year")
+    t = g.agg(m=("m", "mean"), mean_B=("B", "mean"), se_B=("B", "sem"),
+              sd_B=("B", "std"), alignment=("B_align", "mean"),
+              coverage=("B_cover", "mean"), zbar=("zbar", "mean")).reset_index()
+    a = krige[krige["box"] == box]
+    t.loc["all"] = ["all", a["m"].mean(), a["B"].mean(), a["B"].sem(), a["B"].std(),
+                    a["B_align"].mean(), a["B_cover"].mean(), a["zbar"].mean()]
+    for c in ("mean_B", "se_B", "sd_B", "alignment", "coverage", "zbar"):
+        t[c] *= J_TO_GJ
+    return t
+
+
+def estimator_table(est, krige, box):
+    """Simple mean against simple kriging, per year, standardised by sd_P(Z)."""
+    sd = _sd_Z(box) * J_TO_GJ
+    s = est[est["box"] == box].groupby("year")["B"].agg(["mean", "sem", "std"]) * J_TO_GJ
+    k = krige[krige["box"] == box].groupby("year")["B"].agg(["mean", "sem", "std"]) * J_TO_GJ
+    m = krige[krige["box"] == box].groupby("year")["m"].mean()
+    return pd.DataFrame({
+        "year": s.index, "sd_k": sd.reindex(s.index).to_numpy(),
+        "mean B": s["mean"].to_numpy(), "mean se": s["sem"].to_numpy(),
+        "mean sd": s["std"].to_numpy(),
+        "krige B": k["mean"].to_numpy(), "krige se": k["sem"].to_numpy(),
+        "krige sd": k["std"].to_numpy(), "krige m": m.to_numpy(),
+        "mean B / sd": s["mean"].to_numpy() / sd.reindex(s.index).to_numpy(),
+        "krige B / sd": k["mean"].to_numpy() / sd.reindex(s.index).to_numpy(),
+    })
+
+
+def union_table(est, krige):
+    """Bias over A u B for both estimators, with the simple mean's allocation term."""
+    u = union_bias(est, krige)
+    g = u.groupby("year")
+    t = g.agg(**{"mean B": ("mean_B", "mean"), "mean se": ("mean_B", "sem"),
+                 "within": ("mean_within", "mean"), "allocation": ("mean_alloc", "mean"),
+                 "krige B": ("krige_B", "mean"), "krige se": ("krige_B", "sem"),
+                 "alignment": ("krige_B_align", "mean"), "coverage": ("krige_B_cover", "mean"),
+                 "krige m": ("krige_m", "mean")}).reset_index()
+    t.loc["all"] = ["all", u["mean_B"].mean(), u["mean_B"].sem(), u["mean_within"].mean(),
+                    u["mean_alloc"].mean(), u["krige_B"].mean(), u["krige_B"].sem(),
+                    u["krige_B_align"].mean(), u["krige_B_cover"].mean(), u["krige_m"].mean()]
+    for c in t.columns.drop(["year", "krige m"]):
+        t[c] *= J_TO_GJ
+    return t
+
+
+def plot_krige_decomposition(krige, boxes=("boxB", "boxA"), figsize=(11, 3.8)):
+    """Alignment and coverage contributions to E[B], per box-year."""
+    fig, axes = plt.subplots(1, len(boxes), figsize=figsize, sharex=True)
+    for ax, b in zip(np.atleast_1d(axes), boxes):
+        g = krige[krige["box"] == b].groupby("year")
+        yr = np.array(sorted(krige["year"].unique()))
+        al = g["B_align"].mean().to_numpy() * J_TO_GJ
+        co = g["B_cover"].mean().to_numpy() * J_TO_GJ
+        se = g["B"].sem().to_numpy() * J_TO_GJ
+        ax.bar(yr - 0.18, al, 0.36, label="alignment", color="#4477aa")
+        ax.bar(yr + 0.18, co, 0.36, label="coverage", color="#cc6677")
+        ax.errorbar(yr, al + co, yerr=1.96 * se, fmt="ko", ms=4, lw=1, capsize=3, label="E[B]")
+        ax.axhline(0, color="0.3", lw=0.8)
+        ax.set_title(b, fontsize=10); ax.set_xlabel("year"); ax.set_xticks(yr)
+    np.atleast_1d(axes)[0].set_ylabel("GJ per m2")
+    np.atleast_1d(axes)[-1].legend(fontsize=8)
+    fig.tight_layout()
+    return fig
+
+
+def plot_estimator_comparison(est, krige, boxes=("boxB", "boxA"), figsize=(11, 4.0)):
+    """E[B] with 95 percent CI for the simple mean and simple kriging, per box-year."""
+    fig, axes = plt.subplots(1, len(boxes), figsize=figsize, sharex=True)
+    for ax, b in zip(np.atleast_1d(axes), boxes):
+        yr = np.array(sorted(krige["year"].unique()))
+        for src, off, col, lab in ((est, -0.15, "0.45", "simple mean"),
+                                   (krige, 0.15, "#117733", "simple kriging")):
+            g = src[src["box"] == b].groupby("year")["B"]
+            ax.errorbar(yr + off, g.mean() * J_TO_GJ, yerr=1.96 * g.sem() * J_TO_GJ,
+                        fmt="o", ms=5, lw=1.4, capsize=4, color=col, label=lab)
+        ax.axhline(0, color="r", lw=0.8)
+        ax.set_title(b, fontsize=10); ax.set_xlabel("year"); ax.set_xticks(yr)
+    np.atleast_1d(axes)[0].set_ylabel("E[B]  (GJ per m2)")
+    np.atleast_1d(axes)[-1].legend(fontsize=8)
+    fig.tight_layout()
     return fig

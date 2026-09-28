@@ -9,8 +9,12 @@ GLORYS_DIR = os.path.join(REPO_ROOT, "data", "glorys_osim")
 OUT_DIR = os.path.join(REPO_ROOT, "data", "osim")
 
 BOXES = {
-    "boxB": {"lat_bounds": (35.0, 45.0), "lon_bounds": (-60.0, -40.0)},
-    "boxA": {"lat_bounds": (22.0, 34.0), "lon_bounds": (-60.0, -40.0)},
+    # Contiguous at 34 N. Bounds are inclusive at both ends, and the native grid
+    # has a row exactly at 34.0, so box A stops just below it -- otherwise that row
+    # falls in both boxes and is double counted in the A u B estimand. Box B owns
+    # the 34-35 N transition strip, the most energetic part of the old gap.
+    "boxB": {"lat_bounds": (34.0, 45.0), "lon_bounds": (-60.0, -40.0)},
+    "boxA": {"lat_bounds": (22.0, 33.99), "lon_bounds": (-60.0, -40.0)},
     # The conditioning region: both boxes plus ~10 deg, trimmed to the deep basin.
     # Kriging near a box edge needs profiles from outside it, so the residual field
     # is built over this and the boxes are slices of it.
