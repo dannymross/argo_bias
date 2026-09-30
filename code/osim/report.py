@@ -1331,25 +1331,95 @@ def aipw_decomposition_table(df, box):
     return t.reset_index()
 
 
-def plot_qhat_window(qds, t0, t1, kind="nominal", boxes=("boxB", "boxA"), figsize=(6.2, 6.0), points=None,
-                     title=None):
-    """Kernel q-hat averaged over [t0, t1) on its fine grid, both boxes on one map, with
-    optional (lat, lon) points overlaid. Support area is time-invariant and time bins are
-    equal, so the plain time mean is the mu-weighted mean."""
+def plot_qhat_panels(qds, windows, kind="nominal", overlays=(), ncol=2, boxes=("boxB", "boxA"),
+                     figsize=None):
+    """Kernel q-hat averaged over each [t0, t1) window (one map panel each, shared log colour
+    scale), with overlays = [(label, df with time/lat/lon, marker kwargs)] filtered to the
+    window. Support area is time-invariant and time bins equal, so the plain time mean is the
+    mu-weighted mean."""
+    import cartopy.crs as ccrs
     from matplotlib.colors import LogNorm
-    q = qds[f"q_{kind}"].sel(time=slice(np.datetime64(t0), np.datetime64(t1) - np.timedelta64(1, "s")))
-    da = (q.mean("time") * Q_PER_1E4KM2_YR).rename(lat="latitude", lon="longitude")
-    v = da.values[np.isfinite(da.values) & (da.values > 0)]
+    from matplotlib.lines import Line2D
+    das = []
+    for t0, t1, _ in windows:
+        q = qds[f"q_{kind}"].sel(time=slice(np.datetime64(t0), np.datetime64(t1) - np.timedelta64(1, "s")))
+        das.append((q.mean("time") * Q_PER_1E4KM2_YR).rename(lat="latitude", lon="longitude"))
+    v = np.concatenate([d.values[np.isfinite(d.values) & (d.values > 0)] for d in das])
     norm = LogNorm(*np.percentile(v, [1, 99.5]))
-    fig, axes, caxes = _map_grid(1, 1, figsize)
-    im = _draw_domain_map(axes[0][0], [da], norm, "viridis", _both_box_extent(boxes, pad=1.5),
-                          title or f"{t0} to {t1}", True, True, scale=1.0, boxes=boxes)
-    if points is not None:
-        import cartopy.crs as ccrs
-        axes[0][0].plot(points[1], points[0], "o", ms=2.5, mfc="white", mec="0.1", mew=0.4,
-                        transform=ccrs.PlateCarree(), zorder=5)
-    fig.colorbar(im, cax=caxes[0], label="q-hat, profiles per 10^4 km2 per year")
+    nrow = int(np.ceil(len(windows) / ncol))
+    fig, axes, caxes = _map_grid(nrow, ncol, figsize or (5.2 * ncol, 4.9 * nrow + 0.4), bottom=0.08)
+    ext = _both_box_extent(boxes, pad=1.5)
+    for k, ((t0, t1, title), da) in enumerate(zip(windows, das)):
+        r, c = divmod(k, ncol)
+        ax = axes[r][c]
+        im = _draw_domain_map(ax, [da], norm, "viridis", ext, title, r == nrow - 1, c == 0,
+                              scale=1.0, boxes=boxes)
+        for _, df, kw in overlays:
+            t = pd.to_datetime(df["time"])
+            d = df[(t >= pd.Timestamp(t0)) & (t < pd.Timestamp(t1))]
+            ax.plot(d["lon"], d["lat"], ls="none", transform=ccrs.PlateCarree(), zorder=5, **kw)
+    for cax in caxes:
+        fig.colorbar(im, cax=cax, label="q-hat, profiles per 10^4 km2 per year")
+    if overlays:
+        fig.legend([Line2D([], [], ls="none", **kw) for _, _, kw in overlays], [l for l, _, _ in overlays],
+                   loc="lower center", ncol=len(overlays), frameon=False, fontsize=9)
     return fig
+
+
+def plot_kernel_illustration(prof, qds, day, center, sigma, half=2.0, kind="nominal", R=1, figsize=(13, 4.0)):
+    """Gaussian smoothing, step by step, in a (2 half)-deg window around `center` (lat, lon) on
+    `day`: (a) pooled simulated profiles within +/- 2 sigma_t days, shaded by their time weight,
+    with the 1 and 2 sigma_s footprints; (b) q-hat that day; (c) the kernel weight against
+    distance and time lag."""
+    from matplotlib.colors import LogNorm
+    from matplotlib.patches import Circle
+    (la, lo), (ss, st) = center, sigma
+    d0 = pd.Timestamp(day)
+    t = pd.to_datetime(prof["time"])
+    lag = (t - (d0 + pd.Timedelta(hours=12))).dt.total_seconds().to_numpy() / 86400.0
+    sel = (np.abs(lag) <= 2 * st) & prof["lat"].between(la - half, la + half).to_numpy() \
+        & prof["lon"].between(lo - half, lo + half).to_numpy()
+    fig, axes = plt.subplots(1, 3, figsize=figsize, gridspec_kw={"width_ratios": [1, 1.15, 1]})
+    ax = axes[0]
+    wt = np.exp(-0.5 * (lag[sel] / st) ** 2)
+    o = np.argsort(wt)
+    sc = ax.scatter(prof["lon"].to_numpy()[sel][o], prof["lat"].to_numpy()[sel][o], c=wt[o], cmap="Greys",
+                    vmin=0, vmax=1, s=6, edgecolors="none")
+    fig.colorbar(sc, ax=ax, label="time weight exp(-lag^2 / 2 sigma_t^2)", fraction=0.046)
+    ax.set_title(f"(a) pooled profiles, {day} +/- {2 * st:g} d\n({R} arrays)", fontsize=9)
+    q = qds[f"q_{kind}"].sel(time=np.datetime64(day), method="nearest")
+    q = q.sel(lat=slice(la - half, la + half), lon=slice(lo - half, lo + half)) * Q_PER_1E4KM2_YR
+    ax2 = axes[1]
+    im = ax2.pcolormesh(q["lon"], q["lat"], q.values, cmap="viridis", shading="nearest",
+                        norm=LogNorm(*np.nanpercentile(q.values, [1, 99.5])))
+    fig.colorbar(im, ax=ax2, label="q-hat, profiles per 10^4 km2 per year", fraction=0.046)
+    ax2.set_title(f"(b) q-hat on {day}", fontsize=9)
+    for a_ in axes[:2]:
+        for k, ls in ((1, "-"), (2, "--")):
+            a_.add_patch(Circle((lo, la), k * ss, fill=False, ec="#d62728", lw=1.2, ls=ls))
+        a_.set_xlim(lo - half, lo + half)
+        a_.set_ylim(la - half, la + half)
+        a_.set_aspect(1.0)
+        a_.set_xlabel("longitude (deg E)")
+        a_.grid(False)
+    axes[0].set_ylabel("latitude (deg N)")
+    ax3 = axes[2]
+    km = ss * 111.2
+    x = np.linspace(0, 4, 200)
+    ax3.plot(x, np.exp(-0.5 * x ** 2), color="0.15", lw=2)
+    for k in (1, 2):
+        ax3.axvline(k, color="#d62728", lw=1, ls="-" if k == 1 else "--")
+    ax3.set_xticks(range(5), [f"{k}\n{k * km:.0f} km\n{k * st:g} d" for k in range(5)], fontsize=8)
+    ax3.set_xlabel("distance in units of sigma (space | time)")
+    ax3.set_ylabel("kernel weight")
+    ax3.set_title("(c) Gaussian weight per axis, cut off at 4 sigma", fontsize=9)
+    fig.tight_layout()
+    return fig
+
+
+def plot_qhat_window(qds, t0, t1, kind="nominal", boxes=("boxB", "boxA"), figsize=(6.2, 6.0)):
+    """Kernel q-hat averaged over [t0, t1), both boxes on one map."""
+    return plot_qhat_panels(qds, [(t0, t1, f"{t0} to {t1}")], kind, ncol=1, boxes=boxes, figsize=figsize)
 
 
 def plot_replicate_bias(df, est, labels=None, truth="zbar", boxes=("boxB", "boxA"), figsize=None):

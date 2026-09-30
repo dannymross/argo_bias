@@ -22,6 +22,7 @@ plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.alpha": 0.25})
 SIGMA = ipw.SIGMA
 chain = pd.read_parquet(ipw.chain_path(SIGMA))
 R = chain["rep"].nunique()
+qds = qi.load_kernel(*SIGMA, deg="native")
 
 def _show_fig(fig):
     display(fig)
@@ -86,19 +87,65 @@ We cannot re-run the real Argo program, but we can simulate it.
    2015.
 3. **Repeat.** We build $R = 1000$ independent simulated arrays.
 
-Pooling all their profiles, let $C(c)$ be the average number of profiles per array in cell-day
-$c$ (a $1/12^\circ$ cell on one day), and $a(c)$ its area of ocean deeper than the $1000$ m parking depth
-times one day (zero after the simulation ends). With Gaussian smoothing weights $G$, standard deviation $\sigma_s\approx17$ km
-($1/6^\circ$) in space and $\sigma_t=4$ days in time,
+### From simulated profiles to $\hat q$: Gaussian smoothing
+
+**Why smooth at all.** Even with all $1000$ arrays pooled, a single $1/12^\circ$ cell on a single
+day holds only about $0.1$ profiles on average. Raw counts per cell-day are almost all $0$s and
+occasional $1$s, which is far too noisy to divide by. Smoothing borrows strength from nearby cells
+and days, on the assumption that $q$ changes little over a few tens of km and a few days.
+
+**Step 1: count.** Let $c$ index cell-days (a $1/12^\circ$ cell on one day). Count the simulated
+profiles in each, averaged over arrays:
 $$
-\hat q(c) \;=\; \frac{\sum_{c'} G(c-c')\,C(c')}{\sum_{c'} G(c-c')\,a(c')},
-\qquad
 C(c) \;=\; \frac1R\sum_{r=1}^{R} \#\{\text{profiles of array } r \text{ in } c\}.
 $$
-This is smoothed profiles divided by smoothed ocean area-time, in profiles per unit area per day.
-Dividing by the *smoothed* area, rather than the area of one cell, keeps the estimate from being
-dragged down near coasts and the edge of the record, where part of the kernel falls on land or
-outside the record.
+
+**Step 2: define the neighbourhood weights.** For two cell-days $c$ and $c'$, separated by
+$\Delta\varphi$ degrees of latitude, $\Delta\ell$ degrees of longitude and $\Delta t$ days, the
+Gaussian weight is
+$$
+G(c-c') \;=\; \exp\!\Big(-\frac{\Delta\varphi^2+\Delta\ell^2}{2\sigma_s^2}-\frac{\Delta t^2}{2\sigma_t^2}\Big),
+\qquad \sigma_s=1/6^\circ\ (\approx17\text{ km}),\quad \sigma_t=4\text{ days},
+$$
+set to zero beyond $4\sigma$ on any axis. This is a product of three bell curves, one per axis
+(@fig-kernel c):
+* a neighbour $1\sigma$ away ($17$ km or $4$ days) gets weight $0.61$;
+* a neighbour $2\sigma$ away ($34$ km or $8$ days) gets $0.14$;
+* a neighbour $3\sigma$ away gets $0.01$.
+
+In practice, $\hat q$ at a point is shaped by profiles within about $\pm35$ km and $\pm8$ days.
+
+**Step 3: smoothed count divided by smoothed area.** Let $a(c)$ be the area of cell $c$ that is
+ocean deeper than the $1000$ m parking depth, times one day (zero after the simulation ends). Then
+$$
+\hat q(c) \;=\; \frac{\sum_{c'} G(c-c')\,C(c')}{\sum_{c'} G(c-c')\,a(c')}
+\;=\;\frac{\text{weighted number of profiles near } c}{\text{weighted ocean area-time near } c}.
+$$
+The numerator counts nearby profiles, giving close ones more say. The denominator measures how much
+ocean area-time those same weights cover. Their ratio is a local rate, in profiles per unit area per
+day. In the open ocean the denominator is just the kernel's total weight times one cell's
+area-time, so $\hat q$ is a weighted local average of the counts. Near land or the end of the
+record, part of the kernel falls where no float can be. The denominator then shrinks by the same
+fraction as the numerator, so the estimate is not dragged down there. This is the standard
+edge-corrected kernel intensity estimator.
+
+**Two ways to beat noise.** More arrays ($R$) and a wider kernel both add profiles to the
+numerator. More arrays cost only computation. A wider kernel costs resolution, because it blurs
+real structure in $q$ (such as eddy-scale trapping) that the weights need to see. With $R=1000$ we
+can afford a narrow kernel.
+
+```{python}
+#| label: fig-kernel
+#| echo: false
+#| fig-cap: "Gaussian smoothing step by step, 4 x 4 deg window in Box B on 15 April 2019. (a) Profiles from all 1000 simulated arrays within +/- 8 days, shaded by their time weight; red circles are the 1 sigma (solid) and 2 sigma (dashed) spatial footprints of the kernel centred in the window. (b) The resulting q-hat on that day. (c) The kernel weight against distance along one axis, in units of sigma (17 km in space, 4 days in time)."
+
+import glob
+pool = pd.concat([pd.read_parquet(f, columns=["time", "lat", "lon", "source"],
+                                  filters=[("source", "==", "deploy")])
+                  for f in glob.glob(cs.profile_path("_argo_resample", chunk="*"))], ignore_index=True)
+pool = pool[(pd.to_datetime(pool["time"]) >= "2019-04-05") & (pd.to_datetime(pool["time"]) < "2019-04-26")]
+_show_fig(rp.plot_kernel_illustration(pool, qds, "2019-04-15", (38.0, -50.0), SIGMA, R=R))
+```
 
 **Why this bandwidth.** It is a trade-off between noise and resolution:
 
@@ -113,14 +160,16 @@ changes the results below by less than $0.001$ GJ m$^{-2}$.
 ```{python}
 #| label: fig-qhat
 #| echo: false
-#| fig-cap: "Estimated sampling propensity q-hat averaged over January-February 2017 (log scale), with the profiles of one simulated array in the same window (white dots). Floats are one random draw from this surface."
+#| fig-cap: "Estimated sampling propensity q-hat (nominal 10-day profiles, log scale) averaged over four months of 2019, with the profiles of one simulated array (white) and the real eligible Argo profiles (red) in the same month. The simulated array is one random draw from q-hat; the real array is the draw we actually observe."
 
-qds = qi.load_kernel(*SIGMA, deg="native")
-p = pd.read_parquet(cs.profile_path("_argo_resample", chunk=0), columns=["time", "lat", "lon", "source"])
-t = pd.to_datetime(p["time"])
-p = p[(p["source"] == "deploy") & (t >= "2017-01-01") & (t < "2017-03-01")]
-_show_fig(rp.plot_qhat_window(qds, "2017-01-01", "2017-03-01", points=(p["lat"], p["lon"]),
-                              title="q-hat and one simulated array, Jan-Feb 2017"))
+sim = pd.read_parquet(cs.profile_path("_argo_resample", chunk=0), columns=["time", "lat", "lon", "source"])
+sim = sim[sim["source"] == "deploy"]
+real = ipw.real_profiles("2019-01-01", "2020-01-01")
+months = [("2019-01-01", "2019-02-01", "January 2019"), ("2019-04-01", "2019-05-01", "April 2019"),
+          ("2019-08-01", "2019-09-01", "August 2019"), ("2019-12-01", "2020-01-01", "December 2019")]
+_show_fig(rp.plot_qhat_panels(qds, months, overlays=[
+    ("one simulated array", sim, dict(marker="o", ms=3, mfc="white", mec="0.1", mew=0.4)),
+    ("real Argo", real, dict(marker="o", ms=3, mfc="#d62728", mec="0.1", mew=0.4))]))
 ```
 
 ## The realized bias of the simple mean
@@ -162,6 +211,38 @@ gets weight $v_i = 1/\hat q(x_i)$, the area-time it represents. With $Z_i=Z(x_i)
 
 For each estimator we compute the same realized bias $B_r$ per array, and report the **percent of
 the simple mean's bias removed**, $100\,\big(1-\bar B_{\text{est}}/\bar B_{\text{mean}}\big)$.
+
+## How the propensity $q$ relates to the sampling weight $w$
+
+The earlier simulation work wrote the bias with the **sampling weight** $w$. Any estimator here is a
+weighted sum of the profiles, $\hat Z=\sum_i a_i Z_i$. The weight $w(x)$ describes where that
+weight lands on average, relative to spreading it evenly over the box-year:
+$$
+\frac{w(x)\,\Delta A\,\Delta t}{|A|\,T} \;\approx\; \mathbb E\big[\text{total weight } a_i \text{ on profiles in a small patch around } x\big],
+\qquad
+\text{bias} \;=\; \operatorname{Cov}_{\text{box-year}}(w,\,Z) + (m-1)\,\bar Z ,
+$$
+where $m$ is the average of $w$, equal to $1$ when the weights sum to one. The two objects answer
+different questions:
+
+* **$q$ describes the sampling alone.** It says where profiles land, in profiles per area per day,
+  and knows nothing about how they will be combined. It is what we estimate by simulation.
+* **$w$ describes the sampling and the estimator together.** It says where an estimator's weight
+  lands, as a dimensionless ratio to uniform. $w\equiv1$ means no bias.
+
+They connect estimator by estimator:
+
+| Estimator | Weight $a_i$ | Sampling weight $w$ |
+|---|---|---|
+| Simple mean | $1/n$ | $\approx q/\operatorname{mean}_{\text{box-year}}(q)$ |
+| Horvitz–Thompson | $1/(\lvert A\rvert\,T\,\hat q(x_i))$ | $q/\hat q$ |
+| Hájek | $\frac{1/\hat q(x_i)}{\sum_j 1/\hat q(x_j)}$ | $\approx (q/\hat q)\,/\operatorname{mean}_{\text{box-year}}(q/\hat q)$ |
+
+So the $w$ from the simulation report is the simple mean's $q$, rescaled to average one over the
+box-year, and $\operatorname{Cov}(w,Z)$ is the bias formula above. Debiasing means choosing weights
+that flatten $w$ to $1$. Dividing by $\hat q$ does that when $\hat q\approx q$, and Hájek only
+needs $\hat q$ to be right up to a constant factor. One $\hat q$ serves every estimator, while
+$w$ has to be worked out separately for each one.
 
 In this validation, each simulated array is weighted by the $\hat q$ built from all $1000$ arrays.
 Leaving the array's own profiles out of $\hat q$ changes the Hájek estimate by at most
