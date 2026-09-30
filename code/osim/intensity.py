@@ -322,6 +322,82 @@ def build_kernel(sigma_deg, sigma_days, tag="_argo_resample", exclude=(), counts
     return ds
 
 
+def _days(time):
+    return (np.asarray(time, dtype="datetime64[s]") - np.datetime64(KERNEL_T[0], "s")).astype(float) / 86400.0
+
+
+def _pair_sum(ev, src, trunc):
+    """sum_j exp(-|ev_i - src_j|^2 / 2) over src within `trunc` per axis (unit-sigma coords).
+    Hash cells of width trunc only locate neighbours; 3 x 3 contiguous x-runs per cell."""
+    lo = np.floor(np.minimum(ev.min(0), src.min(0)) / trunc).astype(np.int64) - 1
+    ke, ks = np.floor(ev / trunc).astype(np.int64) - lo, np.floor(src / trunc).astype(np.int64) - lo
+    n = np.maximum(ke.max(0), ks.max(0)) + 2
+    flat = lambda k: (k[..., 0] * n[1] + k[..., 1]) * n[2] + k[..., 2]
+    o = np.argsort(flat(ks), kind="stable")
+    src, fs = src[o].astype(np.float32), flat(ks)[o]
+    fe = flat(ke)
+    oe = np.argsort(fe, kind="stable")
+    cells, first = np.unique(fe[oe], return_index=True)
+    out = np.zeros(len(ev))
+    shifts = np.array([(a, b) for a in (-1, 0, 1) for b in (-1, 0, 1)])
+    for c, i0, i1 in zip(cells, first, np.r_[first[1:], len(oe)]):
+        idx = oe[i0:i1]
+        k = ke[idx[0]]
+        base = np.array([flat(np.array([k[0] + a, k[1] + b, k[2]])) for a, b in shifts])
+        a, b = np.searchsorted(fs, base - 1), np.searchsorted(fs, base + 2)
+        cand = src[np.concatenate([np.arange(x, y) for x, y in zip(a, b)])]
+        d = np.abs(ev[idx, None, :].astype(np.float32) - cand[None])
+        out[idx] = np.where((d <= trunc).all(-1), np.exp(-0.5 * (d ** 2).sum(-1)), 0.0).sum(1)
+    return out
+
+
+def _support_mass(lat, lon, t, sigma_deg, sigma_days, trunc, chunk=200_000):
+    """int_S k(x - y) mu(dy) at points: exact Gaussian-CDF integrals over each native support
+    cell (mu uniform in lat/lon within a cell), times the window's time integral."""
+    from scipy.special import ndtr
+    le, oe, _ = native_grid()
+    a = support_area(le, oe)
+    m = int(np.ceil(trunc * sigma_deg / np.diff(le).min())) + 1
+    off = np.arange(-m, m + 1)
+    iy = np.searchsorted(le, lat, side="right") - 1
+    ix = np.searchsorted(oe, lon, side="right") - 1
+    if (iy.min() < m or ix.min() < m or iy.max() >= a.shape[0] - m or ix.max() >= a.shape[1] - m):
+        raise ValueError("points within the kernel reach of the grid edge")
+    out = np.empty(len(lat))
+    for s in range(0, len(lat), chunk):
+        sl = slice(s, s + chunk)
+        jy, jx = iy[sl, None] + off, ix[sl, None] + off
+        wy = (ndtr((le[jy + 1] - lat[sl, None]) / sigma_deg) - ndtr((le[jy] - lat[sl, None]) / sigma_deg)) / (le[jy + 1] - le[jy])
+        wx = (ndtr((oe[jx + 1] - lon[sl, None]) / sigma_deg) - ndtr((oe[jx] - lon[sl, None]) / sigma_deg)) / (oe[jx + 1] - oe[jx])
+        out[sl] = np.einsum("ni,nij,nj->n", wy, a[jy[:, :, None], jx[:, None, :]], wx)
+    return out * ndtr((_days(np.datetime64(cs._velocity_end())) - t) / sigma_days)
+
+
+def kernel_at_points(lat, lon, time, sigma_deg, sigma_days, tag="_argo_resample", exclude=(),
+                     trunc=4.0, sources=("deploy",)):
+    """Unbinned edge-corrected Gaussian kernel intensity at points (profiles per m2 per day):
+    (1/R) sum_i k(x - x_i) / int_S k(x - y) mu(dy), k separable in (deg, deg, day),
+    truncated at `trunc` sd per axis in the numerator."""
+    lat, lon, t = np.asarray(lat, float), np.asarray(lon, float), _days(time)
+    files = [f for f in sorted(glob.glob(cs.profile_path(tag, chunk="*")))
+             if int(f.rsplit("_c", 1)[1].split(".")[0]) not in set(exclude)]
+    r = trunc * np.array([sigma_days, sigma_deg, sigma_deg])
+    lo = np.array([t.min(), lat.min(), lon.min()]) - r
+    hi = np.array([t.max(), lat.max(), lon.max()]) + r
+    src = []
+    for f in files:
+        p = pd.read_parquet(f, columns=["time", "lat", "lon", "source"])
+        p = p[p["source"].isin(sources)]
+        x = np.column_stack([_days(p["time"].to_numpy()), p["lat"].to_numpy(), p["lon"].to_numpy()])
+        src.append(x[((x >= lo) & (x <= hi)).all(1)])
+    sig = np.array([sigma_days, sigma_deg, sigma_deg])
+    num = _pair_sum(np.column_stack([t, lat, lon]) / sig, np.concatenate(src) / sig, trunc)
+    num /= len(files) * (2 * np.pi) ** 1.5 * sig.prod()
+    den = _support_mass(lat, lon, t, sigma_deg, sigma_days, trunc)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.where(den > 0, num / den, np.nan)
+
+
 def kernel_path(sigma_deg, sigma_days, tag="_argo_resample", deg=0.125, days=2.5):
     f = "native" if deg == "native" else f"{deg:g}_{days:g}"
     return os.path.join(cfg.OUT_DIR, f"qhat_kernel{tag}_s{sigma_deg:.4g}_{sigma_days:g}_f{f}.nc")

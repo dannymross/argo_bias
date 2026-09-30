@@ -1,0 +1,228 @@
+---
+title: "Debiasing Argo Box Averages with a Simulated Sampling Propensity"
+jupyter: python3
+fig-dpi: 300
+---
+
+```{python}
+#| label: setup
+#| include: false
+
+import os, sys
+sys.path.insert(0, os.path.abspath("../code"))
+
+import numpy as np, pandas as pd, matplotlib.pyplot as plt
+from IPython.display import display
+from osim import continuous_sim as cs
+from osim import intensity as qi
+from osim import ipw
+from osim import report as rp
+
+plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.alpha": 0.25})
+SIGMA = ipw.SIGMA
+chain = pd.read_parquet(ipw.chain_path(SIGMA))
+R = chain["rep"].nunique()
+
+def _show_fig(fig):
+    display(fig)
+    plt.close(fig)
+```
+
+## The problem
+
+Argo floats drift with the ocean currents, so where they take profiles is not uniform in space
+and time. If floats tend to collect in cold (or warm) water, then the simple average of their
+profiles is a biased estimate of the box's average ocean heat content (OHC), even with no
+measurement error. Our aim is to measure that bias and remove it.
+
+**Setting.** There are two boxes in the North Atlantic, Box A ($22$–$34^\circ$N) and Box B
+($34$–$45^\circ$N), both spanning $60$–$40^\circ$W. We also use their union, A $\cup$ B. We work in
+the years 2015–2019. We use the GLORYS12 reanalysis as "truth": it gives the OHC anomaly $Z$
+($0$–$2000$ m, seasonal cycle and trend removed) on every $1/12^\circ$ cell on every day. The
+**target** is the true box-year mean, $Z$ averaged over the box's ocean area $A$ and the year's
+$T$ days:
+$$
+\bar Z \;=\; \frac{1}{|A|\,T}\int_{\text{year}}\int_{A} Z(s,t)\,ds\,dt .
+$$
+Here $x=(s,t)$ is a location and day, and $|A|\,T$ is the box's area-time (area times days).
+
+## The sampling propensity
+
+Imagine re-running the Argo program many times, with the same deployment strategy and the same
+ocean currents but different individual launches. The **sampling propensity** $q(x)$ at a place and
+day $x$ is the *average number of profiles per unit area per day* that would land there. A high
+$q$ means the location is routinely oversampled, and a low $q$ means it is routinely undersampled.
+It is set by two things: where and when floats are deployed, and where the currents carry them
+afterwards. Formally,
+$$
+q(x)\,\Delta A\,\Delta t \;\approx\; \mathbb E\big[\#\text{ profiles in a small patch of area }\Delta A\text{ and duration }\Delta t\text{ around }x\big],
+$$
+where the expectation is over re-runs of the program. The one fact we need follows from this: for
+any function $f$, a sum over the profiles $x_i$ averages to an integral weighted by $q$,
+$$
+\mathbb E\Big[\sum_i f(x_i)\Big] \;=\; \int f(x)\,q(x)\,dx . \tag{1}
+$$
+
+**Why the simple mean is biased.** Applying (1) to the numerator and denominator of the simple mean
+$\hat Z_{\text{mean}}=\frac1n\sum_i Z(x_i)$ over the $n$ profiles in the box-year gives
+$$
+\mathbb E\big[\hat Z_{\text{mean}}\big] \;\approx\; \frac{\int_{\text{box-year}} Z\,q\,dx}{\int_{\text{box-year}} q\,dx}
+\qquad\Longrightarrow\qquad
+\text{bias} \;\approx\; \frac{\operatorname{Cov}_{\text{box-year}}(q,\,Z)}{\operatorname{mean}_{\text{box-year}}(q)} .
+$$
+So the simple mean is a $q$-weighted average of $Z$, not the plain average. It is biased exactly
+when $q$ lines up with $Z$: if floats are routinely denser where $Z$ is low, the average runs
+low.
+
+## Estimating the propensity by simulation
+
+We cannot re-run the real Argo program, but we can simulate it.
+
+1. **Deployments.** A simulated array resamples the real 2010–2019 Argo deployments in the region
+   (with replacement, within each year, keeping each float's lifespan). Each launch is nudged by up
+   to $\pm1/12^\circ$ and $\pm10$ days.
+2. **Drift.** Each float is advected at its $1000$ m parking depth through GLORYS daily currents and
+   reports a profile every $10$ days. The years 2010–2014 are a spin-up, so the array is mature by
+   2015.
+3. **Repeat.** We build $R = 1000$ independent simulated arrays.
+
+Pooling all their profiles, let $C(c)$ be the average number of profiles per array in cell-day
+$c$ (a $1/12^\circ$ cell on one day), and $a(c)$ its area of ocean deeper than the $1000$ m parking depth
+times one day (zero after the simulation ends). With Gaussian smoothing weights $G$, standard deviation $\sigma_s\approx17$ km
+($1/6^\circ$) in space and $\sigma_t=4$ days in time,
+$$
+\hat q(c) \;=\; \frac{\sum_{c'} G(c-c')\,C(c')}{\sum_{c'} G(c-c')\,a(c')},
+\qquad
+C(c) \;=\; \frac1R\sum_{r=1}^{R} \#\{\text{profiles of array } r \text{ in } c\}.
+$$
+This is smoothed profiles divided by smoothed ocean area-time, in profiles per unit area per day.
+Dividing by the *smoothed* area, rather than the area of one cell, keeps the estimate from being
+dragged down near coasts and the edge of the record, where part of the kernel falls on land or
+outside the record.
+
+**Why this bandwidth.** It is a trade-off between noise and resolution:
+
+* **Noise.** Each kernel holds about $70$ simulated profiles, so $\hat q$ is precise to about
+  $12$%.
+* **Resolution.** It is about ten times finer than the scales on which $Z$ varies (a few hundred km
+  and one to four months), and fine enough to resolve eddy-scale trapping.
+
+Binning to cells first is only a speed-up: evaluating the kernel at the exact profile positions
+changes the results below by less than $0.001$ GJ m$^{-2}$.
+
+```{python}
+#| label: fig-qhat
+#| echo: false
+#| fig-cap: "Estimated sampling propensity q-hat averaged over January-February 2017 (log scale), with the profiles of one simulated array in the same window (white dots). Floats are one random draw from this surface."
+
+qds = qi.load_kernel(*SIGMA, deg="native")
+p = pd.read_parquet(cs.profile_path("_argo_resample", chunk=0), columns=["time", "lat", "lon", "source"])
+t = pd.to_datetime(p["time"])
+p = p[(p["source"] == "deploy") & (t >= "2017-01-01") & (t < "2017-03-01")]
+_show_fig(rp.plot_qhat_window(qds, "2017-01-01", "2017-03-01", points=(p["lat"], p["lon"]),
+                              title="q-hat and one simulated array, Jan-Feb 2017"))
+```
+
+## The realized bias of the simple mean
+
+For simulated array $r$, we read the true $Z$ at each of its $n_r$ profiles $x_i$ inside a
+box-year and average them:
+$$
+\hat Z_{\text{mean},r} \;=\; \frac1{n_r}\sum_{i=1}^{n_r} Z(x_i),
+\qquad
+B_r \;=\; \hat Z_{\text{mean},r} - \bar Z .
+$$
+$B_r$ is the **realized bias** of array $r$. Because GLORYS is complete, $\bar Z$ is known exactly,
+and the only source of error is where the floats happened to sample.
+
+A single array's $B_r$ mixes two things: a systematic part from the propensity, and luck of the
+draw. The average over arrays, $\bar B=\frac1R\sum_r B_r$, isolates the systematic part, the
+**sampling bias**, which is what the estimators below are designed to remove. Its Monte Carlo
+standard error is $\mathrm{sd}(B_r)/\sqrt R$. The spread of $B_r$ across arrays is the luck.
+
+## Debiasing: weight each profile by $1/\hat q$
+
+The fix is the survey-sampling idea of inverse-probability weighting. A profile in an
+undersampled place (low $\hat q$) stands in for more ocean, so it gets more weight. Each profile
+gets weight $v_i = 1/\hat q(x_i)$, the area-time it represents. With $Z_i=Z(x_i)$:
+
+* **Horvitz–Thompson (HT):**
+  $$
+  \hat Z_{\text{HT}} \;=\; \frac{1}{|A|\,T}\sum_i \frac{Z_i}{\hat q(x_i)} .
+  $$
+  By (1) with $f=Z/q$, $\;\mathbb E\big[\sum_i Z_i/q(x_i)\big]=\int Z\,dx=|A|\,T\,\bar Z$, so HT is
+  unbiased when $\hat q=q$. It relies on $\hat q$ having the right overall level.
+* **Hájek:**
+  $$
+  \hat Z_{\text{H}} \;=\; \frac{\sum_i Z_i/\hat q(x_i)}{\sum_i 1/\hat q(x_i)} ,
+  $$
+  the weighted average. It replaces the known area-time $|A|\,T$ with its own estimate
+  $\sum_i 1/\hat q(x_i)$. Only the *relative* propensity matters, because any overall scale error
+  in $\hat q$ cancels. This is usually the more robust choice.
+
+For each estimator we compute the same realized bias $B_r$ per array, and report the **percent of
+the simple mean's bias removed**, $100\,\big(1-\bar B_{\text{est}}/\bar B_{\text{mean}}\big)$.
+
+In this validation, each simulated array is weighted by the $\hat q$ built from all $1000$ arrays.
+Leaving the array's own profiles out of $\hat q$ changes the Hájek estimate by at most
+$0.02$ GJ m$^{-2}$.
+
+## Results
+
+**Bias of each estimator.** The figure shows the average bias over the $1000$ simulated arrays for
+each box and year, with the last column pooling all five years. The error bars are $\pm2$ Monte
+Carlo standard errors.
+
+```{python}
+#| label: fig-bias
+#| echo: false
+#| fig-cap: "Mean bias (estimate minus truth, GJ per m2) over 1000 simulated arrays, per year and pooled over 2015-2019 (all); error bars are +/- 2 Monte Carlo standard errors."
+
+_show_fig(rp.plot_mean_bias(chain, figsize=(11, 3.4)))
+```
+
+**How much bias is removed.** This is the percent of the simple mean's bias that each weighted
+estimator removes. The error bars are 95% bootstrap intervals over arrays. A value of $100$% means
+the bias is fully removed, and a value above $100$% means it overshoots. "n.r." marks box-years
+where the simple mean's bias is too small to resolve, so a percentage is meaningless.
+
+```{python}
+#| label: fig-removed
+#| echo: false
+#| fig-cap: "Percent of the simple-mean bias removed by Horvitz-Thompson and Hajek weighting, with 95 percent bootstrap intervals over arrays; dashed line is 100 percent; n.r. = simple-mean bias not resolved."
+
+_show_fig(rp.plot_bias_removed(chain, figsize=(11, 3.4)))
+```
+
+**Luck of the draw.** Each box shows the spread of estimate minus truth across the $1000$ arrays.
+The diamonds are the means plotted in @fig-bias.
+
+```{python}
+#| label: fig-spread
+#| echo: false
+#| fig-cap: "Estimate minus truth (GJ per m2) across 1000 simulated arrays per box-year; diamonds are means, red line is zero."
+
+_show_fig(rp.plot_replicate_bias(chain, ["naive", "ht", "hajek"], ["mean", "HT", "Hajek"],
+                                 truth="truth", boxes=("boxA", "boxB", "boxAB")))
+```
+
+**Takeaways.**
+
+* The simple mean is biased low in Box B in every year, by $0.23$–$0.42$ GJ m$^{-2}$. Floats
+  collect over colder water. In Box A the bias is smaller and its sign varies from year to year.
+* Hájek weighting removes about $89$% of the bias in Box B and in A $\cup$ B, and about $81$% in
+  Box A (pooled over years). What remains is about $-0.03$ GJ m$^{-2}$ in Box B, roughly a tenth
+  of the original.
+* HT does slightly worse. The weights sum to only about $93$% of the box, and that scale error
+  shows up wherever $\bar Z$ is large. Hájek cancels it.
+* Weighting also halves the typical error of a single array's five-year Box B average, from
+  $0.37$ to $0.19$ GJ m$^{-2}$, because bias dominated the simple mean's error there. For
+  single years the reduction is 17–28%.
+
+## What this does and does not show
+
+This is a best case. The profiles are generated by exactly the same process that $\hat q$ was
+estimated from, so the result shows that the *estimators* work when the propensity is right. For
+real Argo, $\hat q$ must also describe where **real** floats go. Real trajectories drift away from
+GLORYS-advected ones within weeks, and a first check with an earlier $\hat q$ found that, on the GLORYS
+field, the real array's Hájek bias in Box B stays close to its simple-mean bias. Checking and correcting $\hat q$ for the real array is the next step.

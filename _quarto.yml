@@ -4,6 +4,7 @@ project:
     - "index.qmd"
     - "reports/osim.qmd"
     - "reports/ipw.qmd"
+    - "reports/ipw_2.qmd"
 
 execute:
   freeze: auto
@@ -23,6 +24,7 @@ website:
         contents:
           - reports/osim.qmd
           - reports/ipw.qmd
+          - reports/ipw_2.qmd
 
 format:
   html:

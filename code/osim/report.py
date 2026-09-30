@@ -1248,9 +1248,71 @@ def bias_removed_table(df, box, est=("ht", "hajek"), base="naive", truth="truth"
             ok = abs(t0) > 2
             row |= {f"{c} bias": x.mean(), f"{c} removed": dd.mean(), f"{c} removed se": dd.std(ddof=1) / np.sqrt(n),
                     f"{c} % removed": 100 * (1 - x.mean() / x0.mean()) if ok else np.nan,
-                    f"{c} % CI": f"[{np.percentile(pct, 2.5):.0f}, {np.percentile(pct, 97.5):.0f}]" if ok else ""}
+                    f"{c} % lo": np.percentile(pct, 2.5) if ok else np.nan,
+                    f"{c} % hi": np.percentile(pct, 97.5) if ok else np.nan}
         rows.append(row)
     return pd.DataFrame(rows).assign(box=BOX_LABELS.get(box, box))
+
+
+EST_STYLE = {"naive": ("Simple mean", "#2a78d6", "o"), "ht": ("Horvitz-Thompson", "#eb6834", "s"),
+             "hajek": ("Hajek", "#1baf7a", "^")}
+
+
+def _year_axis(ax, years):
+    ax.set_xticks(range(len(years)), [str(y) for y in years])
+    ax.axvline(len(years) - 1.5, color="0.8", lw=0.8)
+
+
+def plot_mean_bias(df, est=("naive", "ht", "hajek"), boxes=("boxA", "boxB", "boxAB"), truth="truth",
+                   figsize=None):
+    """Mean realized bias (GJ/m2) +/- 2 se over replicates per year and pooled, one panel per box."""
+    figsize = figsize or (3.4 * len(boxes), 3.2)
+    fig, axes = plt.subplots(1, len(boxes), figsize=figsize, sharey=True, squeeze=False)
+    for ax, b in zip(axes[0], boxes):
+        t = bias_summary(df, list(est), b, truth=truth)
+        years = t["year"].tolist()
+        for k, e in enumerate(est):
+            lab, col, mk = EST_STYLE[e]
+            x = np.arange(len(years)) + (k - (len(est) - 1) / 2) * 0.22
+            ax.errorbar(x, t[f"{e} mean"], yerr=2 * t[f"{e} se"], fmt=mk, color=col, ms=6, lw=1.5,
+                        capsize=0, label=lab)
+        ax.axhline(0, color="0.3", lw=0.8)
+        _year_axis(ax, years)
+        ax.set_title(BOX_LABELS.get(b, b), fontsize=10)
+        ax.grid(axis="x", visible=False)
+    axes[0][0].set_ylabel("mean bias (GJ per m2)")
+    axes[0][-1].legend(fontsize=8, frameon=False, loc="lower right")
+    fig.tight_layout()
+    return fig
+
+
+def plot_bias_removed(df, est=("ht", "hajek"), boxes=("boxA", "boxB", "boxAB"), figsize=None):
+    """Percent of the simple-mean bias removed, with replicate-bootstrap 95% CI; years where
+    the simple-mean bias is not resolved (|t| <= 2) are marked n.r."""
+    figsize = figsize or (3.4 * len(boxes), 3.2)
+    fig, axes = plt.subplots(1, len(boxes), figsize=figsize, sharey=True, squeeze=False)
+    w = 0.36
+    for ax, b in zip(axes[0], boxes):
+        t = bias_removed_table(df, b, est)
+        years = t["year"].tolist()
+        for k, e in enumerate(est):
+            lab, col, _ = EST_STYLE[e]
+            x = np.arange(len(years)) + (k - (len(est) - 1) / 2) * (w + 0.03)
+            v = t[f"{e} % removed"].to_numpy()
+            ax.bar(x, v, width=w, color=col, label=lab, edgecolor="white", lw=1)
+            ax.errorbar(x, v, yerr=[v - t[f"{e} % lo"], t[f"{e} % hi"] - v], fmt="none", ecolor="0.25", lw=1)
+        for i, v in enumerate(t[f"{est[0]} % removed"]):
+            if np.isnan(v):
+                ax.text(i, 5, "n.r.", ha="center", fontsize=8, color="0.4")
+        ax.axhline(100, color="0.3", lw=0.8, ls="--")
+        ax.axhline(0, color="0.3", lw=0.8)
+        _year_axis(ax, years)
+        ax.set_title(BOX_LABELS.get(b, b), fontsize=10)
+        ax.grid(axis="x", visible=False)
+    axes[0][0].set_ylabel("bias removed (percent)")
+    axes[0][-1].legend(fontsize=8, frameon=False, loc="lower right")
+    fig.tight_layout()
+    return fig
 
 
 def aipw_decomposition_table(df, box):
@@ -1269,10 +1331,11 @@ def aipw_decomposition_table(df, box):
     return t.reset_index()
 
 
-def plot_qhat_window(qds, t0, t1, kind="nominal", boxes=("boxB", "boxA"), figsize=(6.2, 6.0)):
-    """Kernel q-hat averaged over [t0, t1) on its fine grid, both boxes on one map.
-    Support area is time-invariant and time bins are equal, so the plain time mean is
-    the mu-weighted mean."""
+def plot_qhat_window(qds, t0, t1, kind="nominal", boxes=("boxB", "boxA"), figsize=(6.2, 6.0), points=None,
+                     title=None):
+    """Kernel q-hat averaged over [t0, t1) on its fine grid, both boxes on one map, with
+    optional (lat, lon) points overlaid. Support area is time-invariant and time bins are
+    equal, so the plain time mean is the mu-weighted mean."""
     from matplotlib.colors import LogNorm
     q = qds[f"q_{kind}"].sel(time=slice(np.datetime64(t0), np.datetime64(t1) - np.timedelta64(1, "s")))
     da = (q.mean("time") * Q_PER_1E4KM2_YR).rename(lat="latitude", lon="longitude")
@@ -1280,7 +1343,11 @@ def plot_qhat_window(qds, t0, t1, kind="nominal", boxes=("boxB", "boxA"), figsiz
     norm = LogNorm(*np.percentile(v, [1, 99.5]))
     fig, axes, caxes = _map_grid(1, 1, figsize)
     im = _draw_domain_map(axes[0][0], [da], norm, "viridis", _both_box_extent(boxes, pad=1.5),
-                          f"{t0} to {t1}", True, True, scale=1.0, boxes=boxes)
+                          title or f"{t0} to {t1}", True, True, scale=1.0, boxes=boxes)
+    if points is not None:
+        import cartopy.crs as ccrs
+        axes[0][0].plot(points[1], points[0], "o", ms=2.5, mfc="white", mec="0.1", mew=0.4,
+                        transform=ccrs.PlateCarree(), zorder=5)
     fig.colorbar(im, cax=caxes[0], label="q-hat, profiles per 10^4 km2 per year")
     return fig
 

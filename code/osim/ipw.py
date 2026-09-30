@@ -249,13 +249,16 @@ def union_truth(z, area, years=cfg.ANALYSIS_YEARS):
     return pd.concat([t, u[t.columns]], ignore_index=True)
 
 
-def chain(sigma=SIGMA, tag="_argo_resample", years=cfg.ANALYSIS_YEARS, reps=None, qds=None, kind="nominal"):
+def chain(sigma=SIGMA, tag="_argo_resample", years=cfg.ANALYSIS_YEARS, reps=None, qds=None, kind="nominal",
+          qfun=None):
     """Full GLORYS chain: each replicate's in-box nominal profiles read Z and are weighted by
-    1/q-hat (default: the native-grid kernel from all replicates, in-sample). Returns naive,
-    HT and Hajek per (rep, box, year) in J/m2, boxes A, B and A u B."""
+    1/q-hat (default: the native-grid kernel from all replicates, in-sample; or qfun(lat, lon,
+    time)). Returns naive, HT and Hajek per (rep, box, year) in J/m2, boxes A, B and A u B."""
     z = xr.open_dataset(FIELD)["z"]
     area = xr.open_dataset(AREA)["cell_area"]
-    qds = qi.load_kernel(*sigma, tag, deg="native") if qds is None else qds
+    if qfun is None:
+        qds = qi.load_kernel(*sigma, tag, deg="native") if qds is None else qds
+        qfun = lambda la, lo, t: qi.at(qds, la, lo, t, kind)
     files = sorted(glob.glob(cs.profile_path(tag, chunk="*")))
     rep_of = {f: int(f.rsplit("_c", 1)[1].split(".")[0]) for f in files}
     files = [f for f in files if reps is None or rep_of[f] in set(reps)]
@@ -270,7 +273,7 @@ def chain(sigma=SIGMA, tag="_argo_resample", years=cfg.ANALYSIS_YEARS, reps=None
     P["year"] = P["time"].dt.year
     P["z"] = sample_field(z, P["lat"].to_numpy(), P["lon"].to_numpy(), P["time"].to_numpy())
     P = P[np.isfinite(P["z"])]
-    v = 1.0 / qi.at(qds, P["lat"].to_numpy(), P["lon"].to_numpy(), P["time"].to_numpy(), kind)
+    v = 1.0 / qfun(P["lat"].to_numpy(), P["lon"].to_numpy(), P["time"].to_numpy())
     fin = np.isfinite(v)
     P = P.assign(v=np.where(fin, v, 0.0), miss=~fin)
     P = pd.concat([P, P.assign(box="boxAB")], ignore_index=True)
@@ -284,8 +287,8 @@ def chain(sigma=SIGMA, tag="_argo_resample", years=cfg.ANALYSIS_YEARS, reps=None
     return e.drop(columns=["sv", "svz", "sv2"]).assign(sigma_deg=sigma[0], sigma_days=sigma[1])
 
 
-def chain_path(sigma=SIGMA):
-    return os.path.join(TESTBED_DIR, f"chain_kernel_s{sigma[0]:.4g}_{sigma[1]:g}_reps.parquet")
+def chain_path(sigma=SIGMA, label=""):
+    return os.path.join(TESTBED_DIR, f"chain_kernel{label}_s{sigma[0]:.4g}_{sigma[1]:g}_reps.parquet")
 
 
 def gather():
@@ -319,11 +322,14 @@ if __name__ == "__main__":
     sub.add_parser("gather")
     ch = sub.add_parser("chain")
     ch.add_argument("--sigma", default=None, help="sigma_deg,sigma_days (default 1/6 deg, 4 d)")
+    ch.add_argument("--unbinned", action="store_true", help="exact kernel sum at the profiles")
     a = ap.parse_args()
     if a.cmd == "chain":
         s = tuple(float(x) for x in a.sigma.split(",")) if a.sigma else SIGMA
-        chain(s).to_parquet(chain_path(s), index=False)
-        print("->", chain_path(s))
+        qf = (lambda la, lo, t: qi.kernel_at_points(la, lo, t, *s)) if a.unbinned else None
+        out = chain_path(s, "_unbinned" if a.unbinned else "")
+        chain(s, qfun=qf).to_parquet(out, index=False)
+        print("->", out)
     elif a.cmd == "testbed":
         testbed((a.box,) if a.box else ("boxA", "boxB"), (a.year,) if a.year else range(2015, 2020),
                 a.positions, a.rep,
