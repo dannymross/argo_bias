@@ -3,6 +3,7 @@ project:
   render:
     - "index.qmd"
     - "reports/osim.qmd"
+    - "reports/ipw.qmd"
 
 execute:
   freeze: auto
@@ -21,6 +22,7 @@ website:
       - section: "Float simulation"
         contents:
           - reports/osim.qmd
+          - reports/ipw.qmd
 
 format:
   html:

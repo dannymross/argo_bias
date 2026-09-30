@@ -1180,3 +1180,185 @@ def plot_estimator_comparison(est, krige, boxes=("boxB", "boxA"), figsize=(11, 4
     np.atleast_1d(axes)[-1].legend(fontsize=8)
     fig.tight_layout()
     return fig
+
+
+# ----------------------------------------------------------------------------
+# inverse-intensity / doubly robust estimators (reports/ipw.qmd)
+# ----------------------------------------------------------------------------
+
+IPW_DIR = os.path.join(cfg.OUT_DIR, "ipw_testbed")
+Q_PER_1E4KM2_YR = 1e10 * 365.25   # profiles per m2 per day -> per 10^4 km2 per year
+
+
+def load_testbed(label="sim_k0.25_7.5"):
+    """Per-replicate testbed rows (ipw.testbed output) for one setting, with a rep column."""
+    import glob
+    files = sorted(glob.glob(os.path.join(IPW_DIR, f"testbed_{label}_r*_box*_*.csv")))
+    if not files:
+        return None
+    t = pd.concat(map(pd.read_csv, files), ignore_index=True)
+    return t.assign(rep=t["positions"].str.extract(r"_r(\d+)$")[0].astype(int))
+
+
+def bias_summary(df, est, box, truth="zbar"):
+    """Per-year mean bias, MC se, t and single-replicate RMSE (GJ/m2) per estimator,
+    plus an all-years row computed on per-replicate year averages over replicates with
+    every year present (replicates are the independent units; years share floats)."""
+    d = df[df["box"] == box]
+    b = d[["rep", "year"]].assign(**{c: (d[c] - d[truth]) * J_TO_GJ for c in est})
+    stats = lambda g: pd.concat({c: pd.Series({"mean": g[c].mean(), "se": g[c].sem(),
+                                               "rmse": np.sqrt((g[c] ** 2).mean())})
+                                 for c in est})
+    t = b.groupby("year").apply(stats)
+    full = b.groupby("rep").filter(lambda g: g["year"].nunique() == b["year"].nunique())
+    t.loc["all"] = stats(full.groupby("rep")[est].mean())
+    for c in est:
+        t[(c, "t")] = t[(c, "mean")] / t[(c, "se")]
+    t = t[[(c, s) for c in est for s in ("mean", "se", "t", "rmse")]]
+    t.columns = [f"{c} {s}" for c, s in t.columns]
+    reps = b.groupby("year")["rep"].nunique()
+    t.insert(0, "reps", reps.reindex(t.index).fillna(full["rep"].nunique()).astype(int))
+    return t.reset_index().assign(box=box)
+
+
+BOX_LABELS = {"boxA": "Box A", "boxB": "Box B", "boxAB": "Box A u B"}
+
+
+def bias_removed_table(df, box, est=("ht", "hajek"), base="naive", truth="truth", n_boot=2000, seed=0):
+    """Per year (+ "all" on per-replicate year means): base bias and t, and for each estimator
+    its bias, the bias removed sign(E[B_base]) (E[B_base] - E[B_est]) (positive = toward zero)
+    with paired se, and the percent removed
+    100 (1 - E[B_est]/E[B_base]) with a replicate-bootstrap 95% CI, blank unless |t_base| > 2."""
+    d = df[df["box"] == box]
+    b = d[["rep", "year"]].assign(**{c: (d[c] - d[truth]) * J_TO_GJ for c in (base, *est)})
+    full = b.groupby("rep").filter(lambda g: g["year"].nunique() == b["year"].nunique())
+    groups = list(b.groupby("year")) + [("all", full.groupby("rep")[[base, *est]].mean())]
+    rng = np.random.default_rng(seed)
+    rows = []
+    for y, g in groups:
+        x0 = g[base].to_numpy()
+        n = len(x0)
+        t0 = x0.mean() / (x0.std(ddof=1) / np.sqrt(n))
+        idx = rng.integers(0, n, (n_boot, n))
+        row = {"year": y, "reps": n, f"{base} bias": x0.mean(), f"{base} t": t0}
+        for c in est:
+            x = g[c].to_numpy()
+            dd = np.sign(x0.mean()) * (x0 - x)
+            pct = 100 * (1 - x[idx].mean(1) / x0[idx].mean(1))
+            ok = abs(t0) > 2
+            row |= {f"{c} bias": x.mean(), f"{c} removed": dd.mean(), f"{c} removed se": dd.std(ddof=1) / np.sqrt(n),
+                    f"{c} % removed": 100 * (1 - x.mean() / x0.mean()) if ok else np.nan,
+                    f"{c} % CI": f"[{np.percentile(pct, 2.5):.0f}, {np.percentile(pct, 97.5):.0f}]" if ok else ""}
+        rows.append(row)
+    return pd.DataFrame(rows).assign(box=BOX_LABELS.get(box, box))
+
+
+def aipw_decomposition_table(df, box):
+    """AIPW = fold-mean integral term + fold-mean Hajek residual correction; both as
+    deviations from truth where meaningful (GJ/m2), with the KS map and its mass."""
+    d = df[df["box"] == box].copy()
+    mean_of = lambda s: s.astype(str).str.split(";").apply(lambda x: np.mean(np.asarray(x, float)))
+    d = d.assign(integral=(mean_of(d["fold_int"]) - d["zbar"]) * J_TO_GJ,
+                 correction=mean_of(d["fold_cor"]) * J_TO_GJ,
+                 aipw_B=(d["aipw"] - d["zbar"]) * J_TO_GJ, ks_B=(d["ks"] - d["zbar"]) * J_TO_GJ,
+                 fold_sd=d["aipw_fold_sd"] * J_TO_GJ)
+    cols = ["ks_B", "ks_mass", "integral", "correction", "aipw_B", "fold_sd"]
+    t = d.groupby("year")[cols].mean()
+    t.loc["all"] = d.groupby("rep")[cols].mean().mean()
+    t.insert(0, "reps", d.groupby("year")["rep"].nunique().reindex(t.index).fillna(d["rep"].nunique()))
+    return t.reset_index()
+
+
+def plot_qhat_window(qds, t0, t1, kind="nominal", boxes=("boxB", "boxA"), figsize=(6.2, 6.0)):
+    """Kernel q-hat averaged over [t0, t1) on its fine grid, both boxes on one map.
+    Support area is time-invariant and time bins are equal, so the plain time mean is
+    the mu-weighted mean."""
+    from matplotlib.colors import LogNorm
+    q = qds[f"q_{kind}"].sel(time=slice(np.datetime64(t0), np.datetime64(t1) - np.timedelta64(1, "s")))
+    da = (q.mean("time") * Q_PER_1E4KM2_YR).rename(lat="latitude", lon="longitude")
+    v = da.values[np.isfinite(da.values) & (da.values > 0)]
+    norm = LogNorm(*np.percentile(v, [1, 99.5]))
+    fig, axes, caxes = _map_grid(1, 1, figsize)
+    im = _draw_domain_map(axes[0][0], [da], norm, "viridis", _both_box_extent(boxes, pad=1.5),
+                          f"{t0} to {t1}", True, True, scale=1.0, boxes=boxes)
+    fig.colorbar(im, cax=caxes[0], label="q-hat, profiles per 10^4 km2 per year")
+    return fig
+
+
+def plot_replicate_bias(df, est, labels=None, truth="zbar", boxes=("boxB", "boxA"), figsize=None):
+    """Replicate distribution of estimate minus truth (GJ/m2) per box-year and estimator."""
+    labels = labels or est
+    years = sorted(df["year"].unique())
+    figsize = figsize or (2.3 * len(years) + 1, 3.0 * len(boxes))
+    fig, axes = plt.subplots(len(boxes), len(years), figsize=figsize, sharey="row", squeeze=False)
+    cols = plt.get_cmap("tab10")
+    for r, b in enumerate(boxes):
+        for c, y in enumerate(years):
+            ax = axes[r][c]
+            d = df[(df["box"] == b) & (df["year"] == y)]
+            data = [((d[e] - d[truth]) * J_TO_GJ).dropna().to_numpy() for e in est]
+            bp = ax.boxplot(data, widths=0.55, showfliers=False, patch_artist=True)
+            for k, patch in enumerate(bp["boxes"]):
+                patch.set(facecolor=cols(k), alpha=0.35)
+            for k, x in enumerate(data):
+                ax.plot(np.full(len(x), k + 1) + np.random.default_rng(k).uniform(-0.15, 0.15, len(x)),
+                        x, ".", ms=2.5, color=cols(k), alpha=0.6)
+                ax.plot(k + 1, x.mean() if len(x) else np.nan, "kD", ms=4)
+            ax.axhline(0, color="r", lw=0.8)
+            ax.set_xticks(range(1, len(est) + 1), labels, rotation=45, fontsize=7)
+            ax.set_title(f"{b} {y}", fontsize=9)
+        axes[r][0].set_ylabel("estimate - truth (GJ per m2)")
+    fig.tight_layout()
+    return fig
+
+
+def extrap_bias(reps):
+    """Mean over test replicates of the Hajek bias per (R, bandwidth, box, year), with MC se."""
+    return (reps.groupby(["R", "sigma_deg", "sigma_days", "box", "year"])["bias"]
+            .agg(["mean", "sem"]).reset_index())
+
+
+def plot_bias_vs_bandwidth(reps, boxes=("boxB", "boxA"), figsize=None):
+    """Mean over box-years of |mean Hajek bias| against spatial bandwidth, one line per R,
+    one column per temporal bandwidth; dashed grey is the mean MC se, the level
+    |mean bias| cannot resolve below."""
+    m = extrap_bias(reps)
+    days = sorted(m["sigma_days"].unique())
+    Rs = sorted(m["R"].unique())
+    figsize = figsize or (3.6 * len(days), 3.0 * len(boxes))
+    fig, axes = plt.subplots(len(boxes), len(days), figsize=figsize, sharey="row", squeeze=False)
+    cmap = plt.get_cmap("viridis", len(Rs))
+    for r, b in enumerate(boxes):
+        for c, st in enumerate(days):
+            ax = axes[r][c]
+            g = m[(m["box"] == b) & (m["sigma_days"] == st)]
+            for k, R in enumerate(Rs):
+                s = g[g["R"] == R].groupby("sigma_deg")["mean"].apply(lambda x: x.abs().mean())
+                ax.plot(s.index, s.to_numpy(), "o-", color=cmap(k), ms=4, label=f"R = {R}")
+            se = g[g["R"] == Rs[-1]].groupby("sigma_deg")["sem"].mean()
+            ax.plot(se.index, se.to_numpy(), "--", color="0.5", lw=1, label="MC se")
+            ax.set_title(f"{b}, sigma_t = {st:g} d", fontsize=9)
+            ax.set_xlabel("sigma_s (deg)")
+        axes[r][0].set_ylabel("mean |bias| (GJ per m2)")
+    axes[0][-1].legend(fontsize=7)
+    fig.tight_layout()
+    return fig
+
+
+def richardson_table(reps, pairs=(((0.125, 3.75), (0.25, 7.5)), ((0.1875, 3.75), (0.375, 7.5)),
+                                  ((0.25, 7.5), (0.5, 15.0)), ((0.1875, 7.5), (0.375, 15.0)))):
+    """Two-bandwidth Richardson Hajek (4 H_h - H_2h)/3 against H_h alone: per R, box and
+    pair, mean over years of |mean bias| and of the single-replicate sd (GJ/m2)."""
+    w = reps.pivot_table(index=["R", "rep", "box", "year"], columns=["sigma_deg", "sigma_days"],
+                         values="bias")
+    rows = []
+    for h, h2 in pairs:
+        if h not in w or h2 not in w:
+            continue
+        for lab, b in (("H_h", w[h]), ("Richardson", (4 * w[h] - w[h2]) / 3)):
+            g = b.groupby(["R", "box", "year"])
+            s = pd.DataFrame({"abs_mean": g.mean().abs(), "sd": g.std()}).groupby(["R", "box"]).mean()
+            rows.append(s.assign(pair=f"{h[0]:g}/{h[1]:g} & {h2[0]:g}/{h2[1]:g}", estimator=lab))
+    t = pd.concat(rows).reset_index()
+    return t.pivot_table(index=["pair", "R"], columns=["box", "estimator"],
+                         values=["abs_mean", "sd"]).round(3)

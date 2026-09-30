@@ -19,14 +19,16 @@
 #SBATCH --account=statsresearch_cr_default
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=2
-#SBATCH --mem=16G
-#SBATCH --time=06:00:00
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=12G
+#SBATCH --time=08:00:00
 #SBATCH --output=logs/osim_continuous_%A_%a.out
 #SBATCH --error=logs/osim_continuous_%A_%a.err
 
 set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
+# node-local Parcels output (continuous_sim.scratch_dir); removed even on failure
+trap 'rm -rf "${TMPDIR:-/tmp}/osim_${USER}_${SLURM_JOB_ID}"' EXIT
 
 NFLOATS="${1:-1000}"
 START="${2:-2010-01-01}"

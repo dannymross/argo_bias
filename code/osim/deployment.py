@@ -19,6 +19,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from osim import osim_config as cfg
 
 VEL_DIR = os.path.join(cfg.GLORYS_DIR, "velocity_daily")
+VEL1000_DIR = os.path.join(cfg.GLORYS_DIR, "velocity_daily_1000")
+SIM_VEL_DIR = VEL1000_DIR  # what advection reads: the 2D park-depth conversion of VEL_DIR
 PARK_DEPTH = 1000.0
 CYCLE_DAYS = 10          # Argo surfacing cadence: one profile per cycle
 SEED_MARGIN_UNIFORM = 8.0  # seeded this far beyond the region being read out
