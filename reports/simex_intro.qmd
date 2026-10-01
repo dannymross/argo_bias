@@ -104,7 +104,78 @@ _show_fig(sx.plot_rects(rects2, pts2, w2.float, w2.weight, warm_south=True))
 Crowding no longer buys extra influence: three floats in the same place count as one area, not
 three.
 
-## Example 3: real clouds in the toy jet
+## Example 3: a map, checked by the floats (the "doubly robust" version)
+
+Weights alone can only speak for places the clouds reach. A map can fill in everywhere, but maps
+built from crowded floats lean toward where the floats crowd. The doubly robust version uses both:
+**draw a map, then let the floats check it.**
+
+```{python}
+#| echo: false
+map_val = np.where(w2.Z > 0, 1.0, 0.0)          # map: warm half right, cold half drifts to 0
+map_mean = 0.5 * 1.0 + 0.5 * 0.0
+resid = w2.Z - map_val
+plain_fix = map_mean + resid.mean()
+dr_fix = map_mean + (w2.weight * resid).sum()
+```
+
+Same box as Example 2: warm half $+1$, cold half $-1$, truth $0$.
+
+**Step 1: draw a map.** Kriging gets the crowded warm half right ($+1$). The cold half has a single
+float, so the map hedges toward the overall data and says $0$ there instead of $-1$. The map's box
+average is `{python} f"{map_mean:+.2f}"`, which is too warm.
+
+**Step 2: check the map at each float.** A float's **residual** is what it measured minus what the
+map says at its spot.
+
+| float | measured | map says | residual | weight |
+|---|---|---|---|---|
+| W1, W2, W3 (warm) | $+1$ | $+1$ | $0$ | $\tfrac16$ each |
+| C1 (cold) | $-1$ | $0$ | $-1$ | $\tfrac12$ |
+
+Three of the four floats say "the map is fine here". Only the cold float sees the mistake.
+
+**Step 3: average the residuals and add that to the map.**
+
+| how residuals are averaged | correction | final answer |
+|---|---|---|
+| plainly: $(0+0+0-1)/4$ | $-0.25$ | `{python} f"{plain_fix:+.2f}"` (still warm) |
+| with the cloud weights: $3\times\tfrac16\times 0 + \tfrac12\times(-1)$ | $-0.50$ | `{python} f"{dr_fix:+.2f}"` ✓ |
+
+A plain average of the checks is skewed for the same reason the plain average of heat content was:
+most checks come from where the map is already right. The weights give the lone cold float the say
+it deserves, and it reports that the map is off by $-1$ over half the box.
+
+**Why it is called "doubly robust": it is right if *either* piece is right.**
+
+* **Perfect map:** every residual is $0$, so the correction is $0$ whatever the weights are.
+* **Perfect weights:** the correction measures the map's error exactly, so even a poor map gets
+  fixed.
+* **Both a bit off:** the two errors multiply instead of adding. For example, suppose the drift
+  model wrongly gives the cold float only 40% instead of 50%:
+
+```{python}
+#| echo: false
+wb = np.array([0.2, 0.2, 0.2, 0.4])
+better_map, better_mean = np.where(w2.Z > 0, 1.0, -0.8), 0.5 * 1.0 + 0.5 * -0.8
+cases = pd.DataFrame({
+    "method": ["weights only", "map + check, poor map (cold half = 0)", "map + check, better map (cold half = -0.8)"],
+    "answer (truth = 0)": [wb @ w2.Z,
+                            map_mean + wb @ (w2.Z - map_val),
+                            better_mean + wb @ (w2.Z - better_map)]})
+HTML(fmt(cases, 2))
+```
+
+**Two practical rules.**
+
+* **The map must not check itself.** Kriging passes through the floats it was built from, so their
+  residuals are all $0$ and the "check" would always say the map is fine. So split the floats into
+  two teams: team A draws the map and team B checks it, then they swap, and the two answers are
+  averaged.
+* **Gaps stay the map's job.** Where no cloud reaches there are no checks, so the map's guess stands
+  unchecked there.
+
+## Example 4: real clouds in the toy jet
 
 Real clouds are not rectangles. The currents shape them:
 
@@ -142,13 +213,19 @@ Averaged over 40 repeats of the toy (looking back 4 cycles):
 ```{python}
 #| echo: false
 df, _ = sx.load_or_run()
-t = sx.summary_table(df)
-t = t[t.estimator != "cross-fit DR"].assign(estimator=lambda d: d.estimator.replace({"sequential Hajek": "reweighted"}))
-HTML(fmt(t[["scenario", "estimator", "bias"]].rename(columns={"bias": "average error (truth = 0)"}), 2))
+t = sx.summary_table(df).replace({"sequential Hajek": "weights only", "cross-fit DR": "map + check"})
+ref = t[t.scenario == "(any)"].set_index("estimator").bias
+t = t[t.scenario != "(any)"].pivot_table(index="scenario", columns="estimator", values="bias", sort=False)
+t = t.assign(**{"simple average": ref["simple mean"], "kriging map": ref["kriging"]})
+HTML(fmt(t[["simple average", "kriging map", "weights only", "map + check"]].reset_index(), 2))
 ```
 
-* **Model right:** the error is close to zero. The small negative value comes from using only 100
-  particles per cloud and goes away with more.
+The simple average and the kriging map don't use the drift model, so they are the same in every row.
+
+* **Model right:** both weighted versions are close to zero. The small negative value for weights
+  only comes from using only 100 particles per cloud and goes away with more.
+* **Map + check** has the smaller error in most rows, because a wrong weight now only scales the
+  map's mistake instead of the full heat content.
 * **Clouds too narrow** (noise too small): a float landing just outside its own cloud looks like a
   rare event and gets a huge weight.
 * **Clouds too wide** (noise too large): every float gets about the same weight, which slides back
@@ -160,5 +237,4 @@ HTML(fmt(t[["scenario", "estimator", "bias"]].rename(columns={"bias": "average e
 * **Looking back too little:** the clouds are small, gaps open where floats avoid, and the weights
   cannot reach the gaps.
 
-The [full toy report](simex.qmd) has the details, including a version that combines the weights
-with a kriged map, which further reduces both the error and the noise.
+The [full toy report](simex.qmd) has the details.
