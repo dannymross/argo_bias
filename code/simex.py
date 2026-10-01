@@ -248,13 +248,13 @@ COL = dict(hajek="#2a78d6", dr="#eb6834", naive="#52514e", krige="#52514e")
 LAB = dict(naive="simple mean", krige="kriging", hajek="sequential Hajek", dr="cross-fit DR")
 SCEN_LAB = dict(correct="correct model", no_conv="model misses convergence", shifted="model eddies displaced",
                 K_small="noise too small (K/4)", K_large="noise too large (4K)")
-ANCHOR_COL = ("#2a78d6", "#eb6834", "#1baf7a")
+ANCHOR_COL = ("#000000", "#008300", "#eda100")
 
 
-def _field(ax, t, vmax=1.3):
+def _field(ax, t, vmax=1.3, alpha=1.0):
     Z = truth_grid(t).reshape(NX, NY).T
     ext = [0, LX, -LY, LY]
-    im = ax.imshow(Z, origin="lower", extent=ext, cmap="RdBu_r", vmin=-vmax, vmax=vmax, aspect="auto")
+    im = ax.imshow(Z, origin="lower", extent=ext, cmap="RdBu_r", vmin=-vmax, vmax=vmax, aspect="auto", alpha=alpha)
     ax.contour(Z, levels=np.linspace(-1.2, 1.2, 9), extent=ext, colors="0.35", linewidths=0.4)
     ax.set(xlabel="x (km)", ylabel="y (km)")
     return im
@@ -291,9 +291,9 @@ def plot_clouds(example=None, figsize=(13, 3.6)):
     a, t0, cl = example_clouds() if example is None else example
     fig, ax = plt.subplots(1, len(cl), figsize=figsize, sharey=True)
     for axi, (h, p) in zip(ax, cl.items()):
-        _field(axi, t0 + h * CYCLE)
+        _field(axi, t0 + h * CYCLE, alpha=0.45)
         for k in range(len(a)):
-            axi.plot(*p[k].T, ".", ms=2, color=ANCHOR_COL[k], alpha=0.6)
+            axi.plot(*p[k].T, ".", ms=3, color=ANCHOR_COL[k], alpha=0.8)
             axi.plot(*a[k], "*", ms=13, color=ANCHOR_COL[k], mec="k", mew=0.8)
         axi.set_title(f"h = {h} cycle{'s' if h > 1 else ''} ({int(h * CYCLE)} d)")
     for axi in ax[1:]:
@@ -470,20 +470,21 @@ def plot_rects(rects, pts, names, weights, warm_south=False, figsize=(5, 4.2)):
     return fig
 
 
-def dr_story(snap, kp=None):
-    """One cross-fit direction of the DR estimate on a snapshot: fold A (even floats) maps, fold B checks."""
+def dr_story(snap, kp=None, mapper=0):
+    """One cross-fit direction on a snapshot: team A = even floats, team B = odd; mapper 0 means A maps, B checks."""
     kp = krige_params() if kp is None else kp
     xy, z, parts = snap["xy"], snap["z"], snap["parts"]
-    a = np.arange(len(xy)) % 2 == 0
+    a = np.arange(len(xy)) % 2 == mapper
     b = ~a
     m = krige_point(xy[a], z[a], _GRID, kp)
     r = z[b] - krige_point(xy[a], z[a], xy[b], kp)
     lam = density_grid(parts[b])
     covered = lam * (2 * LX * LY) / b.sum() >= C_REL
     ix, iy = cell(xy[b])
-    w = np.where(covered[ix, iy], 1 / lam[ix, iy], 0.0)
+    w = np.zeros(len(ix))
+    w[covered[ix, iy]] = 1 / lam[ix, iy][covered[ix, iy]]
     share = w / w.sum()
-    out = dict(snap, a=a, b=b, map=m, map_mean=m.mean(), resid=r, lam_b=lam, covered=covered, share_b=share,
+    out = dict(snap, a=a, b=b, names=("AB", "BA")[mapper], marks=(("o", "^"), ("^", "o"))[mapper], map=m, map_mean=m.mean(), resid=r, lam_b=lam, covered=covered, share_b=share,
                cover=covered.mean(), corr_plain=r.mean(), corr_w=covered.mean() * (share @ r),
                truth_grid=truth_grid(snap["t"]))
     out["final"] = out["map_mean"] + out["corr_w"]
@@ -504,27 +505,28 @@ def plot_dr_story(st, figsize=(13, 7.2), zmax=1.3, rmax=0.8):
     im = img(ax[0], st["truth_grid"], **zk)
     ax[0].set_title(f"1. True field (box mean {st['truth']:+.2f})")
     fig.colorbar(im, ax=ax[0], pad=0.01, label="Z")
-    ax[1].scatter(*xa.T, c=za, marker="o", s=40, **zk, **pk, label="team A (builds map)")
-    sc = ax[1].scatter(*xb.T, c=zb, marker="^", s=50, **zk, **pk, label="team B (checks map)")
+    (na, nb), (ma, mb) = st["names"], st["marks"]
+    ax[1].scatter(*xa.T, c=za, marker=ma, s=45, **zk, **pk, label=f"team {na} (builds map)")
+    sc = ax[1].scatter(*xb.T, c=zb, marker=mb, s=45, **zk, **pk, label=f"team {nb} (checks map)")
     ax[1].set_title(f"2. Observations (simple average {st['naive']:+.2f})")
     ax[1].legend(loc="upper right", fontsize=7, framealpha=0.9)
     fig.colorbar(sc, ax=ax[1], pad=0.01, label="Z")
     rel = st["lam_b"] * (2 * LX * LY) / st["b"].sum()
     im = img(ax[2], np.log10(np.maximum(rel, 1e-3)).ravel(), cmap="Blues", vmin=-2, vmax=1)
     ax[2].contour(rel.T, levels=[C_REL], extent=ext, colors="k", linewidths=1.2)
-    ax[2].scatter(*xb.T, marker="^", s=40, c=COL["dr"], **pk)
-    ax[2].set_title("3. Team B's possible locations (stacked clouds)")
+    ax[2].scatter(*xb.T, marker=mb, s=40, c=COL["dr"], **pk)
+    ax[2].set_title(f"3. Team {nb}'s possible locations (stacked clouds)")
     fig.colorbar(im, ax=ax[2], pad=0.01, label="log10 density / uniform")
     im = img(ax[3], st["map"], **zk)
-    ax[3].scatter(*xa.T, c=za, marker="o", s=40, **zk, **pk)
-    ax[3].set_title(f"4. Kriging map from team A (mean {st['map_mean']:+.2f})")
+    ax[3].scatter(*xa.T, c=za, marker=ma, s=40, **zk, **pk)
+    ax[3].set_title(f"4. Kriging map from team {na} (mean {st['map_mean']:+.2f})")
     fig.colorbar(im, ax=ax[3], pad=0.01, label="Z")
     im = img(ax[4], st["truth_grid"] - st["map"], alpha=0.45, **rk)
-    ax[4].scatter(*xb.T, c=r, marker="^", s=50, **rk, **pk)
-    ax[4].set_title(f"5. Residuals at team B (plain average {st['corr_plain']:+.2f})")
+    ax[4].scatter(*xb.T, c=r, marker=mb, s=50, **rk, **pk)
+    ax[4].set_title(f"5. Residuals at team {nb} (plain average {st['corr_plain']:+.2f})")
     fig.colorbar(im, ax=ax[4], pad=0.01, label="measured - map")
     img(ax[5], st["truth_grid"] - st["map"], alpha=0.2, **rk)
-    ax[5].scatter(*xb.T, c=r, marker="^", s=1500 * st["share_b"] + 2, **rk, **pk)
+    ax[5].scatter(*xb.T, c=r, marker=mb, s=1500 * st["share_b"] + 2, **rk, **pk)
     ax[5].set_title(f"6. Reweighted residuals (correction {st['corr_w']:+.2f})")
     fig.colorbar(im, ax=ax[5], pad=0.01, label="measured - map")
     for k in (0, 3):
@@ -533,5 +535,29 @@ def plot_dr_story(st, figsize=(13, 7.2), zmax=1.3, rmax=0.8):
         ax[k].set_xlabel("x (km)")
     for a_ in ax:
         a_.grid(False)
+    fig.tight_layout()
+    return fig
+
+
+def plot_dr_summary(st1, st2, figsize=(9, 3.6)):
+    """From the simple average to the final DR estimate: each direction's map, then map + weighted check."""
+    rows = [("simple average", st1["naive"], None),
+            (f"team {st1['names'][0]} map", st1["map_mean"], None),
+            (f"team {st1['names'][0]} map + team {st1['names'][1]} check", st1["final"], st1["map_mean"]),
+            (f"team {st2['names'][0]} map", st2["map_mean"], None),
+            (f"team {st2['names'][0]} map + team {st2['names'][1]} check", st2["final"], st2["map_mean"]),
+            ("final: average of the two", 0.5 * (st1["final"] + st2["final"]), None)]
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.axvline(st1["truth"], color="k", lw=1)
+    ax.text(st1["truth"], -0.7, " truth", fontsize=9, va="center")
+    for i, (lab, v, frm) in enumerate(rows):
+        if frm is not None:
+            ax.annotate("", (v, i), (frm, i), arrowprops=dict(arrowstyle="->", color=COL["dr"], lw=1.5))
+        ax.plot(v, i, "o", ms=9, color=COL["dr"] if "check" in lab or "final" in lab else COL["naive"])
+        ax.text(v, i - 0.32, f"{v:+.2f}", ha="center", fontsize=9)
+    ax.set_yticks(range(len(rows)), [r[0] for r in rows])
+    ax.set_ylim(len(rows) - 0.5, -1)
+    ax.set_xlabel("box-mean estimate (truth = %.2f)" % st1["truth"])
+    ax.grid(axis="y", visible=False)
     fig.tight_layout()
     return fig

@@ -151,7 +151,7 @@ for the Horvitz–Thompson form, with $\hat m \equiv 0$ for pure weighting. The 
 ```{python}
 #| label: fig-clouds
 #| echo: false
-#| fig-cap: "Clouds of 400 particles from three anchors (stars) after 1, 4 and 16 cycles, drawn over Z at the landing time. Blue: jet core, stretched into a long along-stream ribbon. Orange: eddy flank, spread widely and split. Green: quiet northern flank, compact."
+#| fig-cap: "Clouds of 400 particles from three anchors (stars) after 1, 4 and 16 cycles, drawn over Z at the landing time. Black: jet core, stretched into a long along-stream ribbon. Green: eddy flank, spread widely and split. Gold: quiet northern flank, compact."
 _show_fig(sx.plot_clouds())
 ```
 
