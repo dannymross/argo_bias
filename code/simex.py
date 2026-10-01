@@ -302,11 +302,11 @@ def plot_clouds(example=None, figsize=(13, 3.6)):
     return fig
 
 
-def snapshot(traj, rep=0, window=0, h=H_MAIN, flow=TRUE, seed=5):
+def snapshot(traj, rep=0, window=0, h=H_MAIN, flow=TRUE, seed=5, m=M_PART):
     """One replicate-window: stacked-cloud density, profile weights, and the three box-mean numbers."""
     rng = np.random.default_rng(seed)
     c = int(window_cycles()[window])
-    parts = clouds(traj[rep, :, c - h], np.full(traj.shape[1], (c - h) * CYCLE), h * CYCLE, flow, rng)
+    parts = clouds(traj[rep, :, c - h], np.full(traj.shape[1], (c - h) * CYCLE), h * CYCLE, flow, rng, m)
     lam = density_grid(parts)
     xy = traj[rep, :, c]
     z = ohc(xy[:, 0], xy[:, 1], c * CYCLE)

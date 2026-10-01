@@ -199,7 +199,7 @@ sit under heavily stacked clouds and get small weights; the few in the cold nort
 #| echo: false
 #| fig-cap: "Left: stacked cloud density (darker = more floats expected) with each float drawn at a size proportional to its weight; outside the black line no cloud reaches. Right: each float's weight relative to an equal share, against its heat content."
 traj = sx.real_floats(10, np.random.default_rng(7))
-sn = sx.snapshot(traj)
+sn = sx.snapshot(traj, m=1600)
 _show_fig(sx.plot_weights(traj, snap=sn))
 ```
 
@@ -208,7 +208,9 @@ On this snapshot the simple average is `{python} f"{sn['naive']:+.2f}"`, the rew
 
 ## Example 5: map + check on the toy jet, start to finish
 
-The same snapshot as Example 4, run through the map + check recipe one step at a time. The 60 floats
+The same snapshot as Example 4, run through the map + check recipe one step at a time. Every cloud
+here uses 1,600 particles. With only 100 particles a cloud's thin tails are full of holes, which
+show up as spurious gaps and occasional huge weights. The 60 floats
 are split into two fixed teams: **team A** (circles) and **team B** (triangles). First A draws the
 map and B checks it. Then they swap roles. The final answer is the average of the two.
 
@@ -258,11 +260,13 @@ _show_fig(sx.plot_dr_story(st2))
 * **Plain checks point the wrong way.** Most of team A sits in the south, where this map is too
   cold, so the plain residual average is `{python} f"{st2['corr_plain']:+.2f}"`. That pushes the
   answer *warmer*.
-* **Weighted checks fix it.** Team A has only `{python} int(n2.sum())` floats in the north
-  (`{python} f"{n2.mean():.0%}"` of the team), but they stand in for most of the cold area and get
-  `{python} f"{st2['share_b'][n2].sum():.0%}"` of the weight. The weighted correction is
-  `{python} f"{st2['corr_w']:+.2f}"`, so this direction gives
-  **`{python} f"{st2['final']:+.2f}"`**.
+* **Weighted checks push the right way, but only partly.** Team A has only
+  `{python} int(n2.sum())` floats in the north (`{python} f"{n2.mean():.0%}"` of the team). Weighting
+  raises their share to `{python} f"{st2['share_b'][n2].sum():.0%}"`, and the correction flips to
+  `{python} f"{st2['corr_w']:+.2f}"`. One of those northern floats crossed the jet from the south in
+  the last 4 cycles, which team A's clouds rate as very unlikely. It lands in a gap (white region in
+  panel 3) and gets no weight. The cold north is therefore thinly represented in this direction,
+  which gives **`{python} f"{st2['final']:+.2f}"`**.
 
 ### Putting it together
 
