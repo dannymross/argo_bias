@@ -170,7 +170,7 @@ small area, and one from a wide, lonely cloud represents a large area.
 ```{python}
 #| label: fig-paths
 #| echo: false
-#| fig-cap: "The same replicate-window: the 60 real floats' 10-day positions over the last 4 cycles, from their anchors (open circles) to the current profiles (orange), joined by straight lines."
+#| fig-cap: "The same replicate-window: the 60 real floats' 10-day positions over the last 4 cycles, from their anchors (open circles) to the current profiles (filled), joined by straight lines; three floats highlighted by anchor latitude. Paths wrap around the periodic channel."
 _show_fig(sx.plot_paths(sx.snapshot(traj)))
 ```
 

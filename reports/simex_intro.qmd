@@ -209,7 +209,7 @@ ago. A cloud is released from each anchor, and the clouds are stacked at today's
 ```{python}
 #| label: fig-paths
 #| echo: false
-#| fig-cap: "The 60 real floats over the last 4 cycles: anchors (open circles), their 10-day positions joined by straight lines, and today's profiles (orange). The clouds behind the next figure start at the open circles."
+#| fig-cap: "The 60 real floats over the last 4 cycles: anchors (open circles), their 10-day positions joined by straight lines (faint grey), and today's profiles (filled). Three floats are highlighted by where they were anchored. Paths that leave one side of the periodic channel re-enter on the other. The clouds behind the next figure start at the open circles."
 traj = sx.real_floats(10, np.random.default_rng(7))
 sn = sx.snapshot(traj, m=1600)
 _show_fig(sx.plot_paths(sn))

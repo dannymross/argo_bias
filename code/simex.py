@@ -586,18 +586,31 @@ def plot_velocity(t=3600.0, figsize=(12, 3.8)):
     return fig
 
 
-def plot_paths(sn, figsize=(8.5, 3.8)):
-    """The real floats' paths over the h cycles from their anchors to the current profiles."""
+def plot_paths(sn, highlight=((0.0, "anchored in jet core"), (-120.0, "anchored on south flank"),
+                                (200.0, "anchored on north flank")), figsize=(9.5, 4.3)):
+    """All real floats' paths over the last h cycles (faint), with a few highlighted by anchor latitude."""
     path = sn["path"]
     px = path[..., 0].copy()
     px[:, 1:] -= LX * np.cumsum(np.round(np.diff(px, axis=1) / LX), axis=1)  # unwrap periodic x
     fig, ax = plt.subplots(figsize=figsize)
     _field(ax, sn["t"], alpha=0.35)
-    ax.plot(px.T, path[..., 1].T, "-", color="k", lw=1, alpha=0.7)
-    ax.plot(px[:, 0], path[:, 0, 1], "o", mfc="w", mec="k", ms=5, label=f"anchor ({sn['h']} cycles ago)")
-    ax.plot(*path[:, -1].T, "o", color=COL["dr"], mec="k", ms=6, label="current profile")
+    pick = [np.argmin(np.abs(path[:, 0, 1] - y)) for y, _ in highlight]
+    for j in range(len(path)):
+        hi = j in pick
+        col = ANCHOR_COL[pick.index(j)] if hi else "0.45"
+        for k in range(-3, 4):  # jet floats can lap the periodic channel, so draw every shifted copy
+            ax.plot(px[j] + k * LX, path[j, :, 1], "-", color=col, lw=2.2 if hi else 0.6,
+                    alpha=1.0 if hi else 0.35, zorder=3 if hi else 1)
+    ax.plot(path[:, 0, 0], path[:, 0, 1], "o", mfc="w", mec="0.45", ms=4, zorder=2)
+    ax.plot(*path[:, -1].T, "o", color="0.45", ms=4, zorder=2)
+    for c, j in zip(ANCHOR_COL, pick):
+        ax.plot(*path[j, 0], "o", mfc="w", mec=c, mew=2, ms=8, zorder=4)
+        ax.plot(*path[j, -1], "o", color=c, mec="k", ms=8, zorder=4)
+    handles = [plt.Line2D([], [], color=c, lw=2.2, label=lab) for c, (_, lab) in zip(ANCHOR_COL, highlight)]
+    handles += [plt.Line2D([], [], ls="", marker="o", mfc="w", mec="k", label=f"anchor ({sn['h']} cycles ago)"),
+                plt.Line2D([], [], ls="", marker="o", color="k", label="current profile")]
+    ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, -0.14), fontsize=8, frameon=False, ncol=5)
     ax.set(xlim=(0, LX), ylim=(-LY, LY), title=f"Real float paths over the last {sn['h']} cycles")
-    ax.legend(loc="upper right", fontsize=8, framealpha=0.9)
     ax.grid(False)
     fig.tight_layout()
     return fig
