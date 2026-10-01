@@ -312,8 +312,8 @@ def snapshot(traj, rep=0, window=0, h=H_MAIN, flow=TRUE, seed=5):
     z = ohc(xy[:, 0], xy[:, 1], c * CYCLE)
     ix, iy = cell(xy)
     share = (1 / lam[ix, iy]) / (1 / lam[ix, iy]).sum()
-    return dict(h=h, lam=lam, xy=xy, z=z, share=share, naive=z.mean(), weighted=share @ z,
-                truth=truth_grid(c * CYCLE).mean())
+    return dict(h=h, t=c * CYCLE, parts=parts, lam=lam, xy=xy, z=z, share=share, naive=z.mean(),
+                weighted=share @ z, truth=truth_grid(c * CYCLE).mean())
 
 
 def plot_weights(traj, rep=0, window=0, h=H_MAIN, flow=TRUE, seed=5, figsize=(12, 4.0), snap=None):
@@ -466,5 +466,72 @@ def plot_rects(rects, pts, names, weights, warm_south=False, figsize=(5, 4.2)):
         ax.annotate(f"{n}: weight {w:.0%}", (px, py), xytext=(6, 6), textcoords="offset points", fontsize=10)
     ax.set(xlim=(0, 1), ylim=(0, 1), xticks=[], yticks=[], aspect="equal")
     ax.grid(False)
+    fig.tight_layout()
+    return fig
+
+
+def dr_story(snap, kp=None):
+    """One cross-fit direction of the DR estimate on a snapshot: fold A (even floats) maps, fold B checks."""
+    kp = krige_params() if kp is None else kp
+    xy, z, parts = snap["xy"], snap["z"], snap["parts"]
+    a = np.arange(len(xy)) % 2 == 0
+    b = ~a
+    m = krige_point(xy[a], z[a], _GRID, kp)
+    r = z[b] - krige_point(xy[a], z[a], xy[b], kp)
+    lam = density_grid(parts[b])
+    covered = lam * (2 * LX * LY) / b.sum() >= C_REL
+    ix, iy = cell(xy[b])
+    w = np.where(covered[ix, iy], 1 / lam[ix, iy], 0.0)
+    share = w / w.sum()
+    out = dict(snap, a=a, b=b, map=m, map_mean=m.mean(), resid=r, lam_b=lam, covered=covered, share_b=share,
+               cover=covered.mean(), corr_plain=r.mean(), corr_w=covered.mean() * (share @ r),
+               truth_grid=truth_grid(snap["t"]))
+    out["final"] = out["map_mean"] + out["corr_w"]
+    out["dr_both"] = seq_estimates(xy, z, parts, kp)["dr"]
+    return out
+
+
+def plot_dr_story(st, figsize=(13, 7.2), zmax=1.3, rmax=0.8):
+    ext = [0, LX, -LY, LY]
+    img = lambda ax, f, **k: ax.imshow(f.reshape(NX, NY).T, origin="lower", extent=ext, aspect="auto", **k)
+    xa, xb = st["xy"][st["a"]], st["xy"][st["b"]]
+    za, zb, r = st["z"][st["a"]], st["z"][st["b"]], st["resid"]
+    zk = dict(cmap="RdBu_r", vmin=-zmax, vmax=zmax)
+    rk = dict(cmap="PuOr_r", vmin=-rmax, vmax=rmax)
+    pk = dict(edgecolors="k", linewidths=0.6)
+    fig, ax = plt.subplots(2, 3, figsize=figsize, sharex=True, sharey=True)
+    ax = ax.ravel()
+    im = img(ax[0], st["truth_grid"], **zk)
+    ax[0].set_title(f"1. True field (box mean {st['truth']:+.2f})")
+    fig.colorbar(im, ax=ax[0], pad=0.01, label="Z")
+    ax[1].scatter(*xa.T, c=za, marker="o", s=40, **zk, **pk, label="team A (builds map)")
+    sc = ax[1].scatter(*xb.T, c=zb, marker="^", s=50, **zk, **pk, label="team B (checks map)")
+    ax[1].set_title(f"2. Observations (simple average {st['naive']:+.2f})")
+    ax[1].legend(loc="upper right", fontsize=7, framealpha=0.9)
+    fig.colorbar(sc, ax=ax[1], pad=0.01, label="Z")
+    rel = st["lam_b"] * (2 * LX * LY) / st["b"].sum()
+    im = img(ax[2], np.log10(np.maximum(rel, 1e-3)).ravel(), cmap="Blues", vmin=-2, vmax=1)
+    ax[2].contour(rel.T, levels=[C_REL], extent=ext, colors="k", linewidths=1.2)
+    ax[2].scatter(*xb.T, marker="^", s=40, c=COL["dr"], **pk)
+    ax[2].set_title("3. Team B's possible locations (stacked clouds)")
+    fig.colorbar(im, ax=ax[2], pad=0.01, label="log10 density / uniform")
+    im = img(ax[3], st["map"], **zk)
+    ax[3].scatter(*xa.T, c=za, marker="o", s=40, **zk, **pk)
+    ax[3].set_title(f"4. Kriging map from team A (mean {st['map_mean']:+.2f})")
+    fig.colorbar(im, ax=ax[3], pad=0.01, label="Z")
+    im = img(ax[4], st["truth_grid"] - st["map"], alpha=0.45, **rk)
+    ax[4].scatter(*xb.T, c=r, marker="^", s=50, **rk, **pk)
+    ax[4].set_title(f"5. Residuals at team B (plain average {st['corr_plain']:+.2f})")
+    fig.colorbar(im, ax=ax[4], pad=0.01, label="measured - map")
+    img(ax[5], st["truth_grid"] - st["map"], alpha=0.2, **rk)
+    ax[5].scatter(*xb.T, c=r, marker="^", s=1500 * st["share_b"] + 2, **rk, **pk)
+    ax[5].set_title(f"6. Reweighted residuals (correction {st['corr_w']:+.2f})")
+    fig.colorbar(im, ax=ax[5], pad=0.01, label="measured - map")
+    for k in (0, 3):
+        ax[k].set_ylabel("y (km)")
+    for k in (3, 4, 5):
+        ax[k].set_xlabel("x (km)")
+    for a_ in ax:
+        a_.grid(False)
     fig.tight_layout()
     return fig

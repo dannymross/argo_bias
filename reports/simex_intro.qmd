@@ -206,6 +206,53 @@ _show_fig(sx.plot_weights(traj, snap=sn))
 On this snapshot the simple average is `{python} f"{sn['naive']:+.2f}"`, the reweighted average is
 `{python} f"{sn['weighted']:+.2f}"`, and the truth is `{python} f"{sn['truth']:+.2f}"`.
 
+## Example 5: map + check on the toy jet, start to finish
+
+The same snapshot as Example 4, now run through the map + check recipe one step at a time. The 60
+floats are split into two teams: **team A** (circles) draws the map, and **team B** (triangles)
+checks it. Only the A-maps / B-checks direction is drawn. The final answer averages it with the
+swapped direction.
+
+```{python}
+#| label: fig-dr-story
+#| echo: false
+#| fig-cap: "The map + check recipe on one toy snapshot. 1: the truth. 2: what the floats measure. 3: where team B's floats could have been, given their positions 4 cycles earlier (black line = edge of the gap). 4: team A's kriging map. 5: the map's true error (faint background) and team B's measured residuals (triangles). 6: the same residuals with marker size proportional to their weight."
+st = sx.dr_story(sn)
+north_b = st["xy"][st["b"], 1] > 0
+nb_north = north_b.sum()
+_show_fig(sx.plot_dr_story(st))
+```
+
+1. **True field.** Warm south, cold north, eddies along the jet. The box mean is
+   `{python} f"{st['truth']:+.2f}"`.
+2. **Observations.** The floats have piled up in the warm south, so their simple average is
+   `{python} f"{st['naive']:+.2f}"`.
+3. **Possible locations.** Each team-B float's cloud, stacked. The south is dark (many floats
+   expected there); the cold north is pale (few expected).
+4. **Kriging map from team A.** It looks like the truth where team A is dense, but it fills the
+   sparse cold north with values that are too warm. Its box average is
+   `{python} f"{st['map_mean']:+.2f}"`.
+5. **Residuals.** Each team-B float's measured value minus the map. Most triangles sit in the south,
+   where the map is roughly right, and show small residuals. The few in the north show the map is
+   too warm there (negative residuals). A plain average of the residuals is only
+   `{python} f"{st['corr_plain']:+.2f}"`, because the crowded south outvotes the north.
+6. **Reweighted residuals.** With the cloud weights the lonely northern triangles become big, since
+   each stands in for a large, rarely visited area, and the crowded southern ones shrink. The
+   `{python} int(nb_north)` northern team-B floats are `{python} f"{nb_north / st['b'].sum():.0%}"`
+   of the team but get `{python} f"{st['share_b'][north_b].sum():.0%}"` of the weight. The
+   weighted correction is `{python} f"{st['corr_w']:+.2f}"`.
+
+```{python}
+#| echo: false
+steps = pd.DataFrame({
+    "": ["simple average of all floats", "team A's kriging map",
+         "map + plain average of team B residuals", "map + weighted team B residuals (this direction)",
+         "averaged with the swapped direction (final)", "truth"],
+    "box mean": [st["naive"], st["map_mean"], st["map_mean"] + st["corr_plain"], st["final"],
+                 st["dr_both"], st["truth"]]})
+HTML(fmt(steps, 2))
+```
+
 ## When it goes wrong
 
 Averaged over 40 repeats of the toy (looking back 4 cycles):
