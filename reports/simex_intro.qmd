@@ -202,16 +202,26 @@ Real clouds are not rectangles. The currents shape them:
 _show_fig(sx.plot_clouds())
 ```
 
-Running the full recipe on one snapshot of 60 floats in the toy jet (details in
-[the full toy report](simex.qmd)) gives the picture below. Floats that drifted into the warm south
-sit where the stacked density is high and get small weights; the few in the cold north get large ones.
+Now run the full recipe on one snapshot of 60 floats in the toy jet (details in
+[the full toy report](simex.qmd)). Each float's anchor is where it really was 4 cycles (40 days)
+ago. A cloud is released from each anchor, and the clouds are stacked at today's time.
+
+```{python}
+#| label: fig-paths
+#| echo: false
+#| fig-cap: "The 60 real floats over the last 4 cycles: anchors (open circles), their 10-day positions joined by straight lines, and today's profiles (orange). The clouds behind the next figure start at the open circles."
+traj = sx.real_floats(10, np.random.default_rng(7))
+sn = sx.snapshot(traj, m=1600)
+_show_fig(sx.plot_paths(sn))
+```
+
+Floats that drifted into the warm south sit where the stacked density is high and get small
+weights; the few in the cold north get large ones.
 
 ```{python}
 #| label: fig-snapshot
 #| echo: false
-#| fig-cap: "Left: stacked density (darker = more floats expected) with each float drawn at a size proportional to its weight; outside the black line no cloud reaches (gap). Right: each float's weight relative to an equal share, against its heat content."
-traj = sx.real_floats(10, np.random.default_rng(7))
-sn = sx.snapshot(traj, m=1600)
+#| fig-cap: "Left: stacked density (darker = more floats expected) from the 60 clouds launched at the anchors above, with each float drawn at a size proportional to its weight; outside the black line no cloud reaches (gap). Right: each float's weight relative to an equal share, against its heat content."
 _show_fig(sx.plot_weights(traj, snap=sn))
 ```
 

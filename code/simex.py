@@ -312,7 +312,8 @@ def snapshot(traj, rep=0, window=0, h=H_MAIN, flow=TRUE, seed=5, m=M_PART):
     z = ohc(xy[:, 0], xy[:, 1], c * CYCLE)
     ix, iy = cell(xy)
     share = (1 / lam[ix, iy]) / (1 / lam[ix, iy]).sum()
-    return dict(h=h, t=c * CYCLE, parts=parts, lam=lam, xy=xy, z=z, share=share, naive=z.mean(),
+    return dict(h=h, t=c * CYCLE, parts=parts, lam=lam, xy=xy, z=z, share=share, path=traj[rep, :, c - h:c + 1],
+                naive=z.mean(),
                 weighted=share @ z, truth=truth_grid(c * CYCLE).mean())
 
 
@@ -581,5 +582,22 @@ def plot_velocity(t=3600.0, figsize=(12, 3.8)):
     ax[1].set(title="Weak drift toward warm water", xlabel="x (km)")
     for a in ax:
         a.grid(False)
+    fig.tight_layout()
+    return fig
+
+
+def plot_paths(sn, figsize=(8.5, 3.8)):
+    """The real floats' paths over the h cycles from their anchors to the current profiles."""
+    path = sn["path"]
+    px = path[..., 0].copy()
+    px[:, 1:] -= LX * np.cumsum(np.round(np.diff(px, axis=1) / LX), axis=1)  # unwrap periodic x
+    fig, ax = plt.subplots(figsize=figsize)
+    _field(ax, sn["t"], alpha=0.35)
+    ax.plot(px.T, path[..., 1].T, "-", color="k", lw=1, alpha=0.7)
+    ax.plot(px[:, 0], path[:, 0, 1], "o", mfc="w", mec="k", ms=5, label=f"anchor ({sn['h']} cycles ago)")
+    ax.plot(*path[:, -1].T, "o", color=COL["dr"], mec="k", ms=6, label="current profile")
+    ax.set(xlim=(0, LX), ylim=(-LY, LY), title=f"Real float paths over the last {sn['h']} cycles")
+    ax.legend(loc="upper right", fontsize=8, framealpha=0.9)
+    ax.grid(False)
     fig.tight_layout()
     return fig
