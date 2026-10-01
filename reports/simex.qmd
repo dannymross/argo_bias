@@ -83,6 +83,13 @@ $\beta = \delta U_0 L / K = 1.2$. That is exactly the preferential-sampling inte
 @diggle2010. The rotational part runs along $\psi$ contours and leaves this density invariant.
 The real jet is time-dependent, so $\exp(\beta Z)$ is a heuristic here, not an identity.
 
+```{python}
+#| label: fig-velocity
+#| echo: false
+#| fig-cap: "The toy's true velocity field on one day. Left: speed (grey) and streamlines of the jet and its eddies. Right: the weak drift toward warm water (arrows, about 1 km/d) over the heat-content field (faded; red warm, blue cold). Floats feel both, plus a random walk."
+_show_fig(sx.plot_velocity())
+```
+
 **Real floats.** $60$ floats deployed uniformly at $t=0$, advected (RK2, $\Delta t = 0.5$ d)
 through the true flow with the true noise. All floats profile synchronously every $10$ d. After a
 $360$-day spin-up ($\gg L^2/K = 100$ d), we estimate $\theta$ in $5$ windows spaced $90$ d apart.
@@ -163,7 +170,7 @@ small area, and one from a wide, lonely cloud represents a large area.
 ```{python}
 #| label: fig-weights
 #| echo: false
-#| fig-cap: "One replicate-window with h = 4 cycles. Left: stacked expected density relative to uniform (log scale), with the gap edge (5 percent of uniform) in black and each real float's marker area proportional to its weight. Right: weight relative to equal weighting against the profile's Z."
+#| fig-cap: "One replicate-window with h = 4 cycles. Left: stacked density relative to uniform (log scale), with the gap edge (5 percent of uniform) in black and each real float's marker area proportional to its weight. Right: weight relative to equal weighting against the profile's Z."
 _show_fig(sx.plot_weights(traj))
 ```
 

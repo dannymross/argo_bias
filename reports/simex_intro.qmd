@@ -44,7 +44,8 @@ Weight each profile by **the area it stands in for**. That area is one over how 
    The cloud is everywhere the float could plausibly be now.
 3. Spread the float's "one expected profile" evenly over its cloud. A cloud covering 10% of the box
    has density $1/0.10 = 10$.
-4. Stack all floats' clouds. At each real profile, add up the densities of every cloud it falls in.
+4. Add up all floats' cloud densities to get the **stacked density**. At each real profile, it is the sum
+   over every cloud the profile falls in.
 5. **Weight = 1 / stacked density.**
 
 ## Example 1: three floats
@@ -177,6 +178,17 @@ HTML(fmt(cases, 2))
 
 ## Example 4: real clouds in the toy jet
 
+The toy ocean is a meandering jet with eddies on its flanks (a Bickley jet), plus a slow drift
+toward warm water that makes floats pile up there. The heat content follows the streamlines: warm
+south, cold north.
+
+```{python}
+#| label: fig-velocity
+#| echo: false
+#| fig-cap: "The toy's true velocity field on one day. Left: speed (grey) and streamlines of the jet and its eddies. Right: the weak drift toward warm water (arrows, about 1 km/d) over the heat-content field (faded; red warm, blue cold). Floats feel both, plus a random walk."
+_show_fig(sx.plot_velocity())
+```
+
 Real clouds are not rectangles. The currents shape them:
 
 * in a jet a cloud is a long thin ribbon: certain to stay in the jet, but unsure how far along it;
@@ -192,12 +204,12 @@ _show_fig(sx.plot_clouds())
 
 Running the full recipe on one snapshot of 60 floats in the toy jet (details in
 [the full toy report](simex.qmd)) gives the picture below. Floats that drifted into the warm south
-sit under heavily stacked clouds and get small weights; the few in the cold north get large ones.
+sit where the stacked density is high and get small weights; the few in the cold north get large ones.
 
 ```{python}
 #| label: fig-snapshot
 #| echo: false
-#| fig-cap: "Left: stacked cloud density (darker = more floats expected) with each float drawn at a size proportional to its weight; outside the black line no cloud reaches. Right: each float's weight relative to an equal share, against its heat content."
+#| fig-cap: "Left: stacked density (darker = more floats expected) with each float drawn at a size proportional to its weight; outside the black line no cloud reaches (gap). Right: each float's weight relative to an equal share, against its heat content."
 traj = sx.real_floats(10, np.random.default_rng(7))
 sn = sx.snapshot(traj, m=1600)
 _show_fig(sx.plot_weights(traj, snap=sn))
@@ -231,7 +243,7 @@ _show_fig(sx.plot_dr_story(st1))
    `{python} f"{st1['truth']:+.2f}"`.
 2. **Observations.** The floats have piled up in the warm south, so their simple average is
    `{python} f"{st1['naive']:+.2f}"`.
-3. **Possible locations.** Team B's clouds, stacked. The south is dark (many floats expected there);
+3. **Possible locations.** The stacked density of team B's clouds. The south is dark (many floats expected there);
    the cold north is pale (few expected).
 4. **Team A's kriging map.** It looks like the truth where team A is dense, but it fills the sparse
    cold north with values that are too warm. Its box average is

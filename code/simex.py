@@ -303,7 +303,7 @@ def plot_clouds(example=None, figsize=(13, 3.6)):
 
 
 def snapshot(traj, rep=0, window=0, h=H_MAIN, flow=TRUE, seed=5, m=M_PART):
-    """One replicate-window: stacked-cloud density, profile weights, and the three box-mean numbers."""
+    """One replicate-window: stacked density, profile weights, and the three box-mean numbers."""
     rng = np.random.default_rng(seed)
     c = int(window_cycles()[window])
     parts = clouds(traj[rep, :, c - h], np.full(traj.shape[1], (c - h) * CYCLE), h * CYCLE, flow, rng, m)
@@ -327,7 +327,7 @@ def plot_weights(traj, rep=0, window=0, h=H_MAIN, flow=TRUE, seed=5, figsize=(12
     ax[0].scatter(*xy.T, s=600 * share, c=COL["dr"], edgecolors="k", linewidths=0.5)
     fig.colorbar(im, ax=ax[0], pad=0.01, label="log10 expected density / uniform")
     ax[0].set(xlabel="x (km)", ylabel="y (km)",
-              title=f"Stacked clouds (h = {h}); marker area = weight; black line = gap edge")
+              title=f"Stacked density (h = {h})")
     ax[1].scatter(z, share * len(xy), s=18, color=COL["dr"], edgecolors="k", linewidths=0.4)
     ax[1].axhline(1, color="0.5", ls="--", lw=1)
     ax[1].set(xlabel="Z at profile", ylabel="weight / equal weight", yscale="log",
@@ -515,7 +515,7 @@ def plot_dr_story(st, figsize=(13, 7.2), zmax=1.3, rmax=0.8):
     im = img(ax[2], np.log10(np.maximum(rel, 1e-3)).ravel(), cmap="Blues", vmin=-2, vmax=1)
     ax[2].contour(rel.T, levels=[C_REL], extent=ext, colors="k", linewidths=1.2)
     ax[2].scatter(*xb.T, marker=mb, s=40, c=COL["dr"], **pk)
-    ax[2].set_title(f"3. Team {nb}'s possible locations (stacked clouds)")
+    ax[2].set_title(f"3. Team {nb}'s possible locations (stacked density)")
     fig.colorbar(im, ax=ax[2], pad=0.01, label="log10 density / uniform")
     im = img(ax[3], st["map"], **zk)
     ax[3].scatter(*xa.T, c=za, marker=ma, s=40, **zk, **pk)
@@ -559,5 +559,27 @@ def plot_dr_summary(st1, st2, figsize=(9, 3.6)):
     ax.set_ylim(len(rows) - 0.5, -1)
     ax.set_xlabel("box-mean estimate (truth = %.2f)" % st1["truth"])
     ax.grid(axis="y", visible=False)
+    fig.tight_layout()
+    return fig
+
+
+def plot_velocity(t=3600.0, figsize=(12, 3.8)):
+    """Rotational jet velocity (speed + streamlines) and the weak convergent drift delta * grad(psi)."""
+    x, y = np.linspace(0, LX, 114), np.linspace(-LY, LY, 51)
+    X, Y = np.meshgrid(x, y)
+    u, v = velocity(X, Y, t, dict(TRUE, delta=0.0))
+    fig, ax = plt.subplots(1, 2, figsize=figsize, sharey=True)
+    im = ax[0].pcolormesh(X, Y, np.hypot(u, v), cmap="Greys", shading="auto")
+    ax[0].streamplot(x, y, u, v, color="#2a78d6", density=1.4, linewidth=0.8, arrowsize=0.8)
+    fig.colorbar(im, ax=ax[0], pad=0.01, label="speed (km/d)")
+    ax[0].set(title="Jet and eddies (rotational flow)", xlabel="x (km)", ylabel="y (km)", xlim=(0, LX), ylim=(-LY, LY))
+    s = (slice(None, None, 3), slice(None, None, 6))
+    _field(ax[1], t, alpha=0.45)
+    du, dv = TRUE["delta"] * v, -TRUE["delta"] * u
+    q = ax[1].quiver(X[s[0], s[1]], Y[s[0], s[1]], du[s[0], s[1]], dv[s[0], s[1]], color="k", scale=25, width=0.003)
+    ax[1].quiverkey(q, 0.86, 1.04, 1.0, "1 km/d", labelpos="E")
+    ax[1].set(title="Weak drift toward warm water", xlabel="x (km)")
+    for a in ax:
+        a.grid(False)
     fig.tight_layout()
     return fig
