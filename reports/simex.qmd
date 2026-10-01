@@ -1,0 +1,343 @@
+---
+title: "Sequential Propensity Weighting on a Toy Jet"
+jupyter: python3
+fig-dpi: 300
+bibliography: ../paper/references.bib
+execute:
+  cache: false
+---
+
+```{python}
+#| label: setup
+#| include: false
+
+import os, sys
+sys.path.insert(0, os.path.abspath("../code"))
+
+import numpy as np, pandas as pd, matplotlib.pyplot as plt
+from IPython.display import display, HTML
+import simex as sx
+
+plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.alpha": 0.25})
+
+def _show_fig(fig):
+    display(fig)
+    plt.close(fig)
+
+def fmt(df, dec=3):
+    return df.round(dec).to_html(index=False, border=0)
+```
+
+```{python}
+#| label: compute
+#| include: false
+
+df, pt = sx.load_or_run()
+R = df["rep"].nunique()
+kp = sx.krige_params()
+traj = sx.real_floats(10, np.random.default_rng(7))
+S = sx.rep_summary(df)
+ref = S[S.h.isna() & (S.scenario == "correct")].set_index("estimator").bias
+b = lambda sc, e, h=sx.H_MAIN: S.query("scenario == @sc and h == @h and estimator == @e").bias.item()
+```
+
+## The idea
+
+Floats that drift into warm water and stay there make the simple average of their profiles run
+warm. The weighting fix divides each profile by how densely floats were *expected* to sample its
+location. Our earlier approach (`ipw_2`) computes that expectation by simulating the whole array
+from deployment, which trusts the model's currents over years.
+
+The **sequential** version trusts the model only over the last $h$ cycles. For each profile
+window it:
+
+1. takes every float's *real* position $h$ cycles earlier (its **anchor**);
+2. releases a cloud of particles from each anchor and advects them through the model flow plus
+   random noise (the noise represents motion the model gets wrong or does not resolve);
+3. stacks all the clouds into an expected-density map $\Lambda$;
+4. weights each real profile by $1/\Lambda$ at its actual position.
+
+The years of drift that concentrated floats in warm water are already visible in the real anchors,
+so the model has to be right only for the last $h$ cycles. This report tests that on a toy ocean
+where the truth is known, and shows where it works and where it fails.
+
+## Toy ocean
+
+**Flow.** A Bickley jet [@rypina2007], a meandering zonal jet with three travelling waves that
+roll up into eddies on each flank. It is rescaled to ocean units: jet half-width $L = 100$ km,
+peak speed $U_0 = 40$ km/d ($0.46$ m/s), periodic in $x$ over $1130$ km, with walls at
+$y = \pm 250$ km. With streamfunction $\psi$, the rotational velocity is
+$(u, v) = (-\partial_y\psi, \partial_x\psi)$.
+
+**Heat content.** $Z = \psi / (U_0 L)$. Streamfunction and heat content are tied together by
+thermal wind: the south side is warm and cold/warm eddies ride on the jet. Integrating over $x$
+cancels the eddies and the tanh profile is odd in $y$, so the true box mean is
+$\theta = \int_D Z\,d\alpha = 0$ at every time. Here $D$ is the channel and $\alpha$ the normalized
+area (probability) measure on it.
+
+**Why floats sample preferentially.** Floats also feel a weak convergent drift $\delta\nabla\psi$
+up the heat-content gradient ($\delta = 0.03$), mimicking Ekman-type convergence into warm water,
+plus a random walk with diffusivity $K = 100$ km$^2$/d ($\approx 1160$ m$^2$/s). For a *steady*
+jet the stationary float density of this Langevin model is $\propto \exp(\beta Z)$ with
+$\beta = \delta U_0 L / K = 1.2$. That is exactly the preferential-sampling intensity of
+@diggle2010. The rotational part runs along $\psi$ contours and leaves this density invariant.
+The real jet is time-dependent, so $\exp(\beta Z)$ is a heuristic here, not an identity.
+
+**Real floats.** $60$ floats deployed uniformly at $t=0$, advected (RK2, $\Delta t = 0.5$ d)
+through the true flow with the true noise. All floats profile synchronously every $10$ d. After a
+$360$-day spin-up ($\gg L^2/K = 100$ d), we estimate $\theta$ in $5$ windows spaced $90$ d apart.
+The experiment is repeated over $R =$ `{python} R` independent replicates of the real floats' noise.
+
+```{python}
+#| label: fig-setup
+#| echo: false
+#| fig-cap: "Left: OHC anomaly Z with its contours (which are also streamlines of the rotational flow) and one replicate's 60 real floats in the first window. Middle: zonal-mean Z. Right: float density by latitude relative to uniform, pooled over 10 replicates and all windows."
+_show_fig(sx.plot_setup(traj))
+```
+
+## Estimators
+
+For window $w$ at time $t_w$ with real profiles $X_1,\dots,X_N$ and $Z_j = Z(X_j, t_w)$:
+
+* **Simple mean**: $\bar Z = N^{-1}\sum_j Z_j$.
+* **Kriging**: ordinary block kriging of $\theta_w$. It uses an anisotropic exponential covariance
+  with sill `{python} f"{kp['s2']:.2f}"`, zonal range `{python} f"{kp['lx']:.0f}"` km and meridional
+  range `{python} f"{kp['ly']:.0f}"` km. These are taken once from the truth field's e-folding
+  scales (the zonal one from the eddy part alone), so the covariance is close to an oracle rather
+  than fitted from the floats.
+* **Sequential Hajek.** Let $\mathcal F_{w-h}$ be all float positions up to $h$ cycles before
+  $t_w$. Given $\mathcal F_{w-h}$, profile $j$ has a law $P_j \ll \alpha$ with density
+  $p_j = dP_j/d\alpha$. $\Lambda = \sum_j p_j$ is the Radon–Nikodym derivative of the conditional
+  intensity measure $B \mapsto E[\#\{j: X_j\in B\}\mid\mathcal F_{w-h}]$ with respect to $\alpha$.
+  Campbell's formula gives $E[\sum_j f(X_j)\mid\mathcal F_{w-h}] = \int f\,\Lambda\,d\alpha$.
+
+  **Estimating Λ.** We estimate each $p_j$ by advecting $M = 100$ particles from the anchor through
+  the *model* flow and noise. We smooth them with a Gaussian kernel (bandwidth $10$ km, $5$ km
+  grid) and sum over anchors to get $\hat\Lambda$. Two approximation errors are left in and not
+  analysed here: Monte-Carlo error ($M$ finite) and kernel-smoothing bias.
+
+  **Covered region and weights.** The covered region is
+  $R_w = \{\hat\Lambda \ge 0.05\,N\}$, which is $\mathcal F_{w-h}$-measurable (at least $5\%$ of the
+  uniform density). The weights are $w_j = 1/\hat\Lambda(X_j)$ for $X_j \in R_w$, and the
+  estimate is $\sum_j w_j Z_j / \sum_j w_j$. If $\hat\Lambda = \Lambda$, the Horvitz–Thompson
+  numerator is exactly unbiased for $\int_{R_w} Z\,d\alpha$
+  [@horvitz1952; this is the balance-heuristic estimator of @owen2000]. What remains is the gap
+  $R_w^c$, which Hajek implicitly fills with the covered-region mean.
+* **Cross-fit DR.** Floats are split into two folds by index.
+  - For each ordered pair of folds $(A, B)$: the kriging map $\hat m_A$ from fold $A$ supplies
+    $\int_D \hat m_A\,d\alpha$.
+  - Fold $B$'s residuals $Z_j - \hat m_A(X_j)$ are Hajek-weighted using fold $B$'s own clouds.
+  - The weighted mean is scaled by $\alpha(R_{w,B})$ and added.
+  - The two orderings are averaged.
+
+  Cross-fitting is not optional here. Kriging with a small nugget nearly interpolates its own data,
+  so an in-sample residual correction would be $\approx 0$ and DR would collapse to kriging. The
+  cross-fit is valid in the toy because floats' noises are independent given
+  $\mathcal F_{w-h}$. In the real ocean nearby floats share velocity errors, so fold independence
+  is itself an assumption.
+
+The bias of either weighted estimator splits exactly as
+$$
+E[\hat\theta_w\mid\mathcal F_{w-h}] - \theta_w
+= \int_{R_w} (Z-\hat m)\Big(\frac{\Lambda}{\hat\Lambda} - 1\Big)d\alpha
+\;-\; \int_{R_w^c} (Z-\hat m)\,d\alpha ,
+$$
+for the Horvitz–Thompson form, with $\hat m \equiv 0$ for pure weighting. The first term is
+**weight error** (model flow or noise wrong), weighted by how wrong the map is. The second is the
+**gap**, which weights cannot touch. Hajek normalization adds an $O(1/N)$ ratio bias on top.
+
+## What a cloud looks like
+
+```{python}
+#| label: fig-clouds
+#| echo: false
+#| fig-cap: "Clouds of 400 particles from three anchors (stars) after 1, 4 and 16 cycles, drawn over Z at the landing time. Blue: jet core, stretched into a long along-stream ribbon. Orange: eddy flank, spread widely and split. Green: quiet northern flank, compact."
+_show_fig(sx.plot_clouds())
+```
+
+A float in the jet core is almost certain to stay in the jet, but its position *along* the jet
+spreads quickly. A float on the eddy flank can end up in several different places. A float in quiet
+water barely spreads. The weights inherit this: a profile from a tight, crowded cloud represents a
+small area, and one from a wide, lonely cloud represents a large area.
+
+```{python}
+#| label: fig-weights
+#| echo: false
+#| fig-cap: "One replicate-window with h = 4 cycles. Left: stacked expected density relative to uniform (log scale), with the gap edge (5 percent of uniform) in black and each real float's marker area proportional to its weight. Right: weight relative to equal weighting against the profile's Z."
+_show_fig(sx.plot_weights(traj))
+```
+
+## Scenarios
+
+The real floats are identical across scenarios. Only the **model** used to build the clouds changes:
+
+| Scenario | Model flow | Model noise | What it represents |
+|---|---|---|---|
+| correct model | true | true $K$ | the method's ideal case |
+| model misses convergence | no $\delta\nabla\psi$ drift | true $K$ | model lacks the preferential mechanism (e.g. surface/Ekman convergence absent at park depth) |
+| model eddies displaced | eddies shifted by a quarter wavelength | true $K$ | eddy phase error, the thermal-wind CI violation |
+| noise too small | true | $K/4$ | overconfident clouds |
+| noise too large | true | $4K$ | underconfident clouds |
+
+In the "model misses convergence" case the model flow is divergence-free with constant $K$, so a
+uniform density is invariant under it. A *marginal* propensity simulated from uniform deployment
+(the `ipw_2` approach) would therefore be uniform, and its IPW estimate would equal the simple mean.
+
+## Results
+
+```{python}
+#| label: fig-bias
+#| echo: false
+#| fig-cap: "Bias of each estimator at h = 4 cycles (40 d), mean over replicates with 95 percent Monte-Carlo intervals. The simple mean and kriging use no model, so they are the same in every scenario (vertical reference lines)."
+_show_fig(sx.plot_bias(df))
+```
+
+```{python}
+#| label: tbl-summary
+#| echo: false
+#| tbl-cap: "Summary at h = 4 cycles. bias and se: mean and Monte-Carlo standard error of the window-averaged bias across replicates; sd: sd of single-window errors; rmse = sqrt(bias^2 + sd^2); cover: mean covered fraction; ess: mean Kish effective sample size of the 60 weights."
+HTML(fmt(sx.summary_table(df)))
+```
+
+```{python}
+#| label: tbl-mc
+#| echo: false
+#| tbl-cap: "Sequential Hajek bias under the correct model at h = 4 cycles against particles per anchor M and KDE bandwidth (separate 12-replicate run)."
+mc = sx.mc_check()
+HTML(fmt(mc))
+```
+
+**Simple mean and kriging.**
+- The simple mean runs warm by `{python} f"{ref['naive']:.2f}"`, about half the spatial sd of $Z$.
+- Kriging declusters and removes about two thirds of that. `{python} f"{ref['krige']:.2f}"` remains:
+  its constant mean is itself a GLS average of the warm-heavy floats, and it reverts to that mean
+  in the sparsely sampled cold north.
+
+**Correct model.**
+- Cross-fit DR is essentially unbiased (`{python} f"{b('correct', 'dr'):+.3f}"`).
+- Sequential Hajek is slightly negative (`{python} f"{b('correct', 'hajek'):+.3f}"`). This is
+  Monte-Carlo error in $\hat\Lambda$, not a failure of the design argument. $1/\hat\Lambda$ is
+  convex, so noise in $\hat\Lambda$ inflates weights where few particles land, which is the cold,
+  undersampled side.
+- @tbl-mc confirms it: the bias vanishes at $M = 400$. The main runs use $M = 100$ for cost, so
+  their Hajek numbers carry this offset. DR is barely affected because its residuals are small.
+
+**Model misses the convergence.** The model has no preferential mechanism at all. Even so, DR
+(`{python} f"{b('no_conv', 'dr'):+.3f}"`) and Hajek (`{python} f"{b('no_conv', 'hajek'):+.3f}"`)
+remove most of the simple-mean bias, because the real anchors already carry the accumulated
+clustering. The marginal (`ipw_2`-style) propensity removes none in this scenario.
+
+**Model eddies displaced.** This is the violation of conditional independence. Relative to the
+correct model, bias rises by
+`{python} f"{b('shifted', 'dr') - b('correct', 'dr'):+.3f}"` (DR) and
+`{python} f"{b('shifted', 'hajek') - b('correct', 'hajek'):+.3f}"` (Hajek). The sign is
+predictable: real floats trapped in real warm eddies land where the model's clouds say they are
+unlikely, so warm profiles get upweighted.
+
+**Noise miscalibrated.**
+- Too little noise gives overconfident clouds. Real floats that land outside their cloud get
+  outsized weights: Hajek swings to `{python} f"{b('K_small', 'hajek'):+.3f}"` and the effective
+  sample size falls to about 22 of 60.
+- Too much noise flattens the weights toward equal, so Hajek drifts back toward the simple mean
+  (`{python} f"{b('K_large', 'hajek'):+.3f}"`).
+- DR's bias is smaller in magnitude in both directions.
+
+### Choosing the horizon
+
+```{python}
+#| label: fig-horizon
+#| echo: false
+#| fig-cap: "Bias (with 95 percent MC intervals), single-window sd and covered fraction against the horizon h, for the three model-flow scenarios. Dashed and dotted lines: simple mean and kriging."
+_show_fig(sx.plot_horizon(df))
+```
+
+- **Correct model.**
+  - At $h = 1$, about 9% of the box (the cold north) is outside every cloud, and the gap alone
+    biases Hajek warm by `{python} f"{b('correct', 'hajek', 1):+.2f}"`.
+  - By $h = 4$ coverage is essentially complete and the bias flattens out.
+  - Longer horizons cost nothing when the model is right.
+- **Missing convergence.**
+  - The bias is smallest at short-to-moderate horizons: Hajek at $h = 2$, DR at $h = 4$.
+  - It then climbs steadily toward the simple mean: Hajek reaches
+    `{python} f"{b('no_conv', 'hajek', 36):+.2f}"` at $h = 36$, against
+    `{python} f"{ref['naive']:.2f}"` for the simple mean.
+  - $h = 36$ cycles reaches back to deployment, i.e. the marginal propensity. The horizon is
+    literally the dial between trusting the real anchors and trusting the model.
+- **Displaced eddies.**
+  - The excess over the correct model is largest at short horizons.
+  - It shrinks once clouds span several eddies, because the eddies' phase stops mattering and only
+    the large-scale structure counts, which this model gets right.
+- **DR vs. Hajek.**
+  - DR has lower single-window sd than Hajek at every horizon (about 0.09 vs 0.13).
+  - Under a misspecified model it usually has smaller bias at $h \ge 4$ (displaced eddies are the
+    exception, where Hajek is marginally lower).
+  - At $h = 1$ DR is worse: each fold alone covers less of the box, and kriging fills the larger
+    gap.
+
+### Can the calibration check tell?
+
+For each real profile, the check asks where it fell inside its own cloud. The statistic is the
+fraction of the cloud's particles lying at higher cloud density than the real landing point,
+computed leave-one-out. It is a highest-density-region PIT, and it is Uniform$(0,1)$ when the
+cloud is the float's true conditional law.
+
+```{python}
+#| label: fig-pit
+#| echo: false
+#| fig-cap: "PIT of real landings in their own clouds at h = 4 cycles. Flat = calibrated. A pile-up at 1 means real floats land in the tails (clouds too narrow or misplaced); a pile-up near 0 means clouds too wide."
+_show_fig(sx.plot_pit(pt))
+```
+
+- **Correct model:** flat.
+- **Noise too small:** a pile-up at 1 — real floats in the tails of too-narrow clouds.
+- **Noise too large:** a milder excess near 0.
+- **Displaced eddies:** a clear excess near 1.
+- **Missing convergence:** flat, even though that scenario is biased by
+  `{python} f"{b('no_conv', 'dr'):+.2f}"` (DR) at this horizon.
+
+The check sees cloud *spread and shape*, not a slow systematic drift. Over $40$ d the missing drift
+($\approx 1.2$ km/d) moves floats far less than the cloud's width, but it acts consistently on
+every float and every window. **Calibration is necessary but not sufficient.**
+
+## Where it works and where it fails
+
+**It works when:**
+- the model's flow and noise are right, at any horizon long enough to close the gaps (here
+  $h \ge 2$–$4$ cycles);
+- the model misses a *slow* preferential mechanism, provided the horizon is short. Conditioning on
+  real anchors is what separates this from the marginal propensity, which fails completely there.
+
+**It fails, or only partly works, when:**
+- **The horizon is too short:** gaps appear where floats avoid (here the cold side). The gap bias
+  has the same sign as the preferential sampling, and no weighting can reach it.
+- **The horizon is too long relative to model error:** any mechanism the model lacks accumulates
+  over the horizon, and the estimate slides back toward the simple mean.
+- **Eddy phase errors tie drift errors to heat content** (thermal wind): residual bias of
+  $0.03$–$0.08$ at moderate horizons in this toy, where $Z$ is exactly the streamfunction and so
+  the coupling is as strong as it can be.
+- **The noise is overconfident:** straggler floats dominate the weights. Underconfident noise
+  instead flattens the weights toward the simple mean.
+- **The particle count is too small:** Monte-Carlo noise in $\hat\Lambda$ biases the weights
+  toward the undersampled side.
+
+**Cross-fit DR is the better default.** At $h = 4$ it has lower sd and lower RMSE than Hajek in
+every scenario (@tbl-summary). The exception is the shortest horizon, where each fold's coverage is
+too thin.
+
+**Practical diagnostics for real Argo:**
+- The PIT check catches miscalibrated noise and displaced eddies.
+- The horizon sweep catches missing mechanisms: an estimate that drifts toward the simple mean as
+  $h$ grows is the signature.
+
+**Toy simplifications.**
+- Synchronous cycles, exact $Z$ with no measurement error, and no float deaths or deployments
+  within the analysis period.
+- Noise independent across floats.
+- A constant diffusivity, so no well-mixed drift correction is needed.
+- An oracle kriging covariance.
+- A truth field that is an exact function of the streamfunction, which makes the coupling between
+  flow errors and heat-content errors as strong as possible.
+- Only the spatial integral is tested. A box-year target is the average of per-window estimates;
+  that average is unbiased for the mean of the window snapshots. The remainder to the time integral
+  (time quadrature, plus timing within a window when cycles are asynchronous) is identically zero
+  here, because $\theta \equiv 0$ and the cycles are synchronous.

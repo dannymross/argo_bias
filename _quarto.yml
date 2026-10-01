@@ -5,6 +5,7 @@ project:
     - "reports/osim.qmd"
     - "reports/ipw.qmd"
     - "reports/ipw_2.qmd"
+    - "reports/simex.qmd"
 
 execute:
   freeze: auto
@@ -25,6 +26,7 @@ website:
           - reports/osim.qmd
           - reports/ipw.qmd
           - reports/ipw_2.qmd
+          - reports/simex.qmd
 
 format:
   html:
