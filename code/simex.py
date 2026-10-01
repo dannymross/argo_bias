@@ -302,15 +302,24 @@ def plot_clouds(example=None, figsize=(13, 3.6)):
     return fig
 
 
-def plot_weights(traj, rep=0, window=0, h=H_MAIN, flow=TRUE, seed=5, figsize=(12, 4.0)):
+def snapshot(traj, rep=0, window=0, h=H_MAIN, flow=TRUE, seed=5):
+    """One replicate-window: stacked-cloud density, profile weights, and the three box-mean numbers."""
     rng = np.random.default_rng(seed)
     c = int(window_cycles()[window])
     parts = clouds(traj[rep, :, c - h], np.full(traj.shape[1], (c - h) * CYCLE), h * CYCLE, flow, rng)
     lam = density_grid(parts)
-    rel = lam * (2 * LX * LY) / traj.shape[1]
     xy = traj[rep, :, c]
+    z = ohc(xy[:, 0], xy[:, 1], c * CYCLE)
     ix, iy = cell(xy)
     share = (1 / lam[ix, iy]) / (1 / lam[ix, iy]).sum()
+    return dict(h=h, lam=lam, xy=xy, z=z, share=share, naive=z.mean(), weighted=share @ z,
+                truth=truth_grid(c * CYCLE).mean())
+
+
+def plot_weights(traj, rep=0, window=0, h=H_MAIN, flow=TRUE, seed=5, figsize=(12, 4.0), snap=None):
+    sn = snapshot(traj, rep, window, h, flow, seed) if snap is None else snap
+    h, lam, xy, z, share = sn["h"], sn["lam"], sn["xy"], sn["z"], sn["share"]
+    rel = lam * (2 * LX * LY) / len(xy)
     fig, ax = plt.subplots(1, 2, figsize=figsize, gridspec_kw=dict(width_ratios=[3, 1.3]))
     im = ax[0].imshow(np.log10(np.maximum(rel, 1e-3)).T, origin="lower", extent=[0, LX, -LY, LY],
                       cmap="Blues", vmin=-2, vmax=1, aspect="auto")
@@ -319,7 +328,6 @@ def plot_weights(traj, rep=0, window=0, h=H_MAIN, flow=TRUE, seed=5, figsize=(12
     fig.colorbar(im, ax=ax[0], pad=0.01, label="log10 expected density / uniform")
     ax[0].set(xlabel="x (km)", ylabel="y (km)",
               title=f"Stacked clouds (h = {h}); marker area = weight; black line = gap edge")
-    z = ohc(xy[:, 0], xy[:, 1], c * CYCLE)
     ax[1].scatter(z, share * len(xy), s=18, color=COL["dr"], edgecolors="k", linewidths=0.4)
     ax[1].axhline(1, color="0.5", ls="--", lw=1)
     ax[1].set(xlabel="Z at profile", ylabel="weight / equal weight", yscale="log",
@@ -433,3 +441,30 @@ def mc_check(R=12, h=H_MAIN, settings=((100, 10.0), (400, 10.0), (1600, 10.0), (
              .groupby(["M", "bandwidth_km"]).agg(bias="mean", se="sem").reset_index())
     out.to_parquet(path)
     return out
+
+
+def rect_weights(rects, pts):
+    """Weights from flat rectangular clouds (x0, x1, y0, y1) in the unit box: 1 / summed cloud density."""
+    r, p = np.asarray(rects, float), np.asarray(pts, float)
+    inside = ((p[:, None, 0] >= r[None, :, 0]) & (p[:, None, 0] <= r[None, :, 1])
+              & (p[:, None, 1] >= r[None, :, 2]) & (p[:, None, 1] <= r[None, :, 3]))
+    dens = (inside / ((r[:, 1] - r[:, 0]) * (r[:, 3] - r[:, 2]))).sum(1)
+    return pd.DataFrame(dict(cloud_area=(r[:, 1] - r[:, 0]) * (r[:, 3] - r[:, 2]), density=dens, weight=1 / dens))
+
+
+def plot_rects(rects, pts, names, weights, warm_south=False, figsize=(5, 4.2)):
+    fig, ax = plt.subplots(figsize=figsize)
+    if warm_south:
+        ax.axhspan(0, 0.5, color="#e34948", alpha=0.15)
+        ax.axhspan(0.5, 1, color="#2a78d6", alpha=0.15)
+        ax.text(0.02, 0.03, "warm (Z = +1)", fontsize=9)
+        ax.text(0.02, 0.94, "cold (Z = -1)", fontsize=9)
+    for k, ((x0, x1, y0, y1), (px, py), n, w) in enumerate(zip(rects, pts, names, weights)):
+        ax.add_patch(plt.Rectangle((x0, y0), x1 - x0, y1 - y0, fill=False, lw=2,
+                                   ls=("-", "--", ":", "-.")[k % 4], ec="k"))
+        ax.plot(px, py, "o", ms=9, color="k")
+        ax.annotate(f"{n}: weight {w:.0%}", (px, py), xytext=(6, 6), textcoords="offset points", fontsize=10)
+    ax.set(xlim=(0, 1), ylim=(0, 1), xticks=[], yticks=[], aspect="equal")
+    ax.grid(False)
+    fig.tight_layout()
+    return fig

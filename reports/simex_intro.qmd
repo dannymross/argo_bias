@@ -1,0 +1,164 @@
+---
+title: "Reweighting Floats by Where They Could Have Gone"
+jupyter: python3
+fig-dpi: 300
+execute:
+  cache: false
+---
+
+```{python}
+#| label: setup
+#| include: false
+
+import os, sys
+sys.path.insert(0, os.path.abspath("../code"))
+
+import numpy as np, pandas as pd, matplotlib.pyplot as plt
+from IPython.display import display, HTML
+import simex as sx
+
+plt.rcParams.update({"figure.dpi": 110})
+
+def _show_fig(fig):
+    display(fig)
+    plt.close(fig)
+
+def fmt(df, dec=3):
+    return df.round(dec).to_html(index=False, border=0)
+```
+
+## The problem in one sentence
+
+Floats drift into some places (often warm, convergent water) more than others, so a plain average
+of their profiles over-counts those places and runs warm.
+
+## The fix in one sentence
+
+Weight each profile by **the area it stands in for**. That area is one over how many floats were
+*expected* to land at its spot, given where every float actually was a few weeks earlier.
+
+**The recipe.** For each float:
+
+1. Take its real position a few cycles ago (its **anchor**).
+2. Drift a cloud of particles from the anchor through the model currents plus some random noise.
+   The cloud is everywhere the float could plausibly be now.
+3. Spread the float's "one expected profile" evenly over its cloud. A cloud covering 10% of the box
+   has density $1/0.10 = 10$.
+4. Stack all floats' clouds. At each real profile, add up the densities of every cloud it falls in.
+5. **Weight = 1 / stacked density.**
+
+## Example 1: three floats
+
+The clouds here are flat rectangles so the arithmetic is easy.
+
+* **A** sits in a jet. The jet keeps it on a narrow track, so its cloud is a thin ribbon covering
+  1% of the box. Density is $1/0.01 = 100$, so its weight is $1/100 =$ **1% of the box**.
+* **B** and **C** sit in quiet water. Their clouds are wide, and both cover the *same* 20% of the
+  box. Where they overlap the density is $1/0.2 + 1/0.2 = 10$, so each gets $1/10 =$ **10%**. They
+  split the area they share.
+
+```{python}
+#| label: fig-abc
+#| echo: false
+#| fig-cap: "Flat clouds (rectangles) and the resulting weights. A's thin jet ribbon earns it 1 percent of the box; B and C share one 20 percent cloud, 10 percent each."
+rects = [(0.25, 0.75, 0.19, 0.21), (0.3, 0.7, 0.5, 1.0), (0.3, 0.7, 0.5, 1.0)]
+pts = [(0.5, 0.2), (0.42, 0.8), (0.58, 0.68)]
+w1 = sx.rect_weights(rects, pts)
+_show_fig(sx.plot_rects(rects, pts, "ABC", w1.weight))
+```
+
+```{python}
+#| echo: false
+HTML(fmt(w1.assign(float=list("ABC"))[["float", "cloud_area", "density", "weight"]]))
+```
+
+If B had been alone, it would have received the full 20%. The weights add to 21%, which is the part
+of the box the floats can speak for. The remaining 79% is a **gap**, and only a map can fill it.
+
+## Example 2: why this removes the warm bias
+
+The south half of the box is warm ($Z=+1$) and the north half cold ($Z=-1$), so the true box mean
+is $0$. Convergence has collected three floats in the warm half and left one in the cold half.
+
+* The three warm floats' clouds each cover the warm half (50%). Stacked density is
+  $3 \times 1/0.5 = 6$, so each gets weight $1/6 \approx 17\%$. **Together they get 50%.**
+* The lone cold float's cloud covers the cold half. Its density is $1/0.5 = 2$, so it gets **50%**
+  by itself.
+
+```{python}
+#| label: fig-warm
+#| echo: false
+#| fig-cap: "Three crowded warm floats share the warm half; the lone cold float stands in for the whole cold half."
+rects2 = [(0, 1, 0, 0.5)] * 3 + [(0, 1, 0.5, 1)]
+pts2 = [(0.25, 0.25), (0.5, 0.3), (0.75, 0.2), (0.5, 0.75)]
+w2 = sx.rect_weights(rects2, pts2).assign(float=["W1", "W2", "W3", "C1"], Z=[1, 1, 1, -1])
+_show_fig(sx.plot_rects(rects2, pts2, w2.float, w2.weight, warm_south=True))
+```
+
+| | calculation | box mean |
+|---|---|---|
+| simple average | $(1+1+1-1)/4$ | `{python} f"{w2.Z.mean():+.2f}"` |
+| reweighted | $3 \times \tfrac16 \times (+1) + \tfrac12 \times (-1)$ | `{python} f"{(w2.weight * w2.Z).sum():+.2f}"` |
+| truth | | $0$ |
+
+Crowding no longer buys extra influence: three floats in the same place count as one area, not
+three.
+
+## Example 3: real clouds in the toy jet
+
+Real clouds are not rectangles. The currents shape them:
+
+* in a jet a cloud is a long thin ribbon: certain to stay in the jet, but unsure how far along it;
+* among eddies a cloud spreads wide and can split;
+* in quiet water a cloud stays compact.
+
+```{python}
+#| label: fig-clouds
+#| echo: false
+#| fig-cap: "Particle clouds from three anchors (stars) after 1, 4 and 16 ten-day cycles, over the heat-content field (red warm, blue cold). Blue: jet core. Orange: eddy flank. Green: quiet water."
+_show_fig(sx.plot_clouds())
+```
+
+Running the full recipe on one snapshot of 60 floats in the toy jet (details in
+[the full toy report](simex.qmd)) gives the picture below. Floats that drifted into the warm south
+sit under heavily stacked clouds and get small weights; the few in the cold north get large ones.
+
+```{python}
+#| label: fig-snapshot
+#| echo: false
+#| fig-cap: "Left: stacked cloud density (darker = more floats expected) with each float drawn at a size proportional to its weight; outside the black line no cloud reaches. Right: each float's weight relative to an equal share, against its heat content."
+traj = sx.real_floats(10, np.random.default_rng(7))
+sn = sx.snapshot(traj)
+_show_fig(sx.plot_weights(traj, snap=sn))
+```
+
+On this snapshot the simple average is `{python} f"{sn['naive']:+.2f}"`, the reweighted average is
+`{python} f"{sn['weighted']:+.2f}"`, and the truth is `{python} f"{sn['truth']:+.2f}"`.
+
+## When it goes wrong
+
+Averaged over 40 repeats of the toy (looking back 4 cycles):
+
+```{python}
+#| echo: false
+df, _ = sx.load_or_run()
+t = sx.summary_table(df)
+t = t[t.estimator != "cross-fit DR"].assign(estimator=lambda d: d.estimator.replace({"sequential Hajek": "reweighted"}))
+HTML(fmt(t[["scenario", "estimator", "bias"]].rename(columns={"bias": "average error (truth = 0)"}), 2))
+```
+
+* **Model right:** the error is close to zero. The small negative value comes from using only 100
+  particles per cloud and goes away with more.
+* **Clouds too narrow** (noise too small): a float landing just outside its own cloud looks like a
+  rare event and gets a huge weight.
+* **Clouds too wide** (noise too large): every float gets about the same weight, which slides back
+  toward the simple average.
+* **Model eddies in the wrong place:** a float trapped in a real warm eddy lands where the model
+  says it shouldn't, so it is overweighted.
+* **Looking back too far** when the model misses some drift: the error creeps back toward the simple
+  average.
+* **Looking back too little:** the clouds are small, gaps open where floats avoid, and the weights
+  cannot reach the gaps.
+
+The [full toy report](simex.qmd) has the details, including a version that combines the weights
+with a kriged map, which further reduces both the error and the noise.

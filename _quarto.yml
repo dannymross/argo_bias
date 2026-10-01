@@ -5,6 +5,7 @@ project:
     - "reports/osim.qmd"
     - "reports/ipw.qmd"
     - "reports/ipw_2.qmd"
+    - "reports/simex_intro.qmd"
     - "reports/simex.qmd"
 
 execute:
@@ -26,6 +27,7 @@ website:
           - reports/osim.qmd
           - reports/ipw.qmd
           - reports/ipw_2.qmd
+          - reports/simex_intro.qmd
           - reports/simex.qmd
 
 format:
