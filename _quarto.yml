@@ -7,6 +7,7 @@ project:
     - "reports/ipw_2.qmd"
     - "reports/simex_intro.qmd"
     - "reports/simex.qmd"
+    - "reports/meanfield.qmd"
 
 execute:
   freeze: auto
@@ -29,6 +30,7 @@ website:
           - reports/ipw_2.qmd
           - reports/simex_intro.qmd
           - reports/simex.qmd
+          - reports/meanfield.qmd
 
 format:
   html:

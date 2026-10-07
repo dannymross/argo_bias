@@ -83,11 +83,11 @@ def window_cycles():
     return (SPINUP + WIN_GAP * np.arange(N_WIN)) / CYCLE
 
 
-def real_floats(R, rng, n=N_FLOATS):
+def real_floats(R, rng, n=N_FLOATS, cycles=None):
     """Profile positions (R, n, cycles + 1, 2) from uniform deployment at t = 0."""
     x, y = rng.uniform(0, LX, (R, n)), rng.uniform(-LY, LY, (R, n))
     out = [np.stack([x, y], -1)]
-    for c in range(int(window_cycles()[-1])):
+    for c in range(int(window_cycles()[-1]) if cycles is None else cycles):
         x, y = advect(x, y, c * CYCLE, CYCLE, TRUE, rng)
         out.append(np.stack([x, y], -1))
     return np.stack(out, 2)
