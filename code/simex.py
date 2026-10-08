@@ -47,22 +47,38 @@ def _theta(x, t, phase):
     return K_N * (np.asarray(x)[..., None] - C_N * np.asarray(t, float)[..., None]) + phase
 
 
-def psi(x, y, t, phase=TRUE["phase"]):
+def _modes(x, t, phase, meander, k_m):
+    """Eddy sum S, -dS/dx and -d2S/dx2; `meander` adds a standing mode of wavenumber k_m."""
+    th = _theta(x, t, phase)
+    return ((EPS * np.cos(th)).sum(-1) + meander * np.cos(k_m * x),
+            (EPS * K_N * np.sin(th)).sum(-1) + meander * k_m * np.sin(k_m * x),
+            (EPS * K_N**2 * np.cos(th)).sum(-1) + meander * k_m**2 * np.cos(k_m * x))
+
+
+def psi(x, y, t, phase=TRUE["phase"], meander=0.0, k_m=K_N[0]):
     s2 = np.cosh(y / L) ** -2
-    return U0 * L * (-np.tanh(y / L) + s2 * (EPS * np.cos(_theta(x, t, phase))).sum(-1))
+    return U0 * L * (-np.tanh(y / L) + s2 * _modes(x, t, phase, meander, k_m)[0])
 
 
-def ohc(x, y, t, phase=TRUE["phase"]):
-    return psi(x, y, t, phase) / (U0 * L)
+def ohc(x, y, t, phase=TRUE["phase"], meander=0.0, k_m=K_N[0]):
+    return psi(x, y, t, phase, meander, k_m) / (U0 * L)
 
 
 def velocity(x, y, t, flow):
-    th = _theta(x, t, flow["phase"])
-    s2 = np.cosh(y / L) ** -2
-    u = U0 * s2 * (1 + 2 * np.tanh(y / L) * (EPS * np.cos(th)).sum(-1))
-    v = -U0 * L * s2 * (EPS * K_N * np.sin(th)).sum(-1)
+    c, s, cc = _modes(x, t, flow["phase"], flow.get("meander", 0.0), flow.get("k_m", K_N[0]))
+    s2, th = np.cosh(y / L) ** -2, np.tanh(y / L)
+    a = 1 + 2 * th * c
+    u = U0 * s2 * a
+    v = -U0 * L * s2 * s
     # delta * grad(psi): a divergent drift up the OHC gradient, the Langevin form of exp(beta Z) intensity
-    return u + flow["delta"] * v, v - flow["delta"] * u
+    du, dv = flow["delta"] * v, -flow["delta"] * u
+    if flow.get("front", 0.0):
+        # front * grad(u^2 + v^2): drift toward fast water (fronts), the Langevin form of exp(beta |grad Z|^2)
+        g = U0**2 * s2**2
+        ex = g * (-4 * th * a * s + 2 * L**2 * s * cc)
+        ey = g / L * (-4 * th * (a**2 + L**2 * s**2) + 4 * c * s2 * a)
+        du, dv = du + flow["front"] * ex, dv + flow["front"] * ey
+    return u + du, v + dv
 
 
 def advect(x, y, t0, days, flow, rng):
@@ -83,12 +99,12 @@ def window_cycles():
     return (SPINUP + WIN_GAP * np.arange(N_WIN)) / CYCLE
 
 
-def real_floats(R, rng, n=N_FLOATS, cycles=None):
+def real_floats(R, rng, n=N_FLOATS, cycles=None, flow=TRUE):
     """Profile positions (R, n, cycles + 1, 2) from uniform deployment at t = 0."""
     x, y = rng.uniform(0, LX, (R, n)), rng.uniform(-LY, LY, (R, n))
     out = [np.stack([x, y], -1)]
     for c in range(int(window_cycles()[-1]) if cycles is None else cycles):
-        x, y = advect(x, y, c * CYCLE, CYCLE, TRUE, rng)
+        x, y = advect(x, y, c * CYCLE, CYCLE, flow, rng)
         out.append(np.stack([x, y], -1))
     return np.stack(out, 2)
 
