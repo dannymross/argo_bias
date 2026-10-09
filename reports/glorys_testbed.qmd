@@ -1,0 +1,202 @@
+---
+title: "Real Argo Positions on the GLORYS Field"
+jupyter: python3
+fig-dpi: 300
+bibliography: ../paper/references.bib
+execute:
+  cache: false
+---
+
+```{=html}
+<style>
+table.dataframe { width: auto; max-width: 95%; font-size: 0.85em; margin-left: auto; margin-right: auto; }
+</style>
+```
+
+```{python}
+#| label: setup
+#| include: false
+
+import os, sys
+sys.path.insert(0, os.path.abspath("../code"))
+os.environ["GLORYS_DR_KTAG"] = "_argomean"
+
+import numpy as np, pandas as pd, matplotlib.pyplot as plt
+from IPython.display import HTML, display
+from osim import glorys_dr as gd
+
+plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.alpha": 0.25})
+
+def _emit(s=""):
+    print(s)
+    sys.stdout.flush()
+
+def _show_fig(fig):
+    display(fig)
+    plt.close(fig)
+
+def bias_cells(t):
+    """One 'bias (pct%)' cell per estimator; blank where the estimator was not run."""
+    out = t[["year", "truth (GJ/m2)"]].round(2)
+    for lab in gd.EST_LAB.values():
+        b, p = t[f"{lab}: bias"], t[f"{lab}: %"]
+        out[lab] = [f"{x:+.2f} ({y:+.2f}%)" if np.isfinite(x) else "" for x, y in zip(b, p)]
+    return out.to_html(index=False, border=0)
+
+est = gd.load_estimates()
+```
+
+The real 2010–2019 Argo profile positions sample the GLORYS12 OHC field, whose box means are known
+exactly. Each estimator's error is therefore its realized sampling bias for the array that was
+actually deployed. Field, boxes and depth mask are those of [the simulation report](osim.qmd).
+
+# Setup
+
+**Field and target.** $Z$ is GLORYS $0$–$2000$ m OHC on the native $1/12^\circ$ grid, daily, on
+cells deeper than $2000$ m. Let $\mathbb P_{b,m}$ be the normalized area $\times$ time measure on
+box $b$ and month $m$. The target is the box-month mean $\bar Z_{b,m} = \int Z\,d\mathbb P_{b,m}$,
+and box-year (or multi-year) values are the day-weighted averages of the months, which equal the
+mean over all days. Box $A\cup B$ is the area-weighted combination of the two disjoint boxes.
+
+**Profiles.** Every Argo fix in $14$–$55^\circ$ N, $72$–$32^\circ$ W from 2010–2019, dropping only
+fixes within $24$ h of the same float's previous fix (repeat reports of one profile): $62{,}899$
+profiles from $813$ floats. Each profile reads $Z$ at its containing cell and day.
+
+**Sample mean.** The mean of the box-month's in-box profiles.
+
+# Mean field
+
+For each centre $c$ on a $1^\circ$ grid over the region, a moving-window least-squares fit uses all
+2010–2019 profiles $i$ with $|x_i - x_c| \le \lambda$ and $|y_i - y_c| \le \lambda$, $\lambda = 5^\circ$
+(widened in $25\%$ steps until the window holds at least $300$ profiles):
+
+$$
+Z_i \;=\; \underbrace{\beta_1 u_i + \beta_2 v_i + \beta_3 u_i v_i + \beta_4 u_i^2 + \beta_5 v_i^2}_{\text{spatial quadratic}}
+\;+\; h(t_i)^\top \gamma_c \;+\; \varepsilon_i,
+\qquad u_i = \frac{x_i - x_c}{\lambda},\; v_i = \frac{y_i - y_c}{\lambda},
+$$
+
+$$
+h(t) = \bigl(1,\ \sin\omega t,\ \sin 2\omega t,\ \cos\omega t,\ \cos 2\omega t,\ t\bigr)^\top,
+\qquad \omega = \frac{2\pi}{365.25\ \text{d}},
+$$
+
+with $t$ in years since 2015-01-01 for the trend. The spatial terms absorb the gradient across the
+window; the centre keeps $\hat\gamma_c$, the intercept, annual and semiannual cycles and linear
+trend at $(x_c, y_c)$. The mean field is
+$\hat\mu(x, t) = \sum_c w_c(x)\, h(t)^\top\hat\gamma_c$, with $w_c$ the bilinear interpolation
+weights of the four centres around $x$. This is the Roemmich–Gilson form used by
+@kuusela2018. Its box-month mean is the integral of $\hat\mu$ over $0.5^\circ$ cells at their deep-area
+centroids and three time nodes per month.
+
+For DR, $\hat\mu^{(-f)}$ refits every window without float $f$'s profiles (exactly, by removing
+that float's contribution to each window's normal equations).
+
+# Kriging
+
+The anomaly $Z - \hat\mu$ is a zero-mean Gaussian process with the locally stationary anisotropic
+exponential covariance of @kuusela2018:
+
+$$
+k\bigl((x, y, t), (x', y', t')\bigr) = \phi \exp(-d) + \sigma^2 \mathbf 1\{\text{same point}\},
+\qquad
+d^2 = \Bigl(\tfrac{x - x'}{\theta_{\text{lon}}}\Bigr)^2 + \Bigl(\tfrac{y - y'}{\theta_{\text{lat}}}\Bigr)^2
++ \Bigl(\tfrac{t - t'}{\theta_t}\Bigr)^2,
+$$
+
+with $(\phi, \theta_{\text{lon}}, \theta_{\text{lat}}, \theta_t, \sigma^2/\phi)$ fixed per $2^\circ$
+cell. The parameters are fitted exactly as in [the simulation report](osim.qmd#sec-krige) (window
+MLE, years as replicates, median over months), but to this report's anomaly, GLORYS OHC minus
+$\hat\mu$, on the complete 1° × 10 d lattice of 2015–2019. That makes them **oracle** values: no
+real analysis has the full field.
+
+| | $\phi$ | $\theta_{\text{lon}}$ | $\theta_{\text{lat}}$ | $\theta_t$ |
+|---|---|---|---|---|
+| Box A (median over cells) | 19.4 | 3.5° | 2.9° | 83 d |
+| Box B (median over cells) | 48.9 | 2.4° | 1.5° | 38 d |
+
+Prediction is simple kriging in continuous time: a target in cell $c$ conditions on all profiles
+within $\pm 10^\circ$ and $\pm 180$ d and uses cell $c$'s parameters. Treating years as independent
+is a working assumption for fitting the parameters only; the predictor does not block by year. The
+box-month mean of $\hat\mu + \hat\eta$ uses the same node quadrature as the mean field.
+
+# DR kriging
+
+With $\hat m^{(-f)}$ the mean-field-plus-kriging map built without float $f$, $\hat q_f$ the
+expected profile intensity of float $f$ from GLORYS-advected clouds (anchored $\approx 40$ d earlier,
+with fitted dispersion and speed error) and $\hat Q = \sum_f \hat q_f$,
+
+$$
+\hat Z_{\text{DR}} = \int \sum_f \frac{\hat q_f}{\hat Q}\,\hat m^{(-f)}\,d\mathbb P_{b,m}
+\;+\; \frac{1}{\mu(T_{b,m})}\sum_{i} \frac{Z_i - \hat m^{(-f(i))}(x_i, t_i)}{\hat Q(x_i, t_i)}\,\mathbf 1_C(x_i, t_i),
+$$
+
+on the covered set $C$ (full-data map off it). Kriging and DR are run for 2015–2019 only.
+
+# Results
+
+```{python}
+#| label: fig-series
+#| echo: false
+#| fig-cap: "Monthly box-mean OHC (solid) and the box mean of the estimated mean field (dashed), and their difference, the box-mean anomaly the mean field leaves (bottom), 2010-2019, GJ per m2."
+
+_show_fig(gd.plot_series(est))
+```
+
+The mean field follows the seasonal cycle and the decade-long warming. What it leaves is
+interannual and persistent. Box B's monthly anomaly ranges from $-1.9$ to $+3.5$ GJ/m$^2$, and it
+stays positive through all of 2012 and 2018. Box A's ranges within $\pm 1$. This is the error a
+mean field alone carries into each year.
+
+## Bias by box and year
+
+Each cell is bias = estimate − truth in GJ/m$^2$, with the bias as a percentage of the truth in
+brackets.
+
+```{python}
+#| echo: false
+#| output: asis
+
+_emit("::: {.panel-tabset}\n")
+for b, lab in gd.BOX_LAB.items():
+    _emit(f"\n### {lab}\n")
+    _emit(bias_cells(gd.summary_table(b, est)))
+_emit("\n:::\n")
+```
+
+The box-month bias of each estimator over time, with the sample mean (left) apart from the model-based estimators (right). Each panel has its own vertical scale, and kriging and DR start in 2015.
+
+```{python}
+#| echo: false
+#| output: asis
+
+_emit("::: {.panel-tabset}\n")
+for pct, lab in ((True, "Percent of truth"), (False, "GJ per m2")):
+    _emit(f"\n### {lab}\n")
+    _show_fig(gd.plot_bias(est, pct))
+_emit("\n:::\n")
+```
+
+```{python}
+#| include: false
+
+t = {b: gd.summary_table(b, est).set_index("year") for b in gd.BOX_LAB}
+r = lambda b, p, c: t[b].loc[p, f"{gd.EST_LAB[c]}: bias"]
+```
+
+- **Sample mean.** Essentially unbiased in Box A
+  (`{python} f"{r('boxA', '2010-2019', 'naive'):+.2f}"` GJ/m$^2$ over 2010–2019). In Box B it is
+  `{python} f"{r('boxB', '2010-2019', 'naive'):+.2f}"` GJ/m$^2$
+  (`{python} f"{t['boxB'].loc['2010-2019', 'sample mean: %']:+.1f}"`%) and reaches about $-7\%$ in
+  2010 and 2016. The floats sit preferentially on the cold side of the Gulf Stream.
+- **Mean field.** It removes most of Box B's sampling bias
+  (`{python} f"{r('boxB', '2010-2019', 'mean_only'):+.2f}"` GJ/m$^2$ over 2010–2019). What remains is
+  the interannual anomaly in the figure above, up to $1.8\%$ in a single year.
+- **Mean field + kriging.** Over 2015–2019 it has the smallest bias in Box B and in $A\cup B$
+  (`{python} f"{r('boxB', '2015-2019', 'krige'):+.2f}"` GJ/m$^2$ in Box B). In Box A it is slightly
+  worse than the sample mean, which has no bias to remove there. Single years still reach
+  $\pm 1.4\%$ in Box B. In 2018, for example, it turns the mean field's $-0.9$ into $+1.0$.
+- **Mean field + DR kriging.** It does not improve on kriging, and in Box B it adds variance.
+
+These are realized errors of one array in one ocean, so year-to-year differences of a few tenths of
+a GJ/m$^2$ between estimators are within noise.

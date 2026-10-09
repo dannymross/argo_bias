@@ -8,6 +8,7 @@ project:
     - "reports/simex_intro.qmd"
     - "reports/simex.qmd"
     - "reports/meanfield.qmd"
+    - "reports/glorys_testbed.qmd"
 
 execute:
   freeze: auto
@@ -31,6 +32,7 @@ website:
           - reports/simex_intro.qmd
           - reports/simex.qmd
           - reports/meanfield.qmd
+          - reports/glorys_testbed.qmd
 
 format:
   html:

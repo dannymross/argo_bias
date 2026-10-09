@@ -119,8 +119,8 @@ def fit_window(blocks, start=None, ftol=FTOL, gtol=GTOL):
                 nit=res.nit, n_obs=N), res.x
 
 
-def main(out_csv, task, ntask, sample_days=kl.SAMPLE_DAYS):
-    lat_ = pd.read_csv(os.path.join(cfg.OUT_DIR, "krige_local_lattice.csv"))
+def main(out_csv, task, ntask, sample_days=kl.SAMPLE_DAYS, lattice=None):
+    lat_ = pd.read_csv(lattice or os.path.join(cfg.OUT_DIR, "krige_local_lattice.csv"))
     cen = pd.read_csv(os.path.join(cfg.OUT_DIR, "krige_local_centres.csv"))
     if sample_days != kl.SAMPLE_DAYS:                 # thin the lattice further
         # Striding can only reach multiples of the lattice spacing; asking for 15 d
@@ -168,5 +168,6 @@ if __name__ == "__main__":
     ap.add_argument("out_csv"); ap.add_argument("task", type=int); ap.add_argument("ntask", type=int)
     ap.add_argument("--sample-days", type=int, default=kl.SAMPLE_DAYS,
                     help="must be a multiple of the lattice spacing")
+    ap.add_argument("--lattice", help="lattice csv (default: the oracle residual-field lattice)")
     a = ap.parse_args()
-    main(a.out_csv, a.task, a.ntask, a.sample_days)
+    main(a.out_csv, a.task, a.ntask, a.sample_days, a.lattice)
