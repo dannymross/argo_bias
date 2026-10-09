@@ -194,46 +194,28 @@ _emit("\n:::\n")
 ```{python}
 #| include: false
 
-sm = gd.scale_metrics(est).set_index(["box", "estimator"])
 tr = {b: np.polyfit(range(2010, 2020), gd.yearly(est).loc[b].ohc, 1)[0] for b in gd.BOX_LAB}
-v = lambda b, c, col: sm.loc[(b, gd.EST_LAB[c]), col]
 ```
 
 OHC is used through its anomalies, year-to-year changes and trends, so a bias matters relative to
 those, not to the $70$–$80$ GJ/m$^2$ total. Over 2010–2019 the true box-year mean warms by
 `{python} f"{tr['boxA']:.2f}"` (Box A) and `{python} f"{tr['boxB']:.2f}"` (Box B) GJ/m$^2$ per year.
 
-```{python}
-#| label: fig-changes
-#| echo: false
-#| fig-cap: "Year-to-year change of the box-year mean OHC: truth (black) and each estimator, sample mean left and model-based estimators right, GJ per m2."
-
-_show_fig(gd.plot_changes(est))
-```
+The true and estimated change from the previous year (day-weighted) or month, as GJ/m$^2$ and as a
+percentage of the previous value; sample mean left, model-based estimators right. Monthly changes
+include the seasonal cycle.
 
 ```{python}
-#| label: fig-scale
 #| echo: false
-#| fig-cap: "Bias on the scale of the signal. Left: mean bias in years of the box's 2010-2019 warming. Middle: error of the 2010-2019 trend in percent of the true trend (DR, run only from 2015, is omitted). Right: RMS error of the year-to-year change over the SD of the true changes (dashed: error as large as the signal)."
+#| output: asis
 
-_show_fig(gd.plot_scale_metrics(est))
+_emit("::: {.panel-tabset}\n")
+for by in ("year", "month"):
+    for pct, unit in ((True, "percent change"), (False, "GJ per m2")):
+        _emit(f"\n### {by.capitalize()}ly, {unit}\n")
+        _show_fig(gd.plot_changes(est, pct, by))
+_emit("\n:::\n")
 ```
-
-- **Level.** The Box B sample mean sits `{python} f"{-v('boxB', 'naive', 'bias_years_of_trend'):.1f}"`
-  years of warming too cold. The mean field reduces this to
-  `{python} f"{-v('boxB', 'mean_only', 'bias_years_of_trend'):.1f}"` years and kriging to
-  `{python} f"{-v('boxB', 'krige', 'bias_years_of_trend'):.1f}"`.
-- **Trend.** The sample mean's bias is nearly constant, so it largely cancels in the decadal trend
-  (`{python} f"{v('boxB', 'naive', 'trend_error_pct'):+.0f}"`% in Box B). The mean field's trend error is
-  `{python} f"{v('boxB', 'mean_only', 'trend_error_pct'):+.0f}"`% in Box B and
-  `{python} f"{v('boxA', 'mean_only', 'trend_error_pct'):+.0f}"`% in Box A, and kriging's is
-  `{python} f"{v('boxB', 'krige', 'trend_error_pct'):+.0f}"`% and
-  `{python} f"{v('boxA', 'krige', 'trend_error_pct'):+.0f}"`%. Kriging does not improve the trend.
-- **Year-to-year change.** No estimator resolves single-year changes well at box scale. In Box B the
-  RMS error of the yearly change is
-  `{python} f"{v('boxB', 'mean_only', 'change_error_ratio'):.2f}"` times the SD of the true changes for
-  the mean field, `{python} f"{v('boxB', 'krige', 'change_error_ratio'):.2f}"` for kriging, and
-  `{python} f"{v('boxB', 'naive', 'change_error_ratio'):.1f}"` for the sample mean. The DR ratio uses its four 2015–2019 changes against the SD of all true changes.
 
 ```{python}
 #| include: false

@@ -611,51 +611,38 @@ def scale_metrics(d=None):
     return pd.DataFrame(rows)
 
 
-def plot_changes(d=None, figsize=(13, 8.5)):
-    """True and estimated year-to-year change of the box-year mean: one row per box, the sample mean left
-    and the model-based estimators right."""
+def plot_changes(d=None, pct=False, by="year", figsize=(13, 8.5)):
+    """True and estimated change from the previous year or month (GJ/m2, or percent of the previous value):
+    one row per box, the sample mean left and the model-based estimators right."""
     import matplotlib.pyplot as plt
-    y = yearly(d).groupby(level="box").diff().dropna(subset=["ohc"])
+    d = load_estimates() if d is None else d
+    cols = ["ohc", *EST_LAB]
+    if by == "year":
+        x = yearly(d)
+    else:
+        x = d.set_index(["box", "month"])[cols] * 1e-9
+    prev = x.groupby(level="box").shift()
+    ch = (x - prev) / prev * 100 if pct else x - prev
+    ch = ch.dropna(subset=["ohc"])
     groups = (["naive"], [c for c in EST_LAB if c != "naive"])
+    mk = dict(marker="o", ms=6) if by == "year" else {}
     fig, ax = plt.subplots(len(BOX_LAB), 2, figsize=figsize, sharex=True)
     for row, b in zip(ax, BOX_LAB):
-        x = y.loc[b]
-        for a, cols in zip(row, groups):
+        c_b = ch.loc[b]
+        for a, cs in zip(row, groups):
             a.axhline(0, color="#52514e", lw=0.8)
-            a.plot(x.index, x.ohc, "-o", color="#0b0b0b", lw=2, ms=6, label="truth")
-            for c in cols:
-                a.plot(x.index, x[c], "-o", color=EST_COL[c], lw=1.6, ms=6, label=EST_LAB[c])
-            a.set_title(f"{BOX_LAB[b]}: {'sample mean' if cols == ['naive'] else 'model-based estimators'}",
+            a.plot(c_b.index, c_b.ohc, color="#0b0b0b", lw=2 if by == "year" else 1.6, label="truth", **mk)
+            for c in cs:
+                a.plot(c_b.index, c_b[c], color=EST_COL[c], lw=1.6 if by == "year" else 1.2, label=EST_LAB[c], **mk)
+            a.set_title(f"{BOX_LAB[b]}: {'sample mean' if cs == ['naive'] else 'model-based estimators'}",
                         loc="left", fontsize=10)
-        row[0].set_ylabel("change from previous year (GJ/m2)")
+        row[0].set_ylabel(f"change from previous {by} ({'%' if pct else 'GJ/m2'})")
     for a in ax[0]:
         a.legend(fontsize=8, frameon=False, loc="lower left")
     for a in ax[-1]:
-        a.set_xlabel("year")
-        a.set_xticks(range(YEARS[0] + 1, YEARS[1] + 1))
-    fig.tight_layout()
-    return fig
-
-
-def plot_scale_metrics(d=None, figsize=(13, 4.2)):
-    """Bias on the scale of the signal: level bias in years of warming, trend error in % of the trend, and
-    the yearly-change error relative to the true yearly changes, grouped by box."""
-    import matplotlib.pyplot as plt
-    m = scale_metrics(d)
-    panels = (("bias_years_of_trend", "mean bias (years of 2010-2019 warming)", 0),
-              ("trend_error_pct", "trend error (% of true trend, 2010-2019)", 0),
-              ("change_error_ratio", "RMS error of yearly change / SD of true change", 1))
-    fig, ax = plt.subplots(1, 3, figsize=figsize)
-    w = 0.8 / len(EST_LAB)
-    for a, (col, lab, ref) in zip(ax, panels):
-        for k, (c, el) in enumerate(EST_LAB.items()):
-            v = m[m.estimator == el].set_index("box").loc[list(BOX_LAB), col]
-            a.bar(np.arange(len(BOX_LAB)) + (k - 1.5) * w, v, w * 0.9, color=EST_COL[c], label=el)
-        a.axhline(ref, color="#52514e", lw=0.8, ls="-" if ref == 0 else "--")
-        a.set_xticks(range(len(BOX_LAB)), list(BOX_LAB.values()))
-        a.set_title(lab, fontsize=9)
-        a.grid(axis="x", visible=False)
-    ax[0].legend(fontsize=8, frameon=False)
+        a.set_xlabel(by)
+        if by == "year":
+            a.set_xticks(range(YEARS[0] + 1, YEARS[1] + 1))
     fig.tight_layout()
     return fig
 
