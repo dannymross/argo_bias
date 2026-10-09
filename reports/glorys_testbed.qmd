@@ -66,28 +66,34 @@ profiles from $813$ floats. Each profile reads $Z$ at its containing cell and da
 
 # Mean field
 
-For each centre $c$ on a $1^\circ$ grid over the region, a moving-window least-squares fit uses all
-2010–2019 profiles $i$ with $|x_i - x_c| \le \lambda$ and $|y_i - y_c| \le \lambda$, $\lambda = 5^\circ$
-(widened in $25\%$ steps until the window holds at least $300$ profiles):
+Following @sukianto2026 (their eq. 5), which extends @ridgway2002 and @roemmich2009 with linear and
+quadratic time trends, the mean field is a local polynomial regression in a fixed square window
+$\mathcal W(x^*, y^*) = [x^* \pm \lambda] \times [y^* \pm \lambda]$, $\lambda = 5^\circ$, around each
+centre $(x^*, y^*)$ of a $1^\circ$ grid. It uses all 2010–2019 profiles in the window:
 
 $$
-Z_i \;=\; \underbrace{\beta_1 u_i + \beta_2 v_i + \beta_3 u_i v_i + \beta_4 u_i^2 + \beta_5 v_i^2}_{\text{spatial quadratic}}
-\;+\; h(t_i)^\top \gamma_c \;+\; \varepsilon_i,
-\qquad u_i = \frac{x_i - x_c}{\lambda},\; v_i = \frac{y_i - y_c}{\lambda},
+\begin{aligned}
+m_{x^*, y^*}(x, y, t) = {}& \beta_0 + \beta_1 (x - x^*) + \beta_2 (y - y^*) + \beta_3 (x - x^*)(y - y^*)
++ \beta_4 (x - x^*)^2 + \beta_5 (y - y^*)^2 \\
+&+ \sum_{k=1}^{6} \Bigl[\gamma_k \sin\tfrac{2\pi k \tau(t)}{365} + \delta_k \cos\tfrac{2\pi k \tau(t)}{365}\Bigr]
++ \nu_1 (t - t_D) + \nu_2 (t - t_D)^2,
+\end{aligned}
 $$
 
+with $\tau(t)$ the yearday and $t_D$ = 2015-01-01, the midpoint of 2010–2019. The coefficients are
+ordinary least squares over the window's profiles. The window is never widened: a centre with fewer
+than $60$ profiles (three per coefficient) is left unfitted. These centres are all over land or
+shelf outside the boxes. The fit at the centre is
+
 $$
-h(t) = \bigl(1,\ \sin\omega t,\ \sin 2\omega t,\ \cos\omega t,\ \cos 2\omega t,\ t\bigr)^\top,
-\qquad \omega = \frac{2\pi}{365.25\ \text{d}},
+\hat\mu(x^*, y^*, t) = \hat\beta_0 + \sum_{k=1}^{6} \Bigl[\hat\gamma_k \sin\tfrac{2\pi k \tau(t)}{365}
++ \hat\delta_k \cos\tfrac{2\pi k \tau(t)}{365}\Bigr] + \hat\nu_1 (t - t_D) + \hat\nu_2 (t - t_D)^2 .
 $$
 
-with $t$ in years since 2015-01-01 for the trend. The spatial terms absorb the gradient across the
-window; the centre keeps $\hat\gamma_c$, the intercept, annual and semiannual cycles and linear
-trend at $(x_c, y_c)$. The mean field is
-$\hat\mu(x, t) = \sum_c w_c(x)\, h(t)^\top\hat\gamma_c$, with $w_c$ the bilinear interpolation
-weights of the four centres around $x$. This is the Roemmich–Gilson form used by
-@kuusela2018. Its box-month mean is the integral of $\hat\mu$ over $0.5^\circ$ cells at their deep-area
-centroids and three time nodes per month.
+Off the grid, $\hat\mu(x, y, t)$ interpolates the four surrounding centres bilinearly, renormalized
+over the fitted ones. This is our choice: @sukianto2026 define $\hat\mu$ only at the grid points. The
+box-month mean of $\hat\mu$ is its integral over $0.5^\circ$ cells at their deep-area centroids and
+three time nodes per month.
 
 For DR, $\hat\mu^{(-f)}$ refits every window without float $f$'s profiles (exactly, by removing
 that float's contribution to each window's normal equations).
@@ -106,9 +112,11 @@ $$
 
 with $(\phi, \theta_{\text{lon}}, \theta_{\text{lat}}, \theta_t, \sigma^2/\phi)$ fixed per $2^\circ$
 cell. The parameters are fitted exactly as in [the simulation report](osim.qmd#sec-krige) (window
-MLE, years as replicates, median over months), but to this report's anomaly, GLORYS OHC minus
-$\hat\mu$, on the complete 1° × 10 d lattice of 2015–2019. That makes them **oracle** values: no
-real analysis has the full field.
+MLE, years as replicates, median over months), but to GLORYS OHC minus a local mean field, on the
+complete 1° × 10 d lattice of 2015–2019. That makes them **oracle** values: no real analysis has the
+full field. They were fitted with an earlier version of $\hat\mu$ (2 harmonics, linear trend, widened
+windows), and their medians differ from fits to GLORYS's own anomaly by only 15–35%. The table gives
+the medians over cells.
 
 | | $\phi$ | $\theta_{\text{lon}}$ | $\theta_{\text{lat}}$ | $\theta_t$ |
 |---|---|---|---|---|
@@ -131,7 +139,8 @@ $$
 \;+\; \frac{1}{\mu(T_{b,m})}\sum_{i} \frac{Z_i - \hat m^{(-f(i))}(x_i, t_i)}{\hat Q(x_i, t_i)}\,\mathbf 1_C(x_i, t_i),
 $$
 
-on the covered set $C$ (full-data map off it). Kriging and DR are run for 2015–2019 only.
+on the covered set $C$ (full-data map off it). DR is run for 2015–2019 only; kriging covers 2010–2019, and
+months in early 2010 can only condition on later profiles because the record starts in January 2010.
 
 # Results
 
@@ -144,8 +153,8 @@ _show_fig(gd.plot_series(est))
 ```
 
 The mean field follows the seasonal cycle and the decade-long warming. What it leaves is
-interannual and persistent. Box B's monthly anomaly ranges from $-1.9$ to $+3.5$ GJ/m$^2$, and it
-stays positive through all of 2012 and 2018. Box A's ranges within $\pm 1$. This is the error a
+interannual and persistent. Box B's monthly anomaly ranges from $-2.0$ to $+3.0$ GJ/m$^2$, and it
+stays positive through all of 2012 and 2018. Box A's ranges from $-0.8$ to $+1.3$. This is the error a
 mean field alone carries into each year.
 
 ## Bias by box and year
@@ -164,18 +173,67 @@ for b, lab in gd.BOX_LAB.items():
 _emit("\n:::\n")
 ```
 
-The box-month bias of each estimator over time, with the sample mean (left) apart from the model-based estimators (right). Each panel has its own vertical scale, and kriging and DR start in 2015.
+The bias of each estimator over time, by year (day-weighted) and by month, with the sample mean (left)
+apart from the model-based estimators (right). Each panel has its own vertical scale, and DR starts in
+2015.
 
 ```{python}
 #| echo: false
 #| output: asis
 
 _emit("::: {.panel-tabset}\n")
-for pct, lab in ((True, "Percent of truth"), (False, "GJ per m2")):
-    _emit(f"\n### {lab}\n")
-    _show_fig(gd.plot_bias(est, pct))
+for by in ("year", "month"):
+    for pct, unit in ((True, "percent of truth"), (False, "GJ per m2")):
+        _emit(f"\n### {by.capitalize()}ly, {unit}\n")
+        _show_fig(gd.plot_bias(est, pct, by))
 _emit("\n:::\n")
 ```
+
+## On the scale of changes and trends
+
+```{python}
+#| include: false
+
+sm = gd.scale_metrics(est).set_index(["box", "estimator"])
+tr = {b: np.polyfit(range(2010, 2020), gd.yearly(est).loc[b].ohc, 1)[0] for b in gd.BOX_LAB}
+v = lambda b, c, col: sm.loc[(b, gd.EST_LAB[c]), col]
+```
+
+OHC is used through its anomalies, year-to-year changes and trends, so a bias matters relative to
+those, not to the $70$–$80$ GJ/m$^2$ total. Over 2010–2019 the true box-year mean warms by
+`{python} f"{tr['boxA']:.2f}"` (Box A) and `{python} f"{tr['boxB']:.2f}"` (Box B) GJ/m$^2$ per year.
+
+```{python}
+#| label: fig-changes
+#| echo: false
+#| fig-cap: "Year-to-year change of the box-year mean OHC: truth (black) and each estimator, sample mean left and model-based estimators right, GJ per m2."
+
+_show_fig(gd.plot_changes(est))
+```
+
+```{python}
+#| label: fig-scale
+#| echo: false
+#| fig-cap: "Bias on the scale of the signal. Left: mean bias in years of the box's 2010-2019 warming. Middle: error of the 2010-2019 trend in percent of the true trend (DR, run only from 2015, is omitted). Right: RMS error of the year-to-year change over the SD of the true changes (dashed: error as large as the signal)."
+
+_show_fig(gd.plot_scale_metrics(est))
+```
+
+- **Level.** The Box B sample mean sits `{python} f"{-v('boxB', 'naive', 'bias_years_of_trend'):.1f}"`
+  years of warming too cold. The mean field reduces this to
+  `{python} f"{-v('boxB', 'mean_only', 'bias_years_of_trend'):.1f}"` years and kriging to
+  `{python} f"{-v('boxB', 'krige', 'bias_years_of_trend'):.1f}"`.
+- **Trend.** The sample mean's bias is nearly constant, so it largely cancels in the decadal trend
+  (`{python} f"{v('boxB', 'naive', 'trend_error_pct'):+.0f}"`% in Box B). The mean field's trend error is
+  `{python} f"{v('boxB', 'mean_only', 'trend_error_pct'):+.0f}"`% in Box B and
+  `{python} f"{v('boxA', 'mean_only', 'trend_error_pct'):+.0f}"`% in Box A, and kriging's is
+  `{python} f"{v('boxB', 'krige', 'trend_error_pct'):+.0f}"`% and
+  `{python} f"{v('boxA', 'krige', 'trend_error_pct'):+.0f}"`%. Kriging does not improve the trend.
+- **Year-to-year change.** No estimator resolves single-year changes well at box scale. In Box B the
+  RMS error of the yearly change is
+  `{python} f"{v('boxB', 'mean_only', 'change_error_ratio'):.2f}"` times the SD of the true changes for
+  the mean field, `{python} f"{v('boxB', 'krige', 'change_error_ratio'):.2f}"` for kriging, and
+  `{python} f"{v('boxB', 'naive', 'change_error_ratio'):.1f}"` for the sample mean. The DR ratio uses its four 2015–2019 changes against the SD of all true changes.
 
 ```{python}
 #| include: false
@@ -192,10 +250,10 @@ r = lambda b, p, c: t[b].loc[p, f"{gd.EST_LAB[c]}: bias"]
 - **Mean field.** It removes most of Box B's sampling bias
   (`{python} f"{r('boxB', '2010-2019', 'mean_only'):+.2f}"` GJ/m$^2$ over 2010–2019). What remains is
   the interannual anomaly in the figure above, up to $1.8\%$ in a single year.
-- **Mean field + kriging.** Over 2015–2019 it has the smallest bias in Box B and in $A\cup B$
-  (`{python} f"{r('boxB', '2015-2019', 'krige'):+.2f}"` GJ/m$^2$ in Box B). In Box A it is slightly
+- **Mean field + kriging.** Over 2010–2019 it has the smallest bias in Box B and in $A\cup B$
+  (`{python} f"{r('boxB', '2010-2019', 'krige'):+.2f}"` GJ/m$^2$ in Box B). In Box A it is slightly
   worse than the sample mean, which has no bias to remove there. Single years still reach
-  $\pm 1.4\%$ in Box B. In 2018, for example, it turns the mean field's $-0.9$ into $+1.0$.
+  $\pm 1.4\%$ in Box B. In 2018, for example, it turns the mean field's $-0.8$ into $+1.0$.
 - **Mean field + DR kriging.** It does not improve on kriging, and in Box B it adds variance.
 
 These are realized errors of one array in one ocean, so year-to-year differences of a few tenths of

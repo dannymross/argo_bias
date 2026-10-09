@@ -29,11 +29,12 @@ YEARS = (2010, 2019)
 EPOCH = pd.Timestamp("2015-01-01")
 YEAR_D = 365.25
 
-LAM_MEAN, N_MIN, N_HARM = 5.0, 300, 2   # window half-width (deg), minimum profiles (window widened by 25%)
+LAM_MEAN, N_HARM = 5.0, 6   # fixed window half-width (deg) and annual harmonics, as Kuusela et al. eq. (5)
+N_MIN = 60                   # a window with fewer profiles (3x the coefficients) leaves its centre unfitted
 C_DEG = 1.0
 C_LAT = np.arange(cfg.BOXES["buffer"]["lat_bounds"][0] + C_DEG / 2, cfg.BOXES["buffer"]["lat_bounds"][1], C_DEG)
 C_LON = np.arange(cfg.BOXES["buffer"]["lon_bounds"][0] + C_DEG / 2, cfg.BOXES["buffer"]["lon_bounds"][1], C_DEG)
-N_T = 2 + 2 * N_HARM
+N_T = 3 + 2 * N_HARM
 
 
 def ohc_month(y, m):
@@ -129,10 +130,14 @@ def build_synth(arm=0, seed=0):
 
 
 def tbasis(day):
-    """Intercept, N_HARM annual harmonics and a linear trend in years since EPOCH: the part kept at a centre."""
-    t = np.asarray(day, float)[..., None]
-    w = 2 * np.pi * t / YEAR_D * np.arange(1, N_HARM + 1)
-    return np.concatenate([np.ones_like(t), np.sin(w), np.cos(w), t / YEAR_D], -1)
+    """Intercept, N_HARM annual harmonics in yearday tau(t) / 365, and a linear and quadratic trend in years
+    since EPOCH (the midpoint t_D of 2010-2019): the part kept at a centre."""
+    t = np.asarray(day, float)
+    d = np.datetime64(EPOCH.date(), "s") + np.round(t * 86400).astype("timedelta64[s]")
+    tau = (d - d.astype("datetime64[Y]")).astype(float) / 86400
+    w = 2 * np.pi * tau[..., None] / 365 * np.arange(1, N_HARM + 1)
+    s = (t / YEAR_D)[..., None]
+    return np.concatenate([np.ones_like(s), np.sin(w), np.cos(w), s, s**2], -1)
 
 
 def interp_matrix(lat, lon):
@@ -149,9 +154,9 @@ def interp_matrix(lat, lon):
 
 
 def fit_mean(obs):
-    """Window least squares at every centre: spatial quadratic in the window plus tbasis; keeps the tbasis
-    coefficients. Returns the full-data coefficients (C, N_T), the leave-one-float-out ones (F, C, N_T) and the
-    float ids indexing F. Leaving float f out drops its Gram contribution (exact refit)."""
+    """Least squares in the fixed window W(x*, y*) of every centre: spatial quadratic plus tbasis; keeps the
+    tbasis coefficients. Returns the full-data coefficients (C, N_T), the leave-one-float-out ones (F, C, N_T)
+    and the float ids indexing F. Leaving float f out drops its Gram contribution (exact refit)."""
     lat, lon, z = obs.lat.values, obs.lon.values, obs.z.values
     T = tbasis(obs.day.values)
     fid, fl = pd.factorize(obs.float_id.values)
@@ -160,13 +165,11 @@ def fit_mean(obs):
     full = np.full((len(C_LAT) * len(C_LON), N_T), np.nan)
     lofo = np.full((nF,) + full.shape, np.nan, np.float32)
     for c, (cy, cx) in enumerate(np.stack(np.meshgrid(C_LAT, C_LON, indexing="ij"), -1).reshape(-1, 2)):
-        dy, dx, lam = lat - cy, lon - cx, LAM_MEAN
-        while (inw := (np.abs(dy) <= lam) & (np.abs(dx) <= lam)).sum() < N_MIN and lam < 4 * LAM_MEAN:
-            lam *= 1.25
-        i = np.flatnonzero(inw)
+        dy, dx = lat - cy, lon - cx
+        i = np.flatnonzero((np.abs(dy) <= LAM_MEAN) & (np.abs(dx) <= LAM_MEAN))
         if len(i) < N_MIN:
             continue
-        u, v = dx[i] / lam, dy[i] / lam
+        u, v = dx[i] / LAM_MEAN, dy[i] / LAM_MEAN
         X = np.column_stack([u, v, u * v, u**2, v**2, T[i]])
         G, g = X.T @ X, X.T @ z[i]
         full[c] = np.linalg.solve(G + ridge * np.trace(G), g)[5:]
@@ -181,10 +184,16 @@ def fit_mean(obs):
     return full, lofo, fl
 
 
+def interp_coef(W, coef):
+    """Bilinear interpolation of centre coefficients, renormalized over the fitted centres (NaN if none)."""
+    ok = np.isfinite(coef[:, 0])
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return (W @ np.where(ok[:, None], coef, 0.0)) / (W @ ok.astype(float))[:, None]
+
+
 def mean_at(coef, lat, lon, day):
     """Fitted mean at points from centre coefficients (C, N_T)."""
-    W = interp_matrix(lat, lon)
-    return ((W @ np.nan_to_num(coef)) * tbasis(day)).sum(-1)
+    return (interp_coef(interp_matrix(lat, lon), np.asarray(coef, float)) * tbasis(day)).sum(-1)
 
 
 def build_mean():
@@ -193,10 +202,9 @@ def build_mean():
     np.savez_compressed(os.path.join(OUT, "mean_field.npz"), full=full, lofo=lofo, float_id=np.asarray(fl),
                         c_lat=C_LAT, c_lon=C_LON)
     mu = mean_at(full, obs.lat.values, obs.lon.values, obs.day.values)
-    fid = pd.Index(fl).get_indexer(obs.float_id.values)
-    W = interp_matrix(obs.lat.values, obs.lon.values)
-    T = tbasis(obs.day.values)
-    mu_lofo = np.array([(W[k] @ np.nan_to_num(lofo[fid[k]])) @ T[k] for k in range(len(obs))]).ravel()
+    mu_lofo = np.full(len(obs), np.nan)
+    for k, g in obs.groupby("float_id").indices.items():
+        mu_lofo[g] = mean_at(lofo[pd.Index(fl).get_loc(k)], obs.lat.values[g], obs.lon.values[g], obs.day.values[g])
     out = obs.assign(mu=mu, mu_lofo=mu_lofo)
     out.to_parquet(os.path.join(OUT, "obs_mean.parquet"))
     return out
@@ -262,7 +270,7 @@ def _inverse(R):
 def mu_lofo_at(lofo, fidx, lat, lon, day):
     """Leave-one-float-out mean at points for each float index in fidx: (n, len(fidx))."""
     W, T = interp_matrix(lat, lon), tbasis(day)
-    return np.stack([((W @ lofo[f].astype(float)) * T).sum(-1) for f in fidx], -1)
+    return np.stack([(interp_coef(W, lofo[f].astype(float)) * T).sum(-1) for f in fidx], -1)
 
 
 def krige_month(month, obs=None, params=None, nodes=None):
@@ -487,7 +495,7 @@ PERIODS = {"2010-2019": (2010, 2019), "2015-2019": (2015, 2019)}
 def mean_field_box_months(years=YEARS):
     """Box-month means of the full-data mean field by the map-node quadrature (3 time nodes per month)."""
     nodes, full = map_nodes(), load_mean()[0]
-    W = interp_matrix(nodes.lat.values, nodes.lon.values) @ np.nan_to_num(full)
+    W = interp_coef(interp_matrix(nodes.lat.values, nodes.lon.values), full)
     rows = []
     for m0 in pd.date_range(f"{years[0]}-01", f"{years[1]}-12", freq="MS"):
         tn = (m0 - EPOCH) / pd.Timedelta(days=1) + m0.days_in_month * np.asarray(T_NODES)
@@ -497,17 +505,27 @@ def mean_field_box_months(years=YEARS):
     return pd.DataFrame(rows)
 
 
+def krige_box_months():
+    """Box-month means of the full-data kriging map (mean field + anomaly) for every kriged month."""
+    import glob
+    nd = pd.concat(pd.read_parquet(f) for f in sorted(glob.glob(os.path.join(OUT, f"krige{KTAG}", "nodes_*.parquet"))))
+    nd = nd.assign(v=nd.area * (nd.mu + nd.anom))
+    g = nd.groupby(["box", "month"])[["v", "area"]].sum()
+    return (g.v / g.area).rename("krige").reset_index()
+
+
 def assemble_estimates(label="speed"):
-    """Box-month truth with the sample mean and mean field over YEARS, and kriging and DR (2015-2019) from
-    dr_estimates; box A u B is the area-weighted combination of the two boxes."""
+    """Box-month truth with the sample mean, mean field and kriging over the months each covers, and DR
+    (2015-2019) from dr_estimates; box A u B is the area-weighted combination of the two boxes."""
     t = pd.read_parquet(os.path.join(BASE, "truth_monthly.parquet"))
     obs = pd.read_parquet(os.path.join(OUT, "obs.parquet"))
     nv = obs[obs.box != ""].assign(month=lambda d: d.time.dt.to_period("M").dt.to_timestamp()).groupby(
         ["box", "month"]).z.mean().rename("naive").reset_index()
     dr = pd.read_parquet(os.path.join(OUT, f"dr_estimates{KTAG}.parquet"))
-    dr = dr[(dr.label == label) & (dr.box != "boxAB")][["box", "month", "krige", "dr"]]
+    dr = dr[(dr.label == label) & (dr.box != "boxAB")][["box", "month", "dr"]]
     d = t[t.box != "boxAB"].merge(nv, on=["box", "month"], how="left").merge(
-        mean_field_box_months(), on=["box", "month"]).merge(dr, on=["box", "month"], how="left")
+        mean_field_box_months(), on=["box", "month"]).merge(krige_box_months(), on=["box", "month"], how="left").merge(
+        dr, on=["box", "month"], how="left")
     cols = ["ohc", *EST_LAB]
     ab = d.groupby("month").apply(lambda g: pd.Series({c: np.average(g[c], weights=g.area_m2) for c in cols}))
     d = pd.concat([d, ab.reset_index().assign(box="boxAB")], ignore_index=True)[["box", "month", *cols]]
@@ -538,11 +556,14 @@ def summary_table(box, d=None):
     return out.rename_axis("year").reset_index()
 
 
-def plot_bias(d=None, pct=True, figsize=(13, 8.5)):
-    """Box-month bias (percent of truth or GJ/m2): one row per box, the sample mean in the left panel and
-    the model-based estimators in the right, each panel on its own scale."""
+def plot_bias(d=None, pct=True, by="month", figsize=(13, 8.5)):
+    """Bias by box-month or (day-weighted) box-year, percent of truth or GJ/m2: one row per box, the sample
+    mean in the left panel and the model-based estimators in the right, each panel on its own scale."""
     import matplotlib.pyplot as plt
     d = load_estimates() if d is None else d
+    if by == "year":
+        g = _period_means(d).reset_index()
+        d = g[g.period.str.len() == 4].assign(month=lambda x: x.period.astype(int))
     groups = (["naive"], [c for c in EST_LAB if c != "naive"])
     fig, ax = plt.subplots(len(BOX_LAB), 2, figsize=figsize, sharex=True)
     for row, b in zip(ax, BOX_LAB):
@@ -551,13 +572,90 @@ def plot_bias(d=None, pct=True, figsize=(13, 8.5)):
             a.axhline(0, color="#52514e", lw=0.8)
             for c in cols:
                 v = (x[c] - x.ohc) / x.ohc * 100 if pct else (x[c] - x.ohc) * 1e-9
-                a.plot(x.month, v, color=EST_COL[c], lw=1.4, label=EST_LAB[c])
+                a.plot(x.month, v, "-o" if by == "year" else "-", color=EST_COL[c], lw=1.4 if by == "month" else 2,
+                       ms=6, label=EST_LAB[c])
             a.set_title(f"{BOX_LAB[b]}: {'sample mean' if cols == ['naive'] else 'model-based estimators'}",
                         loc="left", fontsize=10)
         row[0].set_ylabel("bias (% of truth)" if pct else "bias (GJ/m2)")
     ax[0, 1].legend(fontsize=8, frameon=False, loc="lower left")
     for a in ax[-1]:
-        a.set_xlabel("month")
+        a.set_xlabel(by)
+        if by == "year":
+            a.set_xticks(range(YEARS[0], YEARS[1] + 1))
+    fig.tight_layout()
+    return fig
+
+
+def yearly(d=None):
+    """Day-weighted box-year truth and estimates (GJ/m2), indexed by box and integer year."""
+    g = _period_means(load_estimates() if d is None else d).reset_index()
+    g = g[g.period.str.len() == 4].assign(year=lambda x: x.period.astype(int))
+    return g.set_index(["box", "year"])[["ohc", *EST_LAB]] * 1e-9
+
+
+def scale_metrics(d=None):
+    """Per box and estimator, over the years it covers: mean bias in years of the true 2010-2019 trend, trend
+    error as % of the true trend over the same years (only for estimators covering all of YEARS), and the RMS
+    error of the year-to-year change over the SD of the true changes."""
+    y, rows = yearly(d), []
+    for b in BOX_LAB:
+        x = y.loc[b]
+        slope = np.polyfit(x.index, x.ohc, 1)[0]
+        for c, lab in EST_LAB.items():
+            e = (x[c] - x.ohc).dropna()
+            full = len(e) == len(x)
+            rows.append(dict(box=b, estimator=lab, years=f"{e.index.min()}-{e.index.max()}",
+                             bias_years_of_trend=e.mean() / slope,
+                             trend_error_pct=100 * np.polyfit(e.index, e, 1)[0] / slope if full else np.nan,
+                             change_error_ratio=np.sqrt((e.diff() ** 2).mean()) / x.ohc.diff().std()))
+    return pd.DataFrame(rows)
+
+
+def plot_changes(d=None, figsize=(13, 8.5)):
+    """True and estimated year-to-year change of the box-year mean: one row per box, the sample mean left
+    and the model-based estimators right."""
+    import matplotlib.pyplot as plt
+    y = yearly(d).groupby(level="box").diff().dropna(subset=["ohc"])
+    groups = (["naive"], [c for c in EST_LAB if c != "naive"])
+    fig, ax = plt.subplots(len(BOX_LAB), 2, figsize=figsize, sharex=True)
+    for row, b in zip(ax, BOX_LAB):
+        x = y.loc[b]
+        for a, cols in zip(row, groups):
+            a.axhline(0, color="#52514e", lw=0.8)
+            a.plot(x.index, x.ohc, "-o", color="#0b0b0b", lw=2, ms=6, label="truth")
+            for c in cols:
+                a.plot(x.index, x[c], "-o", color=EST_COL[c], lw=1.6, ms=6, label=EST_LAB[c])
+            a.set_title(f"{BOX_LAB[b]}: {'sample mean' if cols == ['naive'] else 'model-based estimators'}",
+                        loc="left", fontsize=10)
+        row[0].set_ylabel("change from previous year (GJ/m2)")
+    for a in ax[0]:
+        a.legend(fontsize=8, frameon=False, loc="lower left")
+    for a in ax[-1]:
+        a.set_xlabel("year")
+        a.set_xticks(range(YEARS[0] + 1, YEARS[1] + 1))
+    fig.tight_layout()
+    return fig
+
+
+def plot_scale_metrics(d=None, figsize=(13, 4.2)):
+    """Bias on the scale of the signal: level bias in years of warming, trend error in % of the trend, and
+    the yearly-change error relative to the true yearly changes, grouped by box."""
+    import matplotlib.pyplot as plt
+    m = scale_metrics(d)
+    panels = (("bias_years_of_trend", "mean bias (years of 2010-2019 warming)", 0),
+              ("trend_error_pct", "trend error (% of true trend, 2010-2019)", 0),
+              ("change_error_ratio", "RMS error of yearly change / SD of true change", 1))
+    fig, ax = plt.subplots(1, 3, figsize=figsize)
+    w = 0.8 / len(EST_LAB)
+    for a, (col, lab, ref) in zip(ax, panels):
+        for k, (c, el) in enumerate(EST_LAB.items()):
+            v = m[m.estimator == el].set_index("box").loc[list(BOX_LAB), col]
+            a.bar(np.arange(len(BOX_LAB)) + (k - 1.5) * w, v, w * 0.9, color=EST_COL[c], label=el)
+        a.axhline(ref, color="#52514e", lw=0.8, ls="-" if ref == 0 else "--")
+        a.set_xticks(range(len(BOX_LAB)), list(BOX_LAB.values()))
+        a.set_title(lab, fontsize=9)
+        a.grid(axis="x", visible=False)
+    ax[0].legend(fontsize=8, frameon=False)
     fig.tight_layout()
     return fig
 
