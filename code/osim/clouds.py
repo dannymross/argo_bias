@@ -44,14 +44,15 @@ VEL_END = pd.Timestamp("2019-12-31")   # last daily velocity slice
 NORTH = cfg.BOXES["boxB"]["lat_bounds"][0]   # anchors at or north of 34 N take box B's (kx, ky)
 
 
-def load_fixes(dedup=DEDUP_DAYS):
-    """Every fix inside the park-velocity domain; a fix within `dedup` days of its float's previous fix is dropped."""
-    (la0, la1), (lo0, lo1) = di.velocity_extent(cs._window_files("2010-01", "2010-01")[0])
-    d = pd.read_csv(ARGO_CSV, usecols=["float_id", "lat", "lon", "date"]).dropna()
+def load_fixes(dedup=DEDUP_DAYS, cols=(), bounds=None):
+    """Every fix inside the park-velocity domain (or `bounds` ((lat0, lat1), (lon0, lon1))); a fix within `dedup`
+    days of its float's previous fix is dropped. `cols`: extra argo_ohc.csv columns to carry."""
+    (la0, la1), (lo0, lo1) = bounds or di.velocity_extent(cs._window_files("2010-01", "2010-01")[0])
+    d = pd.read_csv(ARGO_CSV, usecols=["float_id", "lat", "lon", "date", *cols]).dropna(subset=["lat", "lon", "date"])
     d["time"] = pd.to_datetime(d["date"], format="ISO8601", utc=True).dt.tz_localize(None)
     d = d[d.lat.between(la0, la1) & d.lon.between(lo0, lo1)].sort_values(["float_id", "time"])
     gap = d.groupby("float_id").time.diff() / pd.Timedelta(days=1)
-    return d[~(gap < dedup)][["float_id", "lat", "lon", "time"]].reset_index(drop=True)
+    return d[~(gap < dedup)][["float_id", "lat", "lon", "time", *cols]].reset_index(drop=True)
 
 
 def anchor_profiles(fixes, launch, lag=MIN_LAG, max_h=MAX_H):

@@ -91,11 +91,11 @@ def lattice(tag="buffer", years=cfg.ANALYSIS_YEARS, deg=SAMPLE_DEG, days=SAMPLE_
     return out.reset_index(drop=True)
 
 
-def centres(boxes=("boxA", "boxB"), deg=PARAM_DEG, months=range(1, 13)):
-    """(box, lat, lon, month) of every PARAMETER grid cell."""
+def centres(boxes=("boxA", "boxB"), deg=PARAM_DEG, months=range(1, 13), bounds=None):
+    """(box, lat, lon, month) of every PARAMETER grid cell; `bounds` {name: (lat, lon)} overrides the boxes."""
     rows = []
-    for b in boxes:
-        (la0, la1), (lo0, lo1) = cfg.BOXES[b]["lat_bounds"], cfg.BOXES[b]["lon_bounds"]
+    bounds = bounds or {b: (cfg.BOXES[b]["lat_bounds"], cfg.BOXES[b]["lon_bounds"]) for b in boxes}
+    for b, ((la0, la1), (lo0, lo1)) in bounds.items():
         for la in np.arange(la0 + deg / 2, la1, deg):
             for lo in np.arange(lo0 + deg / 2, lo1, deg):
                 for m in months:

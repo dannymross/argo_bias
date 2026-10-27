@@ -4,6 +4,8 @@
 #   sbatch --array=0-49 code/osim/submit_krige_local.slurm
 #   python code/osim/krige_local.py --gather      # concat + median over tau*
 #   sbatch --array=0-49 --account=open code/osim/submit_krige_local.slurm 50 argomean data/osim/glorys_dr/krige_local_lattice_argomean.csv
+#   sbatch --array=0-19 --account=open --cpus-per-task=1 --mem=8G --time=00:30:00 code/osim/submit_krige_local.slurm \
+#       20 real data/osim/glorys_dr_real/krige_local_profiles.csv data/osim/glorys_dr_real/krige_local_centres_buffer.csv
 #SBATCH --job-name=krige_local
 #SBATCH --partition=standard
 #SBATCH --account=statsresearch_cr_default
@@ -20,5 +22,6 @@ NTASK="${1:-50}"
 TAG="${2:-oracle}"
 T="${SLURM_ARRAY_TASK_ID:?must run as an array job}"
 LATTICE="${3:-}"
+CENTRES="${4:-}"
 /storage/work/dmr6737/.conda/envs/argo_bias/bin/python code/osim/krige_local_fit.py \
-    "data/osim/krige_local_${TAG}_t${T}.csv" "$T" "$NTASK" ${LATTICE:+--lattice "$LATTICE"}
+    "data/osim/krige_local_${TAG}_t${T}.csv" "$T" "$NTASK" ${LATTICE:+--lattice "$LATTICE"} ${CENTRES:+--centres "$CENTRES"}

@@ -25,16 +25,32 @@ OUT = BASE + TAG
 LAYERS = os.path.join(cfg.GLORYS_DIR, cfg.LAYER_DIR, "ohc_layers_daily_{y}_{m:02d}.nc")
 AREA = os.path.join(cfg.OUT_DIR, "cell_area_buffer.nc")
 BOXES = {"boxA": ("boxA",), "boxB": ("boxB",), "boxAB": ("boxA", "boxB")}
-YEARS = (2010, 2019)
+# analysis domain of the real-data outcome model; knots: cubic B-spline trend knot spacing (years), None = quadratic
+DOMAINS = {"buffer": dict(lat=cfg.BOXES["buffer"]["lat_bounds"], lon=cfg.BOXES["buffer"]["lon_bounds"],
+                          years=(2010, 2019), knots=None, basin=False),
+           "natl": dict(lat=(0.0, 66.0), lon=(-100.0, 0.0), years=(2004, 2025), knots=5.0, basin=True)}
+DOMAIN = os.environ.get("GLORYS_DR_DOMAIN", "buffer")
+DOM = DOMAINS[DOMAIN]
+YEARS = DOM["years"]
 EPOCH = pd.Timestamp("2015-01-01")
 YEAR_D = 365.25
 
 LAM_MEAN, N_HARM = 5.0, 6   # fixed window half-width (deg) and annual harmonics, as Kuusela et al. eq. (5)
 N_MIN = 60                   # a window with fewer profiles (3x the coefficients) leaves its centre unfitted
 C_DEG = 1.0
-C_LAT = np.arange(cfg.BOXES["buffer"]["lat_bounds"][0] + C_DEG / 2, cfg.BOXES["buffer"]["lat_bounds"][1], C_DEG)
-C_LON = np.arange(cfg.BOXES["buffer"]["lon_bounds"][0] + C_DEG / 2, cfg.BOXES["buffer"]["lon_bounds"][1], C_DEG)
-N_T = 3 + 2 * N_HARM
+C_LAT = np.arange(DOM["lat"][0] + C_DEG / 2, DOM["lat"][1], C_DEG)
+C_LON = np.arange(DOM["lon"][0] + C_DEG / 2, DOM["lon"][1], C_DEG)
+
+
+def _trend_knots():
+    a, b = YEARS[0] - EPOCH.year, YEARS[1] + 1 - EPOCH.year
+    inner = np.linspace(a, b, int(round((b - a) / DOM["knots"])) + 1)[1:-1]
+    return np.r_[[a] * 4, inner, [b] * 4]
+
+
+N_T = 1 + 2 * N_HARM + (2 if DOM["knots"] is None else len(_trend_knots()) - 5)
+SLA = os.environ.get("GLORYS_DR_SLA", "0") == "1"   # local altimetric SLA anomaly (cm) as a mean-field covariate
+N_K = N_T + SLA
 
 
 def ohc_month(y, m):
@@ -95,12 +111,53 @@ def in_buffer(f):
     return f.lat.between(la0, la1) & f.lon.between(lo0, lo1)
 
 
+@__import__("functools").lru_cache(1)
+def _basin_grid(deg=0.25, seed=(30.0, -50.0)):
+    """Ocean cells of the domain connected to `seed` (4-connectivity on a deg grid), minus the Mediterranean."""
+    from global_land_mask import globe
+    from scipy import ndimage
+    la = np.arange(DOM["lat"][0] + deg / 2, DOM["lat"][1], deg)
+    lo = np.arange(DOM["lon"][0] + deg / 2, DOM["lon"][1], deg)
+    LA, LO = np.meshgrid(la, lo, indexing="ij")
+    lab = ndimage.label(globe.is_ocean(LA, LO))[0]
+    m = lab == lab[np.searchsorted(la, seed[0]), np.searchsorted(lo, seed[1])]
+    return m & ~((LA > 30) & (LA < 42) & (LO > -5.5)), deg
+
+
+def in_domain(lat, lon):
+    lat, lon = np.asarray(lat, float), np.asarray(lon, float)
+    ok = (lat >= DOM["lat"][0]) & (lat <= DOM["lat"][1]) & (lon >= DOM["lon"][0]) & (lon <= DOM["lon"][1])
+    if DOM["basin"]:
+        m, deg = _basin_grid()
+        i = np.clip(((lat - DOM["lat"][0]) / deg).astype(int), 0, m.shape[0] - 1)
+        j = np.clip(((lon - DOM["lon"][0]) / deg).astype(int), 0, m.shape[1] - 1)
+        ok &= m[i, j]
+    return ok
+
+
 def build_obs():
     """Every de-duplicated fix in the buffer over YEARS with GLORYS OHC at its containing cell and day; prof_id
     matches clouds.PROFILES. Fixes on masked cells are dropped."""
     f = cl.load_fixes().reset_index(names="prof_id")
     f = sample_ohc(f[in_buffer(f) & f.time.dt.year.between(*YEARS)].copy()).dropna(subset=["z"])
     f["day"] = (f.time - EPOCH) / pd.Timedelta(days=1)
+    os.makedirs(OUT, exist_ok=True)
+    f.reset_index(drop=True).to_parquet(os.path.join(OUT, "obs.parquet"))
+    return f
+
+
+def build_obs_real(depth=2000, min_max_depth=1900.0):
+    """Real Argo OHC (0-depth m, J/m2) at the same de-duplicated fixes as build_obs, restricted to profiles reaching
+    min_max_depth; box membership from the box bounds, no GLORYS field. Write under GLORYS_DR_TAG=_real."""
+    v = f"ohc_{depth}"
+    f = cl.load_fixes(cols=("max_depth", v), bounds=(DOM["lat"], DOM["lon"])).reset_index(names="prof_id")
+    f = f[in_domain(f.lat, f.lon) & f.time.dt.year.between(*YEARS) & (f.max_depth >= min_max_depth)].dropna(subset=[v])
+    f = f.rename(columns={v: "z"}).assign(box="", day=(f.time - EPOCH) / pd.Timedelta(days=1))
+    if SLA:
+        f["s"] = sla_loc(f.lat.values, f.lon.values, f.time.values)
+    for b in ("boxA", "boxB"):
+        (la0, la1), (lo0, lo1) = cfg.BOXES[b]["lat_bounds"], cfg.BOXES[b]["lon_bounds"]
+        f.loc[f.lat.between(la0, la1) & f.lon.between(lo0, lo1), "box"] = b
     os.makedirs(OUT, exist_ok=True)
     f.reset_index(drop=True).to_parquet(os.path.join(OUT, "obs.parquet"))
     return f
@@ -137,7 +194,29 @@ def tbasis(day):
     tau = (d - d.astype("datetime64[Y]")).astype(float) / 86400
     w = 2 * np.pi * tau[..., None] / 365 * np.arange(1, N_HARM + 1)
     s = (t / YEAR_D)[..., None]
-    return np.concatenate([np.ones_like(s), np.sin(w), np.cos(w), s, s**2], -1)
+    if DOM["knots"] is None:
+        return np.concatenate([np.ones_like(s), np.sin(w), np.cos(w), s, s**2], -1)
+    from scipy.interpolate import BSpline
+    k = _trend_knots()
+    x = np.clip(s.ravel(), k[0], k[-1] - 1e-9)
+    B = BSpline.design_matrix(x, k, 3).toarray()[:, 1:] if x.size else np.zeros((0, len(k) - 5))
+    return np.concatenate([np.ones_like(s), np.sin(w), np.cos(w), B.reshape(s.shape[:-1] + (B.shape[1],))], -1)
+
+
+def kbasis(day, s=None):
+    """The kept mean-field regressors: tbasis, plus the local SLA anomaly when SLA (missing SLA enters as 0)."""
+    T = tbasis(day)
+    return np.concatenate([T, np.nan_to_num(np.asarray(s, float))[..., None]], -1) if SLA else T
+
+
+def sla_loc(lat, lon, time, half_deg=1.0):
+    """Altimetric SLA minus its (2 half_deg)-square local mean (cm) at points."""
+    from sat import ssh
+    return ssh.at(lat, lon, time, var=(), half_deg=(half_deg,))[f"sla_loc{half_deg:g}"] * 100
+
+
+def _s(d):
+    return d["s"].to_numpy() if SLA else None
 
 
 def interp_matrix(lat, lon):
@@ -158,13 +237,15 @@ def fit_mean(obs):
     tbasis coefficients. Returns the full-data coefficients (C, N_T), the leave-one-float-out ones (F, C, N_T)
     and the float ids indexing F. Leaving float f out drops its Gram contribution (exact refit)."""
     lat, lon, z = obs.lat.values, obs.lon.values, obs.z.values
-    T = tbasis(obs.day.values)
+    T = kbasis(obs.day.values, _s(obs))
     fid, fl = pd.factorize(obs.float_id.values)
-    nF, p = len(fl), 5 + N_T
+    nF, p = len(fl), 5 + N_K
     ridge = 1e-8 * np.eye(p)
-    full = np.full((len(C_LAT) * len(C_LON), N_T), np.nan)
+    full = np.full((len(C_LAT) * len(C_LON), N_K), np.nan)
     lofo = np.full((nF,) + full.shape, np.nan, np.float32)
     for c, (cy, cx) in enumerate(np.stack(np.meshgrid(C_LAT, C_LON, indexing="ij"), -1).reshape(-1, 2)):
+        if DOM["basin"] and not in_domain(cy, cx):
+            continue
         dy, dx = lat - cy, lon - cx
         i = np.flatnonzero((np.abs(dy) <= LAM_MEAN) & (np.abs(dx) <= LAM_MEAN))
         if len(i) < N_MIN:
@@ -191,9 +272,9 @@ def interp_coef(W, coef):
         return (W @ np.where(ok[:, None], coef, 0.0)) / (W @ ok.astype(float))[:, None]
 
 
-def mean_at(coef, lat, lon, day):
-    """Fitted mean at points from centre coefficients (C, N_T)."""
-    return (interp_coef(interp_matrix(lat, lon), np.asarray(coef, float)) * tbasis(day)).sum(-1)
+def mean_at(coef, lat, lon, day, s=None):
+    """Fitted mean at points from centre coefficients (C, N_K)."""
+    return (interp_coef(interp_matrix(lat, lon), np.asarray(coef, float)) * kbasis(day, s)).sum(-1)
 
 
 def build_mean():
@@ -201,10 +282,12 @@ def build_mean():
     full, lofo, fl = fit_mean(obs)
     np.savez_compressed(os.path.join(OUT, "mean_field.npz"), full=full, lofo=lofo, float_id=np.asarray(fl),
                         c_lat=C_LAT, c_lon=C_LON)
-    mu = mean_at(full, obs.lat.values, obs.lon.values, obs.day.values)
+    s = _s(obs)
+    mu = mean_at(full, obs.lat.values, obs.lon.values, obs.day.values, s)
     mu_lofo = np.full(len(obs), np.nan)
     for k, g in obs.groupby("float_id").indices.items():
-        mu_lofo[g] = mean_at(lofo[pd.Index(fl).get_loc(k)], obs.lat.values[g], obs.lon.values[g], obs.day.values[g])
+        mu_lofo[g] = mean_at(lofo[pd.Index(fl).get_loc(k)], obs.lat.values[g], obs.lon.values[g], obs.day.values[g],
+                             None if s is None else s[g])
     out = obs.assign(mu=mu, mu_lofo=mu_lofo)
     out.to_parquet(os.path.join(OUT, "obs_mean.parquet"))
     return out
@@ -221,6 +304,7 @@ def load_mean():
 # ----------------------------------------------------------------------------
 
 KTAG = os.environ.get("GLORYS_DR_KTAG", "")   # "_argomean": plug-ins refitted to our own anomaly
+PROF = os.environ.get("GLORYS_DR_PROF", "box")  # "all": own-float-out predictions at every buffer profile
 PARAMS = os.path.join(cfg.OUT_DIR, f"krige_plugin_{KTAG.lstrip('_') or 'oracle'}.csv")
 LAMBDA_G, LAMBDA_T, JITTER = 10.0, 180.0, 1e-6   # as krige_estimate
 NODE_DEG, T_NODES = 0.5, (1 / 6, 1 / 2, 5 / 6)   # map grid: 0.5 deg cells, 3 time nodes per month
@@ -267,9 +351,9 @@ def _inverse(R):
     raise sla.LinAlgError("kriging matrix not positive definite")
 
 
-def mu_lofo_at(lofo, fidx, lat, lon, day):
+def mu_lofo_at(lofo, fidx, lat, lon, day, s=None):
     """Leave-one-float-out mean at points for each float index in fidx: (n, len(fidx))."""
-    W, T = interp_matrix(lat, lon), tbasis(day)
+    W, T = interp_matrix(lat, lon), kbasis(day, s)
     return np.stack([(interp_coef(W, lofo[f].astype(float)) * T).sum(-1) for f in fidx], -1)
 
 
@@ -291,7 +375,11 @@ def krige_month(month, obs=None, params=None, nodes=None):
     tn = d0 + nd * np.asarray(T_NODES)
     mid = d0 + nd / 2
     nodes = nodes.assign(cell=param_index(params, nodes.lat, nodes.lon))
-    here = obs[(obs.time.dt.to_period("M") == m0.to_period("M")) & (obs.box != "")]
+    if SLA:
+        sn = sla_loc(np.repeat(nodes.lat.values, len(tn)), np.repeat(nodes.lon.values, len(tn)),
+                     EPOCH + pd.to_timedelta(np.tile(tn, len(nodes)), "D")).reshape(len(nodes), len(tn))
+        sn = pd.DataFrame(sn, index=nodes.index)
+    here = obs[(obs.time.dt.to_period("M") == m0.to_period("M")) & ((obs.box != "") | (PROF == "all"))]
     here = here.assign(cell=param_index(params, here.lat, here.lon))
     xyz = obs[["lon", "lat", "day"]].to_numpy(float)
     node_rows, lofo_rows, prof_rows = [], [], []
@@ -300,6 +388,8 @@ def krige_month(month, obs=None, params=None, nodes=None):
         th = np.array([p.th_lon, p.th_lat, p.th_t])
         sel = np.flatnonzero((np.abs(xyz[:, 0] - p.lon) <= LAMBDA_G) & (np.abs(xyz[:, 1] - p.lat) <= LAMBDA_G)
                              & (np.abs(xyz[:, 2] - mid) <= LAMBDA_T))
+        if not len(sel):   # no data in the window: only map nodes can land here; left unpredicted
+            continue
         X, ob = xyz[sel], obs.iloc[sel]
         R = _corr(X, X, th)
         R[np.diag_indices_from(R)] += max(float(p.nugget_ratio), JITTER)
@@ -307,7 +397,7 @@ def krige_month(month, obs=None, params=None, nodes=None):
         a_full = B @ (ob.z.values - ob.mu.values)
         fids, fcol = np.unique(ob.float_id.values, return_inverse=True)
         fidx = fpos.get_indexer(fids)
-        Rm = ob.z.values[:, None] - mu_lofo_at(lofo, fidx, ob.lat.values, ob.lon.values, ob.day.values)
+        Rm = ob.z.values[:, None] - mu_lofo_at(lofo, fidx, ob.lat.values, ob.lon.values, ob.day.values, _s(ob))
         Rm[np.arange(len(ob)), fcol] = 0.0
         Y = B @ Rm
         A = Y.copy()
@@ -323,7 +413,8 @@ def krige_month(month, obs=None, params=None, nodes=None):
             an_full, an_lofo = C @ a_full, C @ A
             nid = np.repeat(nc.index.values, len(tn))
             node_rows.append(pd.DataFrame(dict(node=nid, day=P[:, 2], anom=an_full,
-                                               mu=mean_at(full, P[:, 1], P[:, 0], P[:, 2]))))
+                                               mu=mean_at(full, P[:, 1], P[:, 0], P[:, 2],
+                                                          sn.loc[nc.index].to_numpy().ravel() if SLA else None))))
             dif = an_lofo - an_full[:, None]
             r, k = np.nonzero(np.abs(dif) > LOFO_TOL)
             lofo_rows.append(pd.DataFrame(dict(node=nid[r], day=P[r, 2], float_id=fids[k],
@@ -360,6 +451,20 @@ def anomaly_lattice(years=(2015, 2019), pad=55):
     d = pd.concat(out, ignore_index=True).dropna()
     d.to_csv(os.path.join(OUT, "krige_local_lattice_argomean.csv"), index=False)
     return d
+
+
+def anomaly_profiles():
+    """Real-profile anomaly z - mu (full-data local mean) in the lattice layout krige_local_fit reads (GJ/m2), and
+    covariance-fit centres over the whole buffer on the 2 deg parameter grid."""
+    from osim import krige_local as kl
+    o = pd.read_parquet(os.path.join(OUT, "obs_mean.parquet"))
+    d = pd.DataFrame(dict(lon=o.lon, lat=o.lat, day=(o.time - pd.Timestamp(kl.EPOCH)).dt.days, year=o.time.dt.year,
+                          yearday=o.time.dt.dayofyear, z=(o.z - o.mu) * 1e-9))
+    d.to_csv(os.path.join(OUT, "krige_local_profiles.csv"), index=False)
+    cen = kl.centres(bounds={DOMAIN: (DOM["lat"], DOM["lon"])})
+    cen = cen[in_domain(cen.lat, cen.lon)]
+    cen.to_csv(os.path.join(OUT, f"krige_local_centres_{DOMAIN}.csv"), index=False)
+    return d, cen
 
 
 def krige_path(month, what):
@@ -485,6 +590,55 @@ def run_dr(arms=None, months=None):
     return d
 
 
+def load_resample_q(kind="rho_age"):
+    """The Sept. deployment-resample kernel q-hat (1000 reps, sigma 1/6 deg, 4 d), per m2 per day, in memory."""
+    from osim import intensity as qi
+    ds = qi.load_kernel(1 / 6, 4, deg="native")
+    return ds[[f"q_{kind}", "time_edge", "lat_edge", "lon_edge"]].load()
+
+
+def ipw_month(month, qds, kind="rho_age", prof_ids=None):
+    """Box-month HT and Hajek means of the in-box profiles weighted by 1 / q-hat (resample q-hat), and DR kriging:
+    the full-data map plus the HT- or Hajek-normalized 1 / q-hat correction of own-float-out residuals on C."""
+    from osim import intensity as qi
+    m0 = pd.Timestamp(month)
+    q_at = lambda d: 1e6 * qi.at(qds, d.lat.values, d.lon.values, EPOCH + pd.to_timedelta(d.day.values, "D"), kind)
+    nd = pd.read_parquet(krige_path(month, "nodes"))
+    pf = pd.read_parquet(krige_path(month, "prof"))
+    pf = pf if prof_ids is None else pf[pf.prof_id.isin(prof_ids)]
+    nd, pf = nd.assign(q=q_at(nd)), pf.assign(q=q_at(pf))
+    rows = []
+    for b, nb in nd.groupby("box"):
+        mu_T = nb.area.groupby(nb.node).first().sum() / 1e6 * m0.days_in_month
+        avg = lambda v: np.average(v, weights=nb.area)
+        thr = C_REL * np.average(nb.q.fillna(0.0), weights=nb.area)
+        pb = pf[pf.box == b]
+        ok = np.isfinite(pb.q.values)
+        w, z = 1 / pb.q.values[ok], pb.z.values[ok]
+        cp = ok & (pb.q.values >= thr)
+        wc, r = 1 / pb.q.values[cp], (pb.z - pb.mu_lofo - pb.anom_lofo).values[cp]
+        krig, cov = avg(nb.mu + nb.anom), avg(nb.q >= thr)
+        rows.append(dict(box=b, month=m0, area_km2=mu_T / m0.days_in_month, n_prof=len(pb), n_noq=int((~ok).sum()),
+                         ht=(w * z).sum() / mu_T, hajek=(w * z).sum() / w.sum() if ok.any() else np.nan,
+                         ht_mass=w.sum() / mu_T, ess=w.sum() ** 2 / (w**2).sum() if ok.any() else 0.0, cover=cov,
+                         dr_ht=krig + (wc * r).sum() / mu_T,
+                         dr_hajek=krig + (cov * (wc * r).sum() / wc.sum() if cp.any() else 0.0)))
+    return pd.DataFrame(rows)
+
+
+def run_ipw(months=None, kind="rho_age"):
+    months = pd.date_range("2015-01", "2019-12", freq="MS") if months is None else months
+    qds = load_resample_q(kind)
+    d = pd.concat([ipw_month(m, qds, kind) for m in months], ignore_index=True)
+    cols = ["ht", "hajek", "ht_mass", "dr_ht", "dr_hajek", "cover"]
+    ab = d.groupby("month").apply(lambda g: pd.Series(
+        {c: np.average(g[c], weights=g.area_km2) for c in cols} | dict(n_prof=g.n_prof.sum(), area_km2=g.area_km2.sum())))
+    d = pd.concat([d, ab.reset_index().assign(box="boxAB")], ignore_index=True)
+    d = d.merge(pd.read_parquet(os.path.join(BASE, "truth_monthly.parquet"))[["box", "month", "ohc"]], on=["box", "month"])
+    d.to_parquet(os.path.join(OUT, f"ipw_estimates{KTAG}.parquet"))
+    return d
+
+
 EST_LAB = dict(naive="sample mean", mean_only="mean field", krige="mean field + kriging", dr="mean field + DR kriging")
 EST_COL = dict(naive="#2a78d6", mean_only="#eb6834", krige="#1baf7a", dr="#eda100")
 BOX_LAB = dict(boxA="Box A", boxB="Box B", boxAB="Box A u B")
@@ -499,7 +653,7 @@ def mean_field_box_months(years=YEARS):
     rows = []
     for m0 in pd.date_range(f"{years[0]}-01", f"{years[1]}-12", freq="MS"):
         tn = (m0 - EPOCH) / pd.Timedelta(days=1) + m0.days_in_month * np.asarray(T_NODES)
-        mu = W @ tbasis(tn).mean(0)
+        mu = W[:, :N_T] @ tbasis(tn).mean(0)
         for b, g in nodes.groupby("box"):
             rows.append(dict(box=b, month=m0, mean_only=np.average(mu[g.index], weights=g.area)))
     return pd.DataFrame(rows)
@@ -668,7 +822,7 @@ def plot_series(d=None, figsize=(11, 6.5)):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=("truth", "obs", "synth", "mean", "lattice", "krige", "dr"))
+    ap.add_argument("what", choices=("truth", "obs", "obs_real", "anom_profiles", "synth", "mean", "lattice", "krige", "dr", "ipw"))
     ap.add_argument("--month")
     a = ap.parse_args()
     if a.what == "truth":
@@ -677,6 +831,12 @@ if __name__ == "__main__":
     elif a.what == "obs":
         o = build_obs()
         print(len(o), o.float_id.nunique(), o.groupby([o.time.dt.year, "box"]).size().unstack().to_string())
+    elif a.what == "obs_real":
+        o = build_obs_real()
+        print(len(o), o.float_id.nunique(), o.groupby([o.time.dt.year, "box"]).size().unstack().to_string())
+    elif a.what == "anom_profiles":
+        d, cen = anomaly_profiles()
+        print(len(d), "profile anomalies, sd", round(d.z.std(), 3), "GJ/m2;", len(cen), "centres")
     elif a.what == "synth":
         o, dr = build_synth()
         print(len(o), "obs;", len(dr), "drawn;", o[o.prof_id.isin(dr.prof_id)].groupby("box").size().to_dict())
@@ -685,6 +845,10 @@ if __name__ == "__main__":
         print(len(d), d.groupby("year").z.agg(["mean", "std"]).round(3).to_string())
     elif a.what == "krige":
         run_krige(a.month)
+    elif a.what == "ipw":
+        d = run_ipw()
+        e = d.assign(**{c: (d[c] - d.ohc) * 1e-9 for c in ("ht", "hajek", "dr_ht", "dr_hajek")})
+        print(e.groupby("box")[["ht", "hajek", "dr_ht", "dr_hajek", "ht_mass", "cover", "n_noq"]].mean().round(3).to_string())
     elif a.what == "dr":
         d = run_dr()
         e = d.assign(**{c: (d[c] - d.ohc) * 1e-9 for c in ("naive", "mean_only", "krige", "dr")})

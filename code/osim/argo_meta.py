@@ -94,6 +94,22 @@ def launch_table(wmos):
     return pd.DataFrame(rows)
 
 
+def float_table(wmos):
+    """Per-float categorical metadata: platform, pressure/CTD sensor models, deployment cruise, project, PI."""
+    rows = []
+    for w in wmos:
+        p = os.path.join(META_DIR, f"{w}_meta.nc")
+        r = {"float_id": int(w)}
+        if os.path.exists(p):
+            with xr.open_dataset(p, decode_times=False) as m:
+                r.update({k.lower(): _text(m[k].values) for k in ("PLATFORM_TYPE", "WMO_INST_TYPE", "DEPLOYMENT_CRUISE_ID",
+                          "DEPLOYMENT_PLATFORM", "PROJECT_NAME", "PI_NAME", "DATA_CENTRE") if k in m})
+                sens = dict(zip((_text(v) for v in m["SENSOR"].values), (_text(v) for v in m["SENSOR_MODEL"].values)))
+                r.update(pres_sensor=sens.get("CTD_PRES", ""), ctd=sens.get("CTD_TEMP", ""))
+        rows.append(r)
+    return pd.DataFrame(rows)
+
+
 def build(pad=3.0, start="2009-10-01", end="2020-01-31"):
     d = read_argo()
     wmos = candidates(d, pad, start, end)
