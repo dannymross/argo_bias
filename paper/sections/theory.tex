@@ -1,0 +1,817 @@
+% Theory and methods: doubly robust estimation of annual North Atlantic OHC under Lagrangian sampling.
+
+\section{Overview}\label{sec:overview}
+
+The target is the area-mean $0$--$2000$\,m ocean heat content (OHC) of the deep North Atlantic in
+each year. Argo floats sample it where the flow takes them, so the profiles are not a uniform draw
+from the domain. We estimate it with a cross-fit doubly robust (DR) estimator: a map (local mean
+field plus locally stationary kriging) plus an inverse-intensity-weighted correction of the map's
+error. The argument runs in eight steps.
+\begin{enumerate}
+  \item The estimand is a linear functional of a fixed field (\cref{sec:setting}).
+  \item Conditional on the ocean, the profiles form a point process whose only randomness is the
+        deployments; its intensity is a fixed function of the deployment law and the flow
+        (\cref{sec:design}).
+  \item Any linear estimator has an exact bias identity; the map's error is its integrated
+        residual, which nothing forces to vanish (\cref{sec:linear,sec:outcome}).
+  \item DR adds to the map a weighted estimate of the map's own error from floats the map did not
+        see. Its error has an exact representation, and its bias is a product of map error and
+        intensity error plus named remainders (\cref{sec:dr}).
+  \item Its variance comes from the design alone and has a float-cluster estimator
+        (\cref{sec:variance}).
+  \item DR trades the map's error for the noise and residual bias of
+        estimating it; an exact MSE decomposition says when this pays (\cref{sec:gain}).
+  \item The intensity is estimated by simulating the deployments in the GLORYS flow
+        (\cref{sec:qhat}); on real data, the error of that simulation is what the bias multiplies
+        (\cref{sec:real}).
+  \item Validation separates what holds by construction from what must be tested
+        (\cref{sec:validation}).
+\end{enumerate}
+Approximations and heuristics are labelled where they occur. Assumptions are collected in
+\cref{sec:assumptions} and open choices in \cref{sec:open}.
+
+\paragraph{Notation.}
+\begin{center}\footnotesize
+\begin{tabular}{@{}ll@{\qquad}ll@{}}
+\toprule
+$\mu=\alpha\otimes\mathrm{Leb}$ & area $\times$ time measure &
+$\theta_y=\int Z\dd\Prob_y$ & estimand (year $y$)\\
+$\X_y$, $\Prob_y$ & basin-year domain, normalized measure &
+$\hat m_{-k}$, $e_k=Z-\hat m_{-k}$ & fold-$k$ map, its error\\
+$s_j$, $c_j$ & deployment $j$, its cohort (launch year) &
+$A^*$ & reachable basin\\
+$\Phi_u(s)$ & profile points of deployment $s$ &
+$\lambda_k=q_{k|-k}/\hat q_k$ & intensity ratio\\
+$\Lambda$, $q=d\Lambda/d\mu$ & intensity measure and density &
+$\hat q_k$ & fold intensity estimate\\
+$q^{(1)}_c$ & intensity of one cohort-$c$ deployment &
+$\hat C_k$, $T$ & DR correction, map error\\
+$\mathcal G_{-k}$ & everything except fold $k$'s positions &
+$\beta_k$, $\mathcal V_k$ & correction's bias, variance\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ---------------------------------------------------------------------------------------------
+\section{Setting and estimand}\label{sec:setting}
+
+Spacetime is $\X=\mathbb S^2\times\R$ with Borel $\sigma$-algebra $\B(\X)$. Let $\alpha$ be surface
+measure on the sphere of radius $R_\oplus$ (m$^2$) and $\mu=\alpha\otimes\mathrm{Leb}$ (m$^2$\,day).
+Let $A\subset\mathbb S^2$ be the analysis region (\cref{sec:open}), $M$ the mask of sea floor deeper
+than $2000$\,m, and $A^*\subseteq A\cap M$ its Argo-reachable part (\cref{def:domain}). For year $y$,
+with time interval $\T_y$, the basin-year domain and its target probability measure are
+\[
+  \X_y=A^*\times\T_y,\qquad \Prob_y(E)=\frac{\mu(E\cap\X_y)}{\mu(\X_y)},\quad E\in\B(\X).
+\]
+$Z:\X\to\R$ is the $0$--$2000$\,m OHC (J\,m$^{-2}$), bounded and measurable, and \emph{fixed}: all
+randomness is in the sampling. The estimand is
+\[
+  \theta_y=\int_\X Z\dd\Prob_y ,
+\]
+the area-and-time mean OHC of the reachable basin in year $y$; total heat is $\alpha(A^*)\,\theta_y$.
+Changes $\theta_{y+1}-\theta_y$ and other contrasts $\sum_y\gamma_y\theta_y$ are linear functionals
+of the same kind (\cref{rem:changes}).
+
+\begin{definition}[Reachable domain]\label{def:domain}
+With $\hat q=\sum_cN_c\hat q^{(1)}_c$ the simulated intensity of the whole array (\cref{sec:qhat}), a
+threshold $q_A>0$ and analysis years $\mathcal Y$,
+\[
+  A^*=\Big\{s\in A\cap M:\ \frac1{|\T_y|}\int_{\T_y}\hat q(s,t)\,dt\ge q_A\ \text{for every }y\in\mathcal Y\Big\}.
+\]
+\end{definition}
+$A^*$ is fixed in advance from the simulation alone, never from $Z$ or residuals, so the estimand
+does not depend on the outcome; and it is the same in every year, so the series refers to the same
+ocean throughout. The excluded deep water (expected to be the Gulf of Mexico and Caribbean,
+ice-affected parts of the Labrador Sea, and areas near the edge of the velocity domain) is reported
+by area; if a full-basin number is wanted, it is filled by the map alone and labelled as carrying no DR
+guarantee. In the chain $\hat q$ comes from independent replicates and $A^*$ is fixed. On real data
+$\mathcal D_c$ is built from the realized launches, so $A^*$ depends on them; we condition on the launch
+pool and treat $A^*$ as fixed, a convention stated with the results. Excluding unreachable water is what makes the coverage
+assumption below (\cref{ass:cover}) reasonable.
+
+\begin{remark}[Truth in the chain]\label{rem:glorys-estimand}
+GLORYS12 values are cell averages, so in the simulations $Z$ is constant on native $1/12^\circ$
+cell-days and $\theta_y$ is an exact finite sum. That sum is the chain's estimand by definition; no
+quadrature error enters the truth.
+\end{remark}
+
+% ---------------------------------------------------------------------------------------------
+\section{The sampling design as a point process}\label{sec:design}
+
+\begin{assumption}[Deployment-law frame]\label{ass:frame}
+The velocity $u$ and the field $Z$ are fixed. The profile locations are random only through the
+deployments and any randomization added by the analyst (fold labels, \cref{sec:dr}).
+\end{assumption}
+
+A deployment $s$ is a launch position, launch time and lifespan. Given $u$, advection is a
+deterministic map $s\mapsto\Phi_u(s)$, the finite set of the float's profile points (park-depth
+trajectory, one profile per cycle, until its lifespan ends or it leaves the model domain).
+
+\begin{assumption}[Independent deployments]\label{ass:deploy}
+Deployments are grouped into cohorts $c$ (launch years). Cohort $c$ has a fixed number $N_c$ of
+deployments, drawn independently from a law $\mathcal D_c$; different cohorts are independent.
+\end{assumption}
+
+In the chain this holds by construction (\cref{sec:qhat}); for the real array it is a model
+(\cref{sec:real}).
+
+\paragraph{Intensity.} The profile counting measure is $N=\sum_j\sum_{x\in\Phi_u(s_j)}\delta_x$, a
+random locally finite counting measure on $\X$. Its intensity measure is $\Lambda(E)=\E N(E)$. For one
+deployment, $\Lambda^{(1)}_c(E)=\E\,\#\{\Phi_u(s)\cap E\}$ with $s\sim\mathcal D_c$, and
+$\Lambda=\sum_cN_c\Lambda^{(1)}_c$.
+
+\begin{assumption}[Absolute continuity]\label{ass:ac}
+$\Lambda$ is $\sigma$-finite and $\Lambda^{(1)}_c\ll\mu$ for every $c$.
+\end{assumption}
+
+The single-deployment intensity and the sampling intensity are the Radon--Nikodym derivatives
+\[
+  q^{(1)}_c=\frac{d\Lambda^{(1)}_c}{d\mu},\qquad q=\frac{d\Lambda}{d\mu}=\sum_cN_c\,q^{(1)}_c
+  \quad(\text{profiles m}^{-2}\,\text{day}^{-1}),
+\]
+functionals of $(\mathcal D,u)$ alone. \Cref{ass:ac} needs a launch law with a density (the bootstrap
+jitter of \cref{sec:qhat} supplies one); exactly repeated launches would put atoms on trajectories.
+
+\begin{lemma}[Campbell; \citealp{daley2003}]\label{lem:campbell}
+For measurable $f\ge0$, or $f\in L^1(\Lambda)$,
+$\E\big[\sum_{x\in N}f(x)\big]=\int f\dd\Lambda=\int f\,q\dd\mu$.
+\end{lemma}
+
+The test function $f$ must not depend on the design. Every cross-fitting and independence device
+below exists to meet this requirement.
+
+\begin{remark}[Relation to preferential sampling]\label{rem:diggle}
+\citet{diggle2010} call sampling preferential when field and point process are dependent,
+$[Z,N]\neq[Z][N]$, with both random. Here the ocean is conditioned on, so $q$ is a fixed function and
+preferentiality appears as alignment of $q$ with $Z$; the simple mean's bias is approximately
+$\Cov_{\Prob_y}(q/\bar q_y,Z)$, with $\bar q_y=\Lambda(\X_y)/\mu(\X_y)$. The alignment arises because
+$q$ depends on $u$, which is dynamically coupled to $Z$. Conditional statements imply unconditional
+ones by the tower property; the conditional ones are those relevant to the one ocean we observe.
+\end{remark}
+
+% ---------------------------------------------------------------------------------------------
+\section{Linear estimators and their bias}\label{sec:linear}
+
+A linear estimator is $\hat\theta=\sum_ia_iZ(x_i)$, with weights that may depend on the design but
+not on the values. Its estimator measure is $\nu=\sum_ia_i\delta_{x_i}$, so $\hat\theta=\int Z\dd\nu$.
+
+\begin{proposition}[Bias identity]\label{prop:linear}
+\begin{enumerate}
+  \item For every realization, $\hat\theta-\theta_y=\int Z\dd(\nu-\Prob_y)$.
+  \item If $a_i=a(x_i)$ for a fixed measurable $a\ge0$ supported in $\X_y$, then $\E\nu$ has density
+        $w=a\,q\,\mu(\X_y)$ with respect to $\Prob_y$ and
+        $\E\hat\theta-\theta_y=\int Z(w-1)\dd\Prob_y=\Cov_{\Prob_y}(w,Z)+(\bar w-1)\theta_y$, with
+        $\bar w=\int w\dd\Prob_y$.
+  \item (Horvitz--Thompson.) With $a=\mathbf 1_{\{q>0\}}/(q\,\mu(\X_y))$ on $\X_y$,
+        $\E\hat\theta_{\mathrm{HT}}-\theta_y=-\int_{\{q=0\}}Z\dd\Prob_y$, zero under positivity
+        $\Prob_y\ll\Lambda$ \citep{horvitz1952,cordy1993}.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(1) is the definition of $\nu$. (2) By \cref{lem:campbell}, $\E\int f\dd\nu=\int f\,a\,q\,\mu(\X_y)\dd\Prob_y$
+for bounded measurable $f$, which identifies the density; take $f=Z$. (3) is (2) with
+$w=\mathbf 1_{\{q>0\}}$.
+\end{proof}
+
+\paragraph{The map.} Let $\hat m:\X\to\R$ be a map built from the profiles (\cref{sec:outcome}) and
+$Q_y(\hat m)=\sum_g\omega_g\hat m(x^*_g)$ its quadrature, $\sum_g\omega_g=1$, with remainder
+$R^{\mathrm{quad}}=Q_y(\hat m)-\int\hat m\dd\Prob_y$. The map estimator $\hat\theta_{\mathrm K}=Q_y(\hat m)$
+has, exactly,
+\begin{equation}\label{eq:krige-error}
+  \hat\theta_{\mathrm K}-\theta_y=-\int(Z-\hat m)\dd\Prob_y+R^{\mathrm{quad}} .
+\end{equation}
+Its bias is $-\int b\dd\Prob_y$ (plus $\E R^{\mathrm{quad}}$), with $b=Z-\E\hat m$ the pointwise bias of
+the map. Nothing in the construction of $\hat m$ makes this vanish, and preferential sampling makes it
+nonzero in three ways:
+\begin{enumerate}
+  \item the mean field is fitted to profiles whose locations covary with $Z$;
+  \item simple kriging shrinks the anomaly to zero where data are sparse, so there the map reverts to
+        that mean field;
+  \item a misspecified covariance distorts the kriging weights (on GLORYS the exponential kernel's
+        fitted ranges are inflated $1.4$--$2.3\times$).
+\end{enumerate}
+
+% ---------------------------------------------------------------------------------------------
+\section{The outcome model}\label{sec:outcome}
+
+The map is $\hat m=\hat\mu+\hat\eta$.
+\begin{itemize}
+  \item \emph{Mean field} \citep[eq.~5]{sukianto2026}. At each centre of a $1^\circ$ grid, ordinary least
+        squares over the profiles in a $\pm5^\circ$ window fits a quadratic in position, six annual
+        harmonics and a quadratic time trend. $\hat\mu$ at the centre is the fitted intercept,
+        harmonics and trend, and is bilinear between centres.
+  \item \emph{Anomaly.} $\hat\eta$ is simple kriging of $Z-\hat\mu$ with the locally stationary
+        anisotropic exponential covariance of \citet{kuusela2018},
+        $k(x,x')=\phi\,e^{-d(x,x')}+\tau^2\mathbf 1\{x=x'\}$,
+        $d^2=(\Delta\mathrm{lon}/\theta_{\mathrm{lon}})^2+(\Delta\mathrm{lat}/\theta_{\mathrm{lat}})^2+(\Delta t/\theta_t)^2$,
+        parameters fixed per $2^\circ$ cell, conditioning on profiles within $\pm10^\circ$ and
+        $\pm180$\,d.
+\end{itemize}
+
+\paragraph{The map as a linear smoother.} With the covariance parameters fixed, both steps are linear
+in the profile values $Z_l=Z(x_l)$, $l\in J$, with weights that depend on the positions only. The
+mean field is $\hat\mu(x)=\sum_l\ell_l(x)Z_l$, where $\ell(x)$ collects the local least-squares hat
+weights at the surrounding centres and their bilinear interpolation. Simple kriging gives
+$\hat\eta(x)=\sum_lw_l(x)\{Z_l-\hat\mu(x_l)\}$ with
+\[
+  w(x)^\top=c(x)^\top(K+\tau^2I)^{-1},\qquad c_l(x)=\phi\,e^{-d(x,x_l)},\quad K_{lm}=\phi\,e^{-d(x_l,x_m)},
+\]
+using the parameters $(\phi,\theta,\tau^2)$ of the $2^\circ$ cell containing $x$ and the profiles in that
+cell's conditioning window ($w_l(x)=0$ outside it). The nugget enters only the data covariance: $c(x)$
+omits it, so $\hat\eta$ predicts the smooth component, does not interpolate the profiles, and $\tau^2$
+sets how strongly it shrinks toward $\hat\mu$. Here $Z$ is exact, so $\tau^2$ is a working parameter for
+variability unresolved at the covariance ranges, not measurement error. Hence
+\[
+  \hat m(x)=\sum_{l\in J}h_l(x)\,Z_l,\qquad h(x)^\top=\ell(x)^\top+w(x)^\top(I-L),\quad L_{lm}=\ell_m(x_l),
+\]
+and the map estimator is a weighted sum of the profiles,
+\[
+  \hat\theta_{\mathrm K}=Q_y(\hat m)=\sum_{l\in J}a_lZ_l,\qquad a_l=\sum_g\omega_g\,h_l(x^*_g).
+\]
+If every local fit has full rank, the mean field reproduces constants ($\sum_l\ell_l(x)=1$, since the
+model has an intercept) and the kriged anomaly of a constant is zero, so $\sum_lh_l(x)=1$ and
+$\sum_la_l=1$: the map is a weighted mean of the profiles, with weights that can be negative.
+\Cref{prop:linear}(1) then gives its error exactly, $\hat\theta_{\mathrm K}-\theta_y=\int Z\dd(\nu_{\mathrm K}-\Prob_y)$
+with $\nu_{\mathrm K}=\sum_la_l\delta_{x_l}$. Part (2) does not apply, because $a_l$ depends on the
+whole configuration, not on $x_l$ alone. The weights are set by geometry, not by the sampling
+intensity: within a $\pm5^\circ$ window every profile counts equally in the mean-field fit, so where
+floats crowd, the crowded water dominates; $(K+\tau^2I)^{-1}$ declusters only within the covariance
+ranges. This is mechanism~1 above.
+
+\paragraph{What the theory needs from the map.} One property only: $\hat m_{-k}$ is a measurable
+function of the profiles (positions and values) of floats outside fold $k$ and of design-fixed
+quantities. Its form is otherwise free, and the DR guarantees do not require it to be correct.
+
+\begin{remark}[Covariance parameters must be fold-external]\label{rem:cov-params}
+If the covariance parameters are fitted to all profiles, $\hat m_{-k}$ depends on fold $k$ and
+\cref{thm:bias} is no longer exact (the effect is small, since one fold moves the fit little). Exact
+options: parameters fixed externally (the oracle fit to the full GLORYS field, unavailable in
+practice) or refitted per fold. The mean field is already refitted per fold.
+\end{remark}
+
+% ---------------------------------------------------------------------------------------------
+\section{The doubly robust estimator}\label{sec:dr}
+
+\subsection{Folds and the fold intensity}
+
+Each float gets a label $L_j$, i.i.d.\ uniform on $\{1,\dots,K\}$ and independent of everything else.
+Let $N_k$ count fold-$k$ profiles, and let $\mathcal G_{-k}$ be the $\sigma$-field of all labels, the
+deployments and profiles of floats outside fold $k$, and the design-fixed quantities (intensity
+estimates, quadrature, external covariance parameters). Then $\hat m_{-k}$ and the fold-cohort counts
+$n_{k,c}=\#\{j:L_j=k,\,c_j=c\}$ are $\mathcal G_{-k}$-measurable.
+
+\begin{lemma}[Campbell for a fold]\label{lem:fold-campbell}
+Under \cref{ass:frame,ass:deploy,ass:ac}, $\Lambda_{k|-k}(E)=\E[N_k(E)\mid\mathcal G_{-k}]$ has density
+\[
+  q_{k|-k}=\sum_cn_{k,c}\,q^{(1)}_c ,
+\]
+and $\E\big[\sum_{x\in N_k}f(x)\mid\mathcal G_{-k}\big]=\int f\,q_{k|-k}\dd\mu$ for every
+$\mathcal G_{-k}\otimes\B(\X)$-measurable $f\ge0$ (or with $\E\int|f|\dd\Lambda_{k|-k}<\infty$).
+\end{lemma}
+
+\begin{proof}
+Given the labels, fold-$k$ deployments are independent of the others (\cref{ass:deploy}) and the flow
+is fixed (\cref{ass:frame}); so given $\mathcal G_{-k}$ the fold-$k$ floats are independent, $n_{k,c}$
+of them drawn from $\mathcal D_c$. Apply \cref{lem:campbell} to each under the regular conditional law
+($\X$ is Polish) and sum; a $\mathcal G_{-k}$-measurable $f$ is fixed under that law.
+\end{proof}
+
+\paragraph{Fold intensity estimate.} With design-fixed estimates $\hat q^{(1)}_c$ (\cref{sec:qhat}),
+the \emph{cohort-matched} fold intensity is $\hat q_k=\sum_cn_{k,c}\hat q^{(1)}_c$. It is
+$\mathcal G_{-k}$-measurable and targets $q_{k|-k}$ exactly. Its support is the same as the full
+array's: $\hat q^{(1)}_c$ is the intensity of one random draw from the whole cohort pool, and every fold
+holds about $N_c/K$ floats of every cohort.
+
+\begin{remark}[Why match cohorts]\label{rem:cohort}
+The simpler $\hat q/K$ targets $\E q_{k|-k}=q/K$. A realized fold has $n_{k,c}$ fluctuating around
+$N_c/K$, so $\hat q/K$ carries a ratio error $K\sum_cn_{k,c}q^{(1)}_c/q$ that varies in space wherever
+the cohort mix does, of relative size about $(N_c/K)^{-1/2}$. Matching cohorts removes it at no cost.
+\end{remark}
+
+\begin{assumption}[Simulated coverage]\label{ass:cover}
+There is $q_0>0$ with $\hat q_k\ge q_0$ on $\X_y$ for every $k$.
+\end{assumption}
+
+Fold-$k$ profiles get weight $v_i=1/\hat q_k(x_i)\le1/q_0$, which with bounded $Z$ and $\hat m$ gives the
+integrability \cref{lem:fold-campbell} needs, and the intensity ratio is
+\[
+  \lambda_k=\frac{q_{k|-k}}{\hat q_k}\quad\text{on }\X_y ,
+\]
+with $\lambda_k\equiv1$ if every $\hat q^{(1)}_c$ is exact. \Cref{ass:cover} concerns $\hat q_k$ only, so
+it is checked directly on the simulation (report $\min_{\X_y}\hat q_k$ relative to its mean). With a
+Gaussian kernel $\hat q_k>0$ wherever a replicate profile passes within a few bandwidths, so the content of
+the assumption is the size of $q_0$, which sets the largest weight. It is stronger than
+\cref{def:domain}, which bounds only annual means; where it fails, $A^*$ is shrunk (larger $q_A$) or the
+kernel widened, not the weights altered. It does not assume
+real floats reach every point: on real data $q_{k|-k}$ may be small or zero where $\hat q_k$ is not, and
+that is a weight error, $\lambda_k<1$, entering the product term of \cref{thm:bias}.
+
+\subsection{Estimator}
+
+Let $I_k$ index fold-$k$ profiles in $\X_y$, and define
+\[
+  \hat A_k=\frac1{\mu(\X_y)}\sum_{i\in I_k}v_ie_k(x_i),\qquad
+  \hat\Delta_k=\frac1{\mu(\X_y)}\sum_{i\in I_k}v_i .
+\]
+$\hat A_k$ is the Horvitz--Thompson estimate of the map's error $\int e_k\dd\Prob_y$, and $\hat\Delta_k$
+estimates the total mass $1$ (exactly, in expectation, when $\lambda_k\equiv1$). The fold estimate and
+the DR estimator are
+\[
+  \hat\theta_k=Q_y(\hat m_{-k})+\hat C_k,\qquad \hat C_k=\frac{\hat A_k}{\hat\Delta_k}
+  \ (0\text{ if }I_k=\varnothing),\qquad
+  \hat\theta_{\mathrm{DR},y}=\frac1K\sum_{k=1}^K\hat\theta_k ,
+\]
+a fold average (DML1, \citealp{chernozhukov2018}). The correction $\hat C_k$ is the Hájek
+(self-normalized) weighted mean of the held-out residuals. The Horvitz--Thompson variant
+$\tilde\theta_k=Q_y(\hat m_{-k})+\hat A_k$ is used only in the proofs.
+
+\begin{proposition}[Hájek is DR with a constant map]\label{prop:hajek-is-dr}
+If $\hat m_{-k}\equiv m_0$, then $\hat\theta_k=\sum_{I_k}v_iZ(x_i)/\sum_{I_k}v_i$ for every $m_0$.
+\end{proposition}
+
+\begin{proof}
+$Q_y(m_0)=m_0$ and $\sum v_i(Z_i-m_0)/\sum v_i=\sum v_iZ_i/\sum v_i-m_0$.
+\end{proof}
+
+So DR differs from the Hájek estimator in one respect: at the same weights, the constant outcome model
+is replaced by the map.
+
+\begin{remark}[DR as a linear estimator]\label{rem:dr-linear}
+With $\hat m_{-k}=\sum_{l\in J_{-k}}h^{(-k)}_lZ_l$ the smoother fitted to the out-of-fold profiles
+$J_{-k}$, $a^{(-k)}_l$ its quadrature weights and $\bar v_i=v_i/\sum_{I_k}v_{i'}$,
+\[
+  \hat\theta_k=\sum_{i\in I_k}\bar v_iZ_i+\sum_{l\in J_{-k}}\Big(a^{(-k)}_l-\sum_{i\in I_k}\bar v_i\,h^{(-k)}_l(x_i)\Big)Z_l
+  =\int Z\dd\nu_{\mathrm H,k}+\Big(Q_y(\hat m_{-k})-\int\hat m_{-k}\dd\nu_{\mathrm H,k}\Big).
+\]
+So DR is also linear in the values, with weights set by positions and $\hat q_k$. Read one way, it is
+the map plus a weighted mean of its held-out residuals. Read the other way, it is Hájek on the held-out
+profiles plus an adjustment: the map's average over the domain minus its average over the held-out
+sites, which corrects for where the held-out floats happened to be. If the map reproduces constants, the
+out-of-fold weights sum to zero, so that adjustment is a contrast and the total weight is one.
+\end{remark}
+
+\subsection{Exact error}
+
+\begin{theorem}[Realized error]\label{thm:realized}
+For every realization, intensity estimate and map with $I_k\neq\varnothing$, with
+$\nu_{\mathrm H,k}=\sum_{I_k}v_i\delta_{x_i}/\sum_{I_k}v_i$,
+\[
+  \hat\theta_k-\theta_y
+  =\underbrace{\int e_k\dd\nu_{\mathrm H,k}-\int e_k\dd\Prob_y}_{\text{error of the correction}}\;+\;R^{\mathrm{quad}}_k
+  =\int e_k\dd(\nu_{\mathrm H,k}-\Prob_y)+R^{\mathrm{quad}}_k .
+\]
+\end{theorem}
+
+\begin{proof}
+$\theta_y=\int\hat m_{-k}\dd\Prob_y+\int e_k\dd\Prob_y$ and
+$\hat\theta_k=\int\hat m_{-k}\dd\Prob_y+R^{\mathrm{quad}}_k+\int e_k\dd\nu_{\mathrm H,k}$.
+\end{proof}
+
+By \eqref{eq:krige-error} the map's error is $-\int e\dd\Prob_y$. DR replaces it by the error of an
+estimate of it, i.e.\ by the discrepancy between the weighted held-out profiles and the target measure,
+integrated against the map's residual. This is algebra and holds for any array, simulated or real.
+
+\subsection{Conditional bias}
+
+Assume $\bar\lambda_k:=\int\lambda_k\dd\Prob_y>0$, and let $\bar e_k=\int e_k\dd\Prob_y$ and
+$r_k=\int e_k\lambda_k\dd\Prob_y/\bar\lambda_k$.
+
+\begin{theorem}[Conditional bias]\label{thm:bias}
+Under \cref{ass:frame,ass:deploy,ass:ac,ass:cover},
+\[
+  \E[\hat\theta_k-\theta_y\mid\mathcal G_{-k}]
+  =\underbrace{\frac1{\bar\lambda_k}\int(e_k-\bar e_k)(\lambda_k-\bar\lambda_k)\dd\Prob_y}_{\beta^{\mathrm{prod}}_k}
+  \;+\;R^{\mathrm{quad}}_k+R^{\mathrm{ratio}}_k ,
+\]
+where $R^{\mathrm{ratio}}_k=\E[\hat C_k\mid\mathcal G_{-k}]-r_k$. On $\{\hat\Delta_k>0\}$ the exact
+identity
+\[
+  \frac{\hat A_k}{\hat\Delta_k}-r_k=\frac{\hat A_k-r_k\hat\Delta_k}{\bar\lambda_k}
+  -\frac{\hat\Delta_k-\bar\lambda_k}{\bar\lambda_k}\Big(\frac{\hat A_k}{\hat\Delta_k}-r_k\Big)
+\]
+holds, and its first term has conditional mean zero, so $R^{\mathrm{ratio}}_k$ comes from the second
+term only, a covariance of two sample means (by the delta method, of order one over the number of
+fold-$k$ floats that reach $\X_y$). For the Horvitz--Thompson variant, exactly,
+$\E[\tilde\theta_k-\theta_y\mid\mathcal G_{-k}]=\int e_k(\lambda_k-1)\dd\Prob_y+R^{\mathrm{quad}}_k$.
+\end{theorem}
+
+\begin{proof}
+\Cref{lem:fold-campbell} with the $\mathcal G_{-k}$-measurable test functions
+$e_k\mathbf 1_{\X_y}/(\hat q_k\mu(\X_y))$ and $\mathbf 1_{\X_y}/(\hat q_k\mu(\X_y))$ gives
+$\E[\hat A_k\mid\mathcal G_{-k}]=\int e_k\lambda_k\dd\Prob_y$ and
+$\E[\hat\Delta_k\mid\mathcal G_{-k}]=\bar\lambda_k$; the HT statement follows as in \cref{thm:realized}.
+For the Hájek form, $r_k-\int e_k\dd\Prob_y=\bar\lambda_k^{-1}\int e_k(\lambda_k-\bar\lambda_k)\dd\Prob_y$,
+and $e_k$ may be centred because $\int(\lambda_k-\bar\lambda_k)\dd\Prob_y=0$. The ratio identity
+follows by expanding its right side, and $\E[\hat A_k-r_k\hat\Delta_k\mid\mathcal G_{-k}]=0$ by the
+definition of $r_k$.
+\end{proof}
+
+\begin{corollary}[Double robustness and product bound]\label{cor:dr}
+$\beta^{\mathrm{prod}}_k=0$ if either $\lambda_k$ is constant on $\X_y$ (intensity right up to scale) or
+$e_k$ is constant on $\X_y$ (map right up to a constant). In general, with moments under $\Prob_y$,
+\[
+  \beta^{\mathrm{prod}}_k=\sd(e_k)\,\mathrm{cv}(\lambda_k)\,\mathrm{Corr}(e_k,\lambda_k),
+  \qquad
+  |\beta^{\mathrm{prod}}_k|\le\sd(e_k)\,\mathrm{cv}(\lambda_k),
+\]
+with $\mathrm{cv}=\sd/\text{mean}$. The bound is a deterministic worst case over alignment.
+\end{corollary}
+
+\begin{proof}
+$\beta^{\mathrm{prod}}_k=\Cov_{\Prob_y}(e_k,\lambda_k)/\bar\lambda_k$; then Cauchy--Schwarz.
+\end{proof}
+
+\paragraph{Reading the bias.} The bias left by DR is (map scatter) $\times$ (relative intensity error)
+$\times$ (their correlation). Every weight error enters here, including water the simulation reaches but
+real floats do not ($\lambda_k=0$). The
+correlation is not guaranteed to be small: flow error and map error both live mostly at the mesoscale,
+and their alignment on real data is an empirical question (\cref{sec:real}).
+
+\begin{remark}[The chain]\label{rem:chain-bias}
+In the chain $\mathcal D_c$ is known, so $\lambda_k-1$ is only the smoothing, Monte Carlo and Jensen
+error of $\hat q^{(1)}_c$ (\cref{sec:qhat}). As replicates grow and the bandwidth shrinks,
+$\lambda_k\to1$ and the bias reduces to the remainders.
+\end{remark}
+
+\begin{remark}[Changes and contrasts]\label{rem:changes}
+For $\sum_y\gamma_y\theta_y$, replace $\Prob_y$ by $\sum_y\gamma_y\Prob_y$. With per-year Hájek
+normalization the change estimate is the difference of yearly DR estimates, and its bias is the
+difference of yearly biases, so a bias common to both years cancels.
+\end{remark}
+
+% ---------------------------------------------------------------------------------------------
+\section{Variance}\label{sec:variance}
+
+Given $\mathcal G_{-k}$ the map is fixed, so $\Var(\hat\theta_k\mid\mathcal G_{-k})=\mathcal V_k:=\Var(\hat C_k\mid\mathcal G_{-k})$.
+For fold-$k$ float $j$, define per-float totals
+\[
+  a_j=\frac1{\mu(\X_y)}\sum_{x\in\Phi_u(s_j)\cap\X_y}\frac{e_k(x)}{\hat q_k(x)},\qquad
+  d_j=\frac1{\mu(\X_y)}\sum_{x\in\Phi_u(s_j)\cap\X_y}\frac1{\hat q_k(x)},
+\]
+so $\hat A_k=\sum_{L_j=k}a_j$ and $\hat\Delta_k=\sum_{L_j=k}d_j$ (floats that never reach $\X_y$
+contribute zeros and stay in the sums). Let $M^{(2)}_c$ be the second factorial moment measure of one
+cohort-$c$ float's profile set,
+$M^{(2)}_c(E\times E')=\E\,\#\{(x,x')\in\Phi_u(s)^2:x\neq x',x\in E,x'\in E'\}$, which counts pairs of
+distinct profiles of the \emph{same} float, and let $\rho_k$ be the expected number
+of fold-$k$ profiles per unit $\Prob_y$-mass under $\hat q_k$, $\rho_k=\hat q_k\,\mu(\X_y)$.
+
+\begin{proposition}[Variance of the correction]\label{prop:var}
+Under the assumptions of \cref{thm:bias}, let $\tilde e_k=e_k-r_k$ and $f=\tilde e_k\mathbf 1_{\X_y}/(\hat q_k\,\mu(\X_y))$.
+\begin{enumerate}
+  \item (Exact.)
+  \[
+    \Var\big(\hat A_k-r_k\hat\Delta_k\mid\mathcal G_{-k}\big)
+    =\sum_cn_{k,c}\Big[\int f^2\dd\Lambda^{(1)}_c+\iint f(x)f(x')\,M^{(2)}_c(dx,dx')-\Big(\int f\dd\Lambda^{(1)}_c\Big)^2\Big],
+  \]
+  and the first terms sum to $\int\tilde e_k^{\,2}\lambda_k/\rho_k\dd\Prob_y$. Write
+  $\mathrm{deff}_k$ for the whole sum divided by this first part.
+  \item (Delta method.) The first term of the ratio identity of \cref{thm:bias} gives
+  \[
+    \mathcal V_k\approx\frac{\mathrm{deff}_k}{\bar\lambda_k^{\,2}}\int\frac{\tilde e_k^{\,2}\lambda_k}{\rho_k}\dd\Prob_y .
+  \]
+  \item (Estimator; $n_{k,c}\ge2$.) With $u_j=a_j-\hat r_kd_j$, $\hat r_k=\hat A_k/\hat\Delta_k$ and $\bar u_{k,c}$ the
+  mean of $u_j$ over fold-$k$ floats of cohort $c$,
+  \[
+    \hat{\mathcal V}_k=\frac1{\hat\Delta_k^2}\sum_c\frac{n_{k,c}}{n_{k,c}-1}\sum_{L_j=k,\,c_j=c}(u_j-\bar u_{k,c})^2 .
+  \]
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+$\hat A_k-r_k\hat\Delta_k=\sum_{L_j=k}S_j$ with $S_j=\sum_{x\in\Phi_u(s_j)}f(x)$, and $r_k$ is
+$\mathcal G_{-k}$-measurable. Given $\mathcal G_{-k}$ the $S_j$ are independent, i.i.d.\ within cohort
+(\cref{lem:fold-campbell}), so the variance is $\sum_cn_{k,c}\Var_c(S)$. Expand
+$\E_cS^2=\E_c\sum_xf^2+\E_c\sum_{x\neq x'}f(x)f(x')$ and use \cref{lem:campbell} and the definition of
+$M^{(2)}_c$; $\E_cS=\int f\dd\Lambda^{(1)}_c$. For the first part,
+$\sum_cn_{k,c}q^{(1)}_c=\lambda_k\hat q_k$ and $d\mu/\mu(\X_y)=d\Prob_y$ on $\X_y$. (3) replaces each
+cohort variance by its sample variance.
+\end{proof}
+
+\paragraph{Reading the variance.}
+\begin{enumerate}
+  \item \emph{Only a float's own profiles add correlation.} The field is fixed, so different floats are
+        independent: two nearby floats have correlated residuals as numbers, but not as random
+        variables over re-runs of the deployments. The pair term is along-track: consecutive profiles
+        inside the same anomaly repeat one piece of information. Heuristically, $\mathrm{deff}_k\approx1+{}$
+        the number of a float's other profiles within the residual decorrelation scale; a float that
+        spends two months in one eddy is about one observation of it, not six.
+  \item \emph{Sparse water dominates.} The integrand is $\tilde e^{\,2}/\rho$, so residuals where few
+        profiles were expected carry large weights. The map tends to be worst where floats are scarce,
+        and that is also where its check is noisiest; $q_0$ bounds this.
+  \item \emph{Ideal allocation.} With $\lambda_k=1$ and fixed $\int\rho\dd\Prob_y$, Cauchy--Schwarz gives
+        \[
+          \int\frac{\tilde e^{\,2}}{\rho}\dd\Prob_y\ge\frac{(\int|\tilde e|\dd\Prob_y)^2}{\int\rho\dd\Prob_y},
+        \]
+        with equality iff $\rho\propto|\tilde e|$ (Neyman allocation). Floats crowding into energetic
+        water, where residuals are large, help the variance even though they bias the naive mean.
+\end{enumerate}
+
+\paragraph{Combining folds (approximation).} Fold estimates are dependent ($\hat m_{-k}$ uses fold $k'$,
+whose correction uses fold $k'$'s design). The working estimate $\hat{\mathcal V}=K^{-2}\sum_k\hat{\mathcal V}_k$
+ignores these covariances and the variance of the conditional bias, which is second order when the
+bias is small. This is a heuristic, checked by the coverage of $\hat\theta_{\mathrm{DR},y}\pm1.96\,\hat{\mathcal V}^{1/2}$
+over chain replicates (\cref{sec:validation}). The interval is design-based, conditional on the ocean,
+nominally $95\%$, asymptotic, and valid only up to the bias terms of \cref{thm:bias}.
+
+\paragraph{Several years.} A float alive in two years enters both corrections; for contrasts, form
+per-float totals with the contrast weights before taking variances.
+
+% ---------------------------------------------------------------------------------------------
+\section{DR versus the map: bias, variance and MSE}\label{sec:gain}
+
+This section compares $\hat\theta_{\mathrm{DR},y}$ with the map $\hat\theta_{\mathrm K}=\int\hat m\dd\Prob_y$
+and says when DR is better. \Cref{prop:mse} is exact; the headline \eqref{eq:headline} is an
+approximation. Quadrature is taken as exact here; otherwise it adds the same term to both.
+
+\paragraph{The idea.} The map's error has two parts: a \emph{systematic offset} (e.g.\ a mean field
+that runs cold wherever floats are sparse, because it was fitted to floats crowding into cold water)
+and \emph{local scatter} (misplaced eddies, positive here and negative there). DR checks the map against
+held-out floats and subtracts the weighted average discrepancy. This removes the offset, but the check
+is a sample average of residuals, so it inherits their scatter as noise; with wrong weights it removes
+the offset only partly. DR pays when the offset removed exceeds the noise added. This is the
+survey-sampling contrast between model-based estimation, best when the model is right, and
+model-assisted estimation, which protects against a wrong model at a cost in variance
+\citep{hansen1983,sarndal1992}.
+
+\subsection{Exact decomposition}
+
+With $e_k=Z-\hat m_{-k}$ and $e=Z-\hat m$ (full-data map), let $T_k=\int e_k\dd\Prob_y$ and
+$T=\int e\dd\Prob_y$ be the fold map's and the full map's integrated error. Decompose the correction as
+\[
+  \hat C_k=T_k+\beta_k+\xi_k,\qquad \beta_k=\E[\hat C_k\mid\mathcal G_{-k}]-T_k=\beta^{\mathrm{prod}}_k+R^{\mathrm{ratio}}_k,
+  \qquad\E[\xi_k\mid\mathcal G_{-k}]=0 ,
+\]
+so $\beta_k$ is what the correction gets wrong on average and $\xi_k$ its noise, with
+$\E[\xi_k^2\mid\mathcal G_{-k}]=\mathcal V_k$.
+
+\begin{proposition}[Error and MSE]\label{prop:mse}
+If $\E\hat C_k^2<\infty$, then exactly
+\begin{align*}
+  \hat\theta_{\mathrm K}-\theta_y&=-T, & \mathrm{MSE}_{\mathrm K}&=\E T^2=(\E T)^2+\Var T,\\
+  \hat\theta_k-\theta_y&=\beta_k+\xi_k, & \mathrm{MSE}_{\mathrm{DR},k}&=\E\beta_k^2+\E\mathcal V_k ,
+\end{align*}
+and $\mathrm{MSE}_{\mathrm{DR}}\le K^{-1}\sum_k\mathrm{MSE}_{\mathrm{DR},k}$. Hence DR has the smaller MSE
+whenever
+\begin{equation}\label{eq:mse-sufficient}
+  \E T^2>\frac1K\sum_k\big\{\E\beta_k^2+\E\mathcal V_k\big\}.
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+The error identities are \eqref{eq:krige-error} and \cref{thm:realized} in the new symbols. The cross
+term vanishes: $\E[\beta_k\xi_k]=\E[\beta_k\E(\xi_k\mid\mathcal G_{-k})]=0$, since $\beta_k$ is
+$\mathcal G_{-k}$-measurable. The fold bound is $(K^{-1}\sum a_k)^2\le K^{-1}\sum a_k^2$.
+\end{proof}
+
+The map pays $T$, an error that exists but is never measured; DR pays instead $\beta_k$ and $\xi_k$.
+Comparing with the full map ($T_k\approx T$; an approximation, good for moderate $K$),
+\begin{equation}\label{eq:mse-diff}
+  \mathrm{MSE}_{\mathrm K}-\mathrm{MSE}_{\mathrm{DR},k}\approx
+  \underbrace{\E T^2}_{\text{removed}}-\underbrace{\E\beta_k^2}_{\text{left over}}
+  -\underbrace{\E\mathcal V_k}_{\text{added noise}} .
+\end{equation}
+Restricting to the reachable domain is what makes this clean: with unreachable water inside $\X_y$,
+a gap term would be shared by both estimators and its interaction with $T$ could make DR lose even with
+exact weights.
+
+\subsection{Size of each term}
+
+Let $\bar e=\int e\dd\Prob_y$ (the map's mean error), $\sigma_e=\sd_{\Prob_y}(e)$ (its scatter), and define
+the effective number of profiles by $\sigma_e^2/n_{\mathrm{eff}}=\int\tilde e_k^{\,2}\lambda_k/\rho_k\dd\Prob_y$.
+For uniform $\rho$, $\lambda=1$ and $\tilde e$ of variance $\sigma_e^2$, $n_{\mathrm{eff}}$ is the expected
+number of fold-$k$ profiles in $\X_y$; uneven $\rho$ lowers it. Then:
+\begin{itemize}
+  \item \emph{removed:} $T=\bar e$, exactly. It need not shrink as floats are added: a mean field
+        fitted to preferentially placed profiles converges to the wrong limit;
+  \item \emph{left over:} $\beta^{\mathrm{prod}}_k=\sigma_e\,\mathrm{cv}(\lambda)\,\mathrm{Corr}(e_k,\lambda_k)$,
+        exactly (\cref{cor:dr}); set by the design model, it does not shrink with more floats either;
+  \item \emph{added:} $\mathcal V_k\approx\sigma_e^2\,\mathrm{deff}_k/(\bar\lambda_k^2n_{\mathrm{eff}})$
+        (\cref{prop:var}), which does;
+  \item \emph{ratio remainder:} of order $1/n_{\mathrm{eff}}$, so its square and its cross term with
+        $\beta^{\mathrm{prod}}_k$ are negligible beside $\mathcal V_k$ when $\mathrm{cv}(\lambda)|\mathrm{Corr}|\ll1$.
+\end{itemize}
+
+\subsection{When DR improves on the map}
+
+Approximate further: $\bar\lambda_k\approx1$, and $\sigma_e$, $\mathrm{deff}$, $n_{\mathrm{eff}}$ non-random.
+Dividing \eqref{eq:mse-diff} by $\sigma_e^2$, DR has the smaller MSE if and only if, to this order,
+\begin{equation}\label{eq:headline}
+  \boxed{\;
+  \underbrace{\frac{\E\bar e^{\,2}}{\sigma_e^2}}_{\substack{\text{map offset relative}\\\text{to its scatter}}}
+  >\underbrace{\mathrm{cv}(\lambda)^2\,\mathrm{Corr}(e,\lambda)^2}_{\substack{\text{design-model error}\\\text{aligned with map error}}}
+  +\underbrace{\frac{\mathrm{deff}}{n_{\mathrm{eff}}}}_{\text{sampling noise}}\;}
+\end{equation}
+This is a heuristic summary of \cref{prop:mse}, in units of the map's scatter: the left side is what
+can be gained, the right side what it costs.
+
+\begin{center}\small
+\begin{tabular}{@{}p{5.6cm}p{4.0cm}p{4.4cm}@{}}
+\toprule
+Situation & Terms in \eqref{eq:headline} & Outcome\\
+\midrule
+Map with a systematic offset, many floats & left large, noise small & DR wins\\
+Map unbiased on average, locally noisy & left $\approx0$ & DR loses: pays noise, gains nothing\\
+Small target (box-month) & $n_{\mathrm{eff}}$ small & map wins unless the offset is large\\
+Large target (basin-year), same map & $n_{\mathrm{eff}}$ large & DR favoured\\
+Design-model error aligned with map error & middle term $\gtrsim$ left & no gain in bias\\
+Extreme weights (small $q_0$) & $n_{\mathrm{eff}}\downarrow$, $\mathrm{cv}(\lambda)\uparrow$ & DR worse than either part \citep{kang2007}\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{How the dials act.} A \emph{better map} lowers $\sigma_e$, shrinking both the leftover bias and
+the noise, but usually lowers $\bar e$ too; the ratio $\bar e/\sigma_e$ decides, and DR helps most when
+the map's error is a smooth offset rather than local noise. \emph{More floats}, or a \emph{larger
+target}, shrink only $\mathrm{deff}/n_{\mathrm{eff}}$, so eventually offset versus design-model
+alignment decides alone; this is why the basin-year target is favourable. A \emph{higher} $q_A$ drops thinly reached water,
+raising $q_0$ and $n_{\mathrm{eff}}$ at the cost of a smaller estimand.
+
+\subsection{A two-region example}\label{sec:two-region}
+
+A stylized illustration (heuristic). The domain is a sparse region $S$ of
+$\Prob_y$-mass $p$ and a dense region of mass $1-p$. The map is offset by $\delta$ in $S$, with scatter
+$\sigma_S$ there, and is exact in the dense region; $n_S$ fold profiles are expected in $S$ and many in
+the dense region. The map's error is $T=p\delta$.
+
+\paragraph{Correct weights: how many floats?} With $\lambda=1$, DR is unbiased up to $O(1/n)$, and its
+variance comes from $S$, where the centred residual is $\delta(1-p)$ plus scatter:
+$\mathcal V\approx\mathrm{deff}\,p^2\{\sigma_S^2+\delta^2(1-p)^2\}/n_S$. DR wins iff $p^2\delta^2>\mathcal V$, i.e.
+\[
+  \frac{n_S}{\mathrm{deff}}>(1-p)^2+\frac{\sigma_S^2}{\delta^2}
+  \qquad\Big(\text{sufficient: }\frac{n_S}{\mathrm{deff}}>1+\frac{\sigma_S^2}{\delta^2}\Big).
+\]
+$n_S/\mathrm{deff}$ is roughly the number of independent float visits to $S$. If the offset equals the
+scatter, two suffice; if it is a tenth of the scatter, about a hundred are needed. A large coherent map
+error is cheap to remove; a subtle one is not.
+
+\paragraph{Wrong weights: how wrong can they be?} Let $\lambda=\lambda_S$ on $S$ and $1$ elsewhere
+($\lambda_S<1$: $\hat q$ too high in $S$, weights too small). The correction then targets
+$p\lambda_S\delta/(p\lambda_S+1-p)$, so DR removes the fraction $\lambda_S/(p\lambda_S+1-p)$ of the
+offset, and
+\[
+  |b_{\mathrm{DR}}|<|b_{\mathrm K}|\iff(1-p)|\lambda_S-1|<p\lambda_S+1-p\iff\lambda_S<\frac{2(1-p)}{1-2p}
+  \quad(p<\tfrac12),
+\]
+a threshold near $2$ for a small region. Under-weighting $S$ never makes DR's bias worse than the map's;
+it only removes less (half the offset at $\lambda_S=\tfrac12$). Over-weighting by up to about two still
+helps; beyond that DR over-corrects past the map's bias. So the dangerous direction is a too-narrow simulated spread, which makes $\hat q$ too small where real
+floats stray ($\lambda>1$), as in the earlier toy experiments. Rule of thumb: err toward wider, flatter intensity estimates.
+
+\paragraph{By-product: a test of the map.} $\hat C_k$ estimates the map's error $T_k$, biased only
+by $\beta_k$, so $\hat C_k/\hat{\mathcal V}_k^{1/2}$ is a data-based test of map bias, worth reporting
+even when the map is the reported estimator.
+
+% ---------------------------------------------------------------------------------------------
+\section{Estimating the intensity by simulation}\label{sec:qhat}
+
+\paragraph{Deployment law.} $\mathcal D_c$ is a year-stratified smoothed bootstrap of the real launches:
+cohort $c$ draws $N_c$ launches uniformly with replacement from the real launches of year $c$ (position,
+date and lifespan together), and jitters each by independent uniforms of $\pm1/12^\circ$ in latitude and
+longitude (the latter divided by $\cos\varphi$) and $\pm10$\,d in time, redrawing positions off deep
+water. One draw has the year's empirical launch measure convolved with a uniform kernel truncated to
+deep water. The jitter is a smoothing bandwidth giving $\mathcal D_c$ a density, not a model of
+trajectory error.
+
+\paragraph{Replicates.} Replicates $r=1,\dots,R$ draw deployments, advect them at park depth in GLORYS
+(Parcels, RK4) and record profiles every $10$\,d. For \cref{lem:campbell} to apply, the replicates used
+for $\hat q$ must be independent of the design being weighted: in the chain, disjoint from the evaluated
+replicates. (Weighting each replicate with a $\hat q$ that includes it shifted Hájek by $-0.001$ to
+$-0.02$ GJ\,m$^{-2}$.)
+
+\paragraph{Kernel estimator.} On native cells $E$ (GLORYS cell $\times$ day), let
+\[
+  \bar N_c(E)=\frac1{RN_c}\sum_{r=1}^R\sum_{j:\,c_j=c}\#\{\Phi_u(s_j^{(r)})\cap E\},
+\]
+so $\E\bar N_c(E)=\Lambda^{(1)}_c(E)$ by \cref{lem:campbell}. With $W_h$ a separable Gaussian kernel (standard deviations $\sigma_s$ in space,
+$\sigma_t$ in time) and $\mu_{\mathcal S}(E)=\mu(E\cap\mathcal S)$ the measure of the float support
+$\mathcal S$ (deep enough to park, inside the velocity domain and run window),
+\[
+  \hat q^{(1)}_c=\frac{W_h*\bar N_c}{W_h*\mu_{\mathcal S}}
+\]
+\citep{diggle1985}. Dividing by the kernel mass inside the support removes the downward bias at coasts
+and domain edges. So far $\sigma_s=1/6^\circ$ and $\sigma_t=4$\,d, fixed a priori.
+
+\paragraph{Error.} The denominator is deterministic, so $\E\hat q^{(1)}_c=\bar q_{c,h}:=(W_h*\Lambda^{(1)}_c)/(W_h*\mu_{\mathcal S})$
+exactly, and $\hat q^{(1)}_c-q^{(1)}_c$ is smoothing bias $\bar q_{c,h}-q^{(1)}_c$ ($O(h^2)$ in the
+interior and $O(h)$ near $\partial\mathcal S$, for $q^{(1)}_c\in C^2$) plus Monte Carlo error (variance
+$O(\kappa_h\,q/(R\,h_s^2h_t))$, with $\kappa_h\ge1$ the over-dispersion from one float's consecutive
+profiles sharing a kernel). Weights use the reciprocal. With $\epsilon=(\hat q-q)/q$, the identity
+$q/\hat q=1-\epsilon+\epsilon^2q/\hat q$ is exact, so
+\[
+  \E\frac{q}{\hat q}-1=-\frac{\bar q_h-q}{q}+\E\Big[\epsilon^2\frac{q}{\hat q}\Big],
+\]
+a signed smoothing term plus a nonnegative Jensen term of the order of the relative Monte Carlo
+variance, $O(\kappa_h/(R\,q\,h_s^2h_t))$. Only the variation
+of $\lambda_k$ over $\X_y$ matters (\cref{cor:dr}); a global scale error cancels.
+
+% ---------------------------------------------------------------------------------------------
+\section{The deployed array}\label{sec:real}
+
+For real Argo, \cref{thm:realized} holds as stated, and \cref{thm:bias} holds with
+$\lambda_k=q^{\mathrm{true}}_{k|-k}/\hat q_k$, $q^{\mathrm{true}}=q(\mathcal D^{\mathrm{true}},u^{\mathrm{true}})$,
+plus a dependence remainder. The residual bias is thus a product of map error and simulated-design
+error, which has five sources (the first expected to dominate):
+\begin{enumerate}
+  \item \emph{Flow.} GLORYS-advected copies of real floats separate from them by a median of $53$\,km at
+        $10$\,d, $135$\,km at $30$\,d and $589$\,km at one year.
+  \item \emph{Deployment law.} $\mathcal D_c$ is built from the realized launches, which are themselves
+        the design (\cref{rem:selfshare}).
+  \item \emph{Retention.} Quality and depth filters, modelled by per-float, per-age retention rates.
+  \item \emph{Dependence.} Floats from one cruise, or sharing flow errors, are not independent across
+        folds, so $q_{k|-k}\neq\sum_cn_{k,c}q^{(1)}_c$ and the bias gains
+        $R^{\mathrm{dep}}_k=\int e_k(q_{k|-k}-\sum_cn_{k,c}q^{(1)}_c)/\hat q_k\dd\Prob_y$ (HT form).
+        Folds by cruise reduce it \citep{chiang2022}.
+  \item \emph{Measurement.} Mean-zero error independent of the design adds variance only.
+\end{enumerate}
+
+\begin{remark}[Self-share]\label{rem:selfshare}
+If $\mathcal D_c$ uses all real launches, jittered copies of a float's own launch follow its track for a
+while, inflating $\hat q_k$ at its early profiles and down-weighting them. Remedy: build fold $k$'s
+$\hat q^{(1)}_c$ from other folds' launches only. A uniform draw from the full pool, conditioned on
+falling in the other folds' pool, is uniform on that pool, so the existing replicates serve, filtered by
+pool index. \Cref{ass:cover} near launch sites then needs each fold-$k$ launch to lie within the jitter
+support of other folds' launches.
+\end{remark}
+
+\paragraph{Sensitivity band.} $\lambda_k$ is not identified. Following \citet{tan2006} and
+\citet{zhao2019}, suppose $\lambda_k\in[\Gamma^{-1},\Gamma]$ up to a common scale on $\X_y$; this presumes real floats
+reach all of $A^*$, since reweighting observed profiles cannot represent water with $\lambda_k=0$. The Hájek
+correction is scale-invariant, so its range over the band is the min and max over $h_i\in[\Gamma^{-1},\Gamma]$
+of $\sum_{I_k}h_iv_ie_k(x_i)/\sum_{I_k}h_iv_i$, a linear-fractional programme solved by a threshold in
+the sorted residuals ($O(n\log n)$). The band is deterministic. $\Gamma$ is
+calibrated by the flow-error experiment (\cref{sec:validation}).
+
+\paragraph{Diagnostics (heuristic).} If deployments are exogenous, newly launched floats sample without
+preferential selection, so the residual contrast between older and new floats indicates the alignment of
+$\lambda-1$ with $e$, i.e.\ the sign and rough size of $\beta^{\mathrm{prod}}$. Real profile density
+against $\hat q$ flags parts of $A^*$ that real floats do not reach. The North Atlantic detection analysis found it near zero except in
+the Gulf Stream once sea-level anomaly enters the mean field.
+
+% ---------------------------------------------------------------------------------------------
+\section{Validation design}\label{sec:validation}
+
+\begin{table}[ht]
+\centering\small
+\begin{tabular}{@{}p{2.9cm}p{4.3cm}p{4.3cm}p{3.4cm}@{}}
+\toprule
+Experiment & Construction & Tests & Does not test\\
+\midrule
+Identical-twin chain & GLORYS truth; floats from $\mathcal D_c$ advected in GLORYS; $\hat q$ from disjoint
+replicates & \cref{thm:realized,thm:bias} with every assumption true; $\lambda_k\to1$ in $R,h$; ratio
+terms; \cref{ass:cover}; interval coverage of \cref{prop:var} & Robustness to a wrong design model\\
+Flow-error dial & As above, but evaluated floats advected in perturbed flow (speed factor, random walk) at
+several levels; $\hat q$ unchanged & Bias against $\|\lambda-1\|$; alignment of flow and map errors;
+$\Gamma$ calibrated to real trajectory divergence & Real deployment behaviour\\
+Real positions on GLORYS & Real profile positions read GLORYS $Z$ & Realized error of the real array &
+Decomposition; real floats follow real, not GLORYS, eddies\\
+Real Argo & Real values & Estimate, interval, $\Gamma$ band, diagnostics & Truth unknown\\
+\bottomrule
+\end{tabular}
+\caption{What each experiment can and cannot establish.}
+\end{table}
+
+A $2\times2$ design \citep[in the spirit of][]{kang2007} crosses \{correct, wrong\} intensity with
+\{map, constant map\}. Constant-map cells are Hájek (\cref{prop:hajek-is-dr}) and wrong-intensity cells
+come from the flow-error dial, so each arm of \cref{cor:dr} is shown separately and the both-wrong cell
+exposes DR's failure under extreme weights.
+
+% ---------------------------------------------------------------------------------------------
+\section{Assumptions}\label{sec:assumptions}
+
+\begin{center}\small
+\begin{tabular}{@{}p{5.4cm}p{4.4cm}p{4.4cm}@{}}
+\toprule
+Assumption & Chain & Real array\\
+\midrule
+\Cref{ass:frame}: $(u,Z)$ fixed, design random & By construction & Interpretive choice\\
+\Cref{ass:deploy}: independent deployments & By construction & Approximate (cruises)\\
+\Cref{ass:ac}: $\Lambda^{(1)}_c\ll\mu$ & Jitter supplies a density & Same\\
+$\hat q$ fixed with respect to the design & Disjoint replicates & Other folds' launches (\cref{rem:selfshare})\\
+$\hat m_{-k}$ is $\mathcal G_{-k}$-measurable & Fold refits, external covariance (\cref{rem:cov-params}) & Same\\
+Fold labels independent & By construction & By construction\\
+Exact values $Z(x_i)$ & By construction & Mean-zero measurement error\\
+\Cref{ass:cover}: $\hat q_k\ge q_0$ on $A^*$ & Checked on replicates & Same; real reach enters $\lambda_k$ (band needs $\lambda_k>0$)\\
+Design model correct ($\lambda$ constant) & Up to kernel error & Fails; enters $\beta^{\mathrm{prod}}$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ---------------------------------------------------------------------------------------------
+\section{Open choices}\label{sec:open}
+
+\begin{enumerate}
+  \item \emph{Domain $A$.} The existing replicates cover $11$--$66^\circ$N, $87$--$12^\circ$W, 2010--2019,
+        so an interior such as $15$--$60^\circ$N, $80$--$20^\circ$W needs no new advection; the full basin
+        needs new velocity and a new ensemble.
+  \item \emph{Covariance parameters.} External or per-fold refits (\cref{rem:cov-params}).
+  \item \emph{Folds.} $K$; by float (chain) or by cruise (real data).
+  \item \emph{Reachability threshold $q_A$.} Higher shrinks $A^*$ (a smaller estimand) but bounds the
+        weights more tightly; reported with the area excluded.
+  \item \emph{Correction window.} The correction can pool over a larger $W\supseteq\X_y$ if the map's bias
+        is smooth over $W$, trading variance for bias; unnecessary for basin-year targets.
+  \item \emph{Stratification.} Hájek normalization per subregion absorbs regional scale errors in $\hat q$,
+        at the cost of a ratio remainder per stratum.
+  \item \emph{Bandwidth $(\sigma_s,\sigma_t)$ and $R$.} Fixed a priori so far; the chain can report bias
+        against both.
+\end{enumerate}
