@@ -872,19 +872,28 @@ def plot_tradeoff(s, est_lab, box_lab, figsize=(13, 4.3)):
     return fig
 
 
-def plot_by_year(s, est_lab, box_lab, figsize=(13, 8)):
-    """Bias (+/- 2 MC se), sd and RMSE per year for each estimator; rows are statistics, columns boxes."""
+def plot_by_year(s, est_lab, box_lab, e=None, figsize=(13, 10)):
+    """Bias (+/- 2 MC se), variance and MSE per year for each estimator; rows are statistics, columns boxes.
+    With e, a second row shows each replicate's error with the bias."""
     import matplotlib.pyplot as plt
-    rows = (("bias", "bias (GJ/m2)"), ("sd", "sd (GJ/m2)"), ("rmse", "RMSE (GJ/m2)"))
+    rows = [("bias", "bias (GJ/m2)"), ("var", "variance (GJ/m2)^2"), ("mse", "MSE (GJ/m2)^2")]
+    if e is not None:
+        rows.insert(1, ("err", "error per replicate (GJ/m2)"))
     fig, ax = plt.subplots(len(rows), len(box_lab), figsize=figsize, sharex=True, sharey="row")
+    off = dict(zip(est_lab, np.linspace(-0.12, 0.12, len(est_lab))))
     for j, b in enumerate(box_lab):
         for c, lab in est_lab.items():
             x = s[(s.box == b) & (s.estimator == c) & (s.year != "all")].sort_values("year")
             yr = x.year.astype(int)
             ax[0, j].errorbar(yr, x.bias, 2 * x.bias_se, marker="o", ms=4, capsize=2, color=EST_COL[c], label=lab)
-            ax[1, j].plot(yr, x.sd, "o-", ms=4, color=EST_COL[c])
-            ax[2, j].plot(yr, x.rmse, "o-", ms=4, color=EST_COL[c])
-        ax[0, j].axhline(0, color="k", lw=0.6)
+            if e is not None:
+                r = e[e.box == b]
+                ax[1, j].plot(r.year + off[c], (r[c] - r.theta) * 1e-9, ".", ms=3, alpha=0.15, color=EST_COL[c])
+                ax[1, j].plot(yr + off[c], x.bias, "o", ms=5, color=EST_COL[c], mec="k", mew=0.6)
+            ax[-2, j].plot(yr, x.sd ** 2, "o-", ms=4, color=EST_COL[c])
+            ax[-1, j].plot(yr, x.rmse ** 2, "o-", ms=4, color=EST_COL[c])
+        for i in range(len(rows) - 2):
+            ax[i, j].axhline(0, color="k", lw=0.6)
         ax[0, j].set_title(box_lab[b])
         ax[-1, j].set(xlabel="year", xticks=sorted(yr))
     for i, (_, lab) in enumerate(rows):
