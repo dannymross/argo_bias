@@ -18,7 +18,7 @@ from osim import chain as ch
 
 plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.alpha": 0.25})
 BOX_LAB = {"boxA": "Box A", "boxB": "Box B", "boxAB": "Box A u B"}
-EST_LAB = {"naive": "naive mean", "hajek": "Hajek (IPW)", "mean_field": "mean field", "krige": "map", "dr": "DR"}
+EST_LAB = {"naive": "naive mean", "mean_field": "mean field", "krige": "map", "dr": "DR"}
 
 def _emit(s=""):
     print(s)
@@ -50,7 +50,6 @@ deployments of this one ocean. Details are in the theory note (`paper/sections/t
 **Estimators**, per replicate and box-year:
 
 * **naive mean**: the average OHC at the in-box float profiles;
-* **Hájek (IPW)**: the same average weighted by $1/\hat q$, the inverse of the estimated sampling intensity;
 * **mean field**: the local-polynomial mean field [@sukianto2026, eq. 5] averaged over the box;
 * **map**: the mean field plus locally stationary kriging of its anomalies [@kuusela2018], averaged over the box;
 * **DR**: the map plus a $1/\hat q$-weighted mean of its residuals at held-out floats, cross-fitted over $K=5$ float folds.
@@ -87,6 +86,18 @@ _show_fig(ch.plot_intensity(nd_ex[nd_ex.box != "boxAB"], pf_ex[pf_ex.box != "box
 
 Floats are up to three times more dense than average in some places and under half as dense in others. In box B
 the dense and sparse regions line up with the OHC gradient across the Gulf Stream.
+
+```{python}
+#| label: fig-intensity-grid
+#| echo: false
+#| fig-cap: "Quarterly-mean sampling intensity q-hat of the full deployment law relative to its annual mean over A u B (log scale, common colour scale), 2015-2019."
+
+_show_fig(ch.plot_intensity_grid())
+```
+
+@fig-intensity-grid shows $\hat q$ by quarter. The pattern is stable within and across years: box B is
+sampled more densely than box A throughout (median $\hat w$ of $1.23$ vs $0.71$ over quarters), and the quarterly
+5--95% range of $\hat w$ in box B ($0.79$--$1.88$) is only slightly wider than the annual one ($0.84$--$1.77$).
 
 # Preferential sampling
 
@@ -208,8 +219,7 @@ number of cohort-$c$ floats, and $\hat q^{(1)}_c$ is the per-float intensity of 
 estimate over all 1000 replicates with the evaluated replicate's own profiles removed. This keeps the weights
 independent of the floats they weight, which the unbiasedness argument (Campbell's theorem) requires.
 $Q_y(\hat m_{-k})$ is fold $k$'s map estimate. $\hat C_k$ estimates what it misses, $T_k = \theta_y - Q_y(\hat m_{-k})$,
-by a Hájek mean of the held-out residuals. With a constant map, $\hat\theta_{\mathrm{DR}}$ reduces to the average of
-the fold-wise Hájek estimators.
+by a $1/\hat q_k$-weighted (Hájek) mean of the held-out residuals.
 
 # The bias--variance trade-off
 
@@ -225,17 +235,16 @@ _show_fig(ch.plot_tradeoff(s, EST_LAB, BOX_LAB))
 ```
 
 * **naive**: large bias at moderate sd.
-* **Hájek**: removes the bias but has the largest sd, because the weights are applied to OHC itself.
 * **mean field**: small sd, with a bias of $-0.15$ GJ m$^{-2}$ that varies by year.
 * **map**: kriging cuts the mean field's bias and has the lowest RMSE annually in every box. The bias left is
   $-0.10$ in A and $-0.08$ in A $\cup$ B.
 * **DR**: nearly unbiased ($-0.015$, $-0.04$, $-0.03$) at an sd somewhat above the map's. The weights act on the
-  map residuals, which are much smaller than OHC, so its sd is far below Hájek's.
+  map residuals, which are much smaller than OHC, so the added variance is moderate.
 
 ```{python}
 #| label: fig-by-year
 #| echo: false
-#| fig-cap: "Bias (+/- 2 Monte Carlo se), sd and RMSE by year over 200 replicates (GJ per m2; sd and RMSE on log scales). The naive mean's bias is in the figure above."
+#| fig-cap: "Bias (+/- 2 Monte Carlo se), sd and RMSE by year over 200 replicates (GJ per m2). The naive mean's bias is in the figure above."
 
 _show_fig(ch.plot_by_year(s, {k: v for k, v in EST_LAB.items() if k != "naive"}, BOX_LAB))
 ```
@@ -251,8 +260,7 @@ The distributions behind these summaries:
 #| echo: false
 #| output: asis
 
-BOX_EST = {"naive": "naive mean", "mean_field": "mean field", "krige": "map", "dr": "DR"}
-_tabs([(BOX_LAB[b], lambda b=b: _show_fig(ch.plot_errors(e, BOX_EST, b))) for b in BOX_LAB])
+_tabs([(BOX_LAB[b], lambda b=b: _show_fig(ch.plot_errors(e, EST_LAB, b))) for b in BOX_LAB])
 ```
 
 # How DR reweights the kriging residuals
@@ -281,6 +289,26 @@ in box B. The weighted correction misses it by $-0.04$.
 
 _show_fig(ch.plot_corrections(fm, BOX_LAB))
 ```
+
+@fig-residual-cells shows where the weighted correction moves away from the plain mean. All held-out residuals are
+pooled over the 200 replicates, five years and five folds and binned to $0.5^\circ$ cells. A profile's relative
+weight is $r=\hat q_k^{-1}$ divided by its mean over the fold's profiles in that box-year, so
+$C_k-\bar e_k=n_k^{-1}\sum_i (r_i-1)\,e_i$. The right panel is each cell's share of the average of this gap,
+and over a box the shares sum to it exactly ($+0.03$ in box A and $+0.17$ in box B, GJ m$^{-2}$).
+
+```{python}
+#| label: fig-residual-cells
+#| echo: false
+#| fig-cap: "Held-out residuals pooled over 200 replicates, 2015-2019 and the five folds, per 0.5 deg cell with at least 30 residuals. Left: mean weight 1/q-hat_k relative to its fold mean (log scale). Middle: mean residual Z - m(-k) (GJ per m2). Right: the cell's contribution to the mean of C_k minus the plain residual mean."
+
+_show_fig(ch.plot_residual_cells(ch.residual_cells()))
+```
+
+In box B the densely sampled cells north of about $40^\circ$N (weight below $0.9$) have a mean residual of
+$-0.54$ GJ m$^{-2}$: the map is too warm there, and these cells dominate the plain mean. Down-weighting them
+provides $+0.09$ of the $+0.17$ shift, so most of the correction comes from shrinking the crowded cells, not from
+boosting the sparse ones. In box A the residuals have nearly the same mean at every weight ($0.06$--$0.12$), so
+reweighting changes little.
 
 # Multi-year targets
 

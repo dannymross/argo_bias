@@ -610,6 +610,55 @@ def fold_means(maxrep=200):
     return out
 
 
+def residual_cells(maxrep=200):
+    """Held-out residuals pooled over replicates and years on the 0.5 deg node cells: count, mean residual,
+    mean relative weight r = v / mean v within its box-year-fold, and the sum of (r - 1) e, the cell's share
+    of C_k minus the unweighted mean (GJ/m2), cached."""
+    f = os.path.join(OUT, f"residual_cells{KS}.parquet")
+    if os.path.exists(f):
+        return pd.read_parquet(f)
+    out = []
+    for r in range(maxrep):
+        pf = rep_profiles(r)[0]
+        g = pf.groupby(["box", "year", "fold"])
+        pf = pf.assign(rel=pf.v / g.v.transform("mean"), e=pf.e * 1e-9, cnt=g.e.transform("size"))
+        out.append(pf.assign(shift=(pf.rel - 1) * pf.e / pf.cnt)[["box", "lat", "lon", "e", "rel", "shift"]])
+    p = pd.concat(out, ignore_index=True)
+    p["lat"] = (np.floor(p.lat / gd.NODE_DEG) + 0.5) * gd.NODE_DEG
+    p["lon"] = (np.floor(p.lon / gd.NODE_DEG) + 0.5) * gd.NODE_DEG
+    c = p.groupby(["box", "lat", "lon"]).agg(n=("e", "size"), e=("e", "mean"), rel=("rel", "mean"),
+                                            shift=("shift", "sum")).reset_index()
+    c["shift"] /= maxrep * len(YEARS) * K
+    c.to_parquet(f)
+    return c
+
+
+def plot_residual_cells(c, n_min=30, figsize=(14, 4.8)):
+    """Per 0.5 deg cell: the mean relative weight 1 / q-hat_k, the mean held-out map residual, and the cell's
+    contribution to the average gap between C_k and the unweighted residual mean."""
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LogNorm, TwoSlopeNorm
+    c = c[c.n >= n_min]
+    fig, ax = plt.subplots(1, 3, figsize=figsize, sharey=True)
+    xe, ye, g = _cells(c, c.rel)
+    lim = np.nanmax(np.abs(np.log(g)))
+    m = ax[0].pcolormesh(xe, ye, g, cmap="PuOr_r", norm=LogNorm(np.exp(-lim), np.exp(lim)))
+    fig.colorbar(m, ax=ax[0], shrink=0.7, orientation="horizontal", label="relative weight (log scale)")
+    for a, v, lab in ((ax[1], c.e, "mean residual Z - m(-k) (GJ/m2)"),
+                      (ax[2], c["shift"] * 1e3, "contribution to C_k - mean e (1e-3 GJ/m2)")):
+        xe, ye, g = _cells(c, v)
+        lim = np.nanquantile(np.abs(g), 0.99)
+        m = a.pcolormesh(xe, ye, g, cmap="RdBu_r", norm=TwoSlopeNorm(0, -lim, lim))
+        fig.colorbar(m, ax=a, shrink=0.7, orientation="horizontal", label=lab)
+    for a, t in zip(ax, ("weight 1/q-hat_k relative to its fold mean", "held-out map residual",
+                         "reweighting shift")):
+        _box_frame(a)
+        a.set_title(t, fontsize=10)
+    for a in ax[1:]:
+        a.set_ylabel("")
+    return fig
+
+
 def _cells(nd, v):
     """Node values on the regular 0.5 deg cell grid (edges, 2-d array) for pcolormesh."""
     i = np.floor(nd.lat.to_numpy() / gd.NODE_DEG).astype(int)
@@ -650,6 +699,38 @@ def plot_intensity(nd, prof, figsize=(12, 5.5)):
     for a in ax:
         _box_frame(a)
     fig.tight_layout()
+    return fig
+
+
+def plot_intensity_grid(nq=None, figsize=(12, 13)):
+    """Quarterly-mean design intensity q-hat = sum_c N_c q-hat_c, years by quarters, relative to its
+    area- and day-weighted mean over A u B in that year."""
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LogNorm
+    nq = pd.read_parquet(os.path.join(OUT, f"node_q{KS}.parquet")) if nq is None else nq
+    nq = nq[nq.box != "boxAB"]
+    Nc = cohort_sizes()
+    nq = nq.assign(q=nq[[f"q1_{c}" for c in Nc.index]].to_numpy(float) @ Nc.to_numpy(float),
+                   year=nq.month.dt.year, qtr=nq.month.dt.quarter, w=nq.month.dt.days_in_month)
+    qbar = nq.groupby("year").apply(lambda g: np.average(g.q, weights=g.w * g.area))
+    g = nq.assign(qw=nq.q * nq.w).groupby(["year", "qtr", "node", "lat", "lon"])[["qw", "w"]].sum().reset_index()
+    g["wh"] = g.qw / g.w / g.year.map(qbar)
+    pos = g.wh[g.wh > 0]
+    lim = np.abs(np.log(np.nanquantile(pos, [0.005, 0.995]))).max()
+    norm = LogNorm(np.exp(-lim), np.exp(lim))
+    years = sorted(g.year.unique())
+    fig, ax = plt.subplots(len(years), 4, figsize=figsize, sharex=True, sharey=True)
+    for i, y in enumerate(years):
+        for j in range(4):
+            d = g[(g.year == y) & (g.qtr == j + 1)]
+            xe, ye, v = _cells(d, np.where(d.wh > 0, d.wh, np.nan))
+            m = ax[i, j].pcolormesh(xe, ye, v, cmap="magma", norm=norm)
+            _box_frame(ax[i, j])
+            ax[i, j].set(xlabel="", ylabel="")
+            if i == 0:
+                ax[i, j].set_title(("Jan-Mar", "Apr-Jun", "Jul-Sep", "Oct-Dec")[j], fontsize=10)
+        ax[i, 0].set_ylabel(f"{y}\nlat")
+    fig.colorbar(m, ax=ax, shrink=0.5, label="w-hat = q-hat / annual mean (log scale)")
     return fig
 
 
@@ -808,8 +889,6 @@ def plot_by_year(s, est_lab, box_lab, figsize=(13, 8)):
         ax[-1, j].set(xlabel="year", xticks=sorted(yr))
     for i, (_, lab) in enumerate(rows):
         ax[i, 0].set_ylabel(lab)
-    for a in ax[1:].ravel():
-        a.set_yscale("log")
     ax[0, 0].legend(fontsize=8, frameon=False)
     fig.tight_layout()
     return fig
