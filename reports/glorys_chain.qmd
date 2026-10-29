@@ -44,7 +44,7 @@ GLORYS12 is the true ocean: its velocity field moves the virtual floats and its 
 sample. The ocean is held fixed. What is random is where floats are deployed: each replicate redraws the real
 2010--2019 launches from a year-stratified smoothed bootstrap and advects them in GLORYS. The target is the annual
 mean OHC $\theta_y$ of box A (22--34$^\circ$N, gyre interior), box B (34--45$^\circ$N, Gulf Stream) and A $\cup$ B, for
-2015--2019. Bias, sd and RMSE are taken over 200 replicates, so they measure how the estimators behave across
+2015--2019. Bias, variance and MSE are taken over 200 replicates, so they measure how the estimators behave across
 deployments of this one ocean. Details are in the theory note (`paper/sections/theory.tex`).
 
 **Estimators**, per replicate and box-year:
@@ -57,76 +57,88 @@ deployments of this one ocean. Details are in the theory note (`paper/sections/t
 The map averages over $0.5^\circ$ nodes at three times per month. Checked against the true field, that quadrature
 is accurate to 0.01 GJ m$^{-2}$, so all map error below is interpolation error.
 
-# Where the floats sample: $\hat q$
-
-$\hat q$ is the expected density of profiles per unit area and time under the deployment law, estimated by a
-Gaussian kernel ($\sigma=1/6^\circ$, 2 d) over all 1000 replicates. For each replicate it is computed without that
-replicate's own profiles. @fig-intensity shows it relative to its mean, next to the OHC field it samples.
-
-```{python}
-#| label: example-data
-#| include: false
-
-EX_REP, EX_YEAR, EX_BOX = 171, 2017, "boxB"
-nd_ex = ch.node_maps(EX_REP, EX_YEAR)
-pf_ex = ch._with_union(ch.rep_profiles(EX_REP)[0])
-pf_ex = pf_ex[pf_ex.year == EX_YEAR]
-fm = ch.fold_means()
-fm_ex = fm[(fm.rep == EX_REP) & (fm.year == EX_YEAR)]
-EX_FOLD = int(fm_ex[fm_ex.box == EX_BOX].assign(a=lambda d: d["T"].abs()).sort_values("a").fold.iloc[-1])
-```
-
-```{python}
-#| label: fig-intensity
-#| echo: false
-#| fig-cap: "2017, box A (south) and box B (north). Left: annual-mean true OHC with one replicate's in-box profiles. Right: sampling intensity q-hat relative to its mean (log scale) with OHC contours (GJ per m2)."
-
-_show_fig(ch.plot_intensity(nd_ex[nd_ex.box != "boxAB"], pf_ex[pf_ex.box != "boxAB"]))
-```
-
-Floats are up to three times more dense than average in some places and under half as dense in others. In box B
-the dense and sparse regions line up with the OHC gradient across the Gulf Stream.
-
-```{python}
-#| label: fig-intensity-grid
-#| echo: false
-#| fig-cap: "Quarterly-mean sampling intensity q-hat of the full deployment law relative to its annual mean over A u B (log scale, common colour scale), 2015-2019."
-
-_show_fig(ch.plot_intensity_grid())
-```
-
-@fig-intensity-grid shows $\hat q$ by quarter. The pattern is stable within and across years: box B is
-sampled more densely than box A throughout (median $\hat w$ of $1.23$ vs $0.71$ over quarters), and the quarterly
-5--95% range of $\hat w$ in box B ($0.79$--$1.88$) is only slightly wider than the annual one ($0.84$--$1.77$).
-
-# Preferential sampling
-
-The naive mean's expected bias is the covariance of the normalized intensity $w=q/\bar q_y$ with OHC,
-$\operatorname{Cov}_{\mathbb P_y}(w,Z)$. With the pooled float occupancy of all replicates in place of $w$ the identity is
-exact. @fig-naive compares the two.
-
-```{python}
-#| label: fig-naive
-#| echo: false
-#| fig-cap: "Naive bias (estimate minus truth, mean over 1000 replicates, +/- 2 Monte Carlo se) and the alignment Cov(w, Z) of the pooled float occupancy with OHC (GJ per m2)."
-
-al = pd.read_parquet(os.path.join(ch.OUT, "alignment.parquet"))
-_show_fig(ch.plot_naive_bias(ch.design_estimates(ch.load_points(ks="")), al, BOX_LAB))
-```
-
-Floats under-sample warm water. The naive mean is 1.2--2.5 GJ m$^{-2}$ too cold in box B and A $\cup$ B, and the
-alignment term accounts for all of it.
-
 # Methods
 
-Each replicate supplies its virtual-float profiles over the buffer $14$--$55^\circ$N, $72$--$32^\circ$W for
-2010--2019. Each profile reads $Z$ at its containing native cell and day. These are the deployed floats plus the
-265 floats already in the water on 2010-01-01; the latter are the same in every replicate. The map uses all of
-them. The DR weighting and the folds use only the deployed floats.
+## Virtual floats
+
+**Deployment pool.** The pool is every real Argo float launched in 2010--2019 inside the GLORYS velocity domain
+($11$--$66^\circ$N, $87$--$12^\circ$W) on water at least $1000$ m deep: $994$ floats. Each keeps its launch position
+and date (from the GDAC metadata, or its first profile when the metadata are inconsistent) and its operating
+life, launch to last profile (median $1380$ d).
+
+**Resampling.** A replicate is a year-stratified smoothed bootstrap of the pool. Within each launch year $y$ it
+draws the year's $N_y$ floats with replacement, so every replicate has the real yearly counts but a different
+set of launches. Each draw is jittered uniformly by $\pm 1/12^\circ$ in latitude and in great-circle longitude
+and by $\pm 10$ d in time; a jittered seed off deep water is redrawn. The $265$ floats already profiling on
+2010-01-01 enter every replicate unchanged, at their first 2010 position with their remaining life. The random
+element of the study is this resampling, one independent draw per replicate.
+
+**Advection.** All floats of a replicate are advected together in one continuous Parcels run through the GLORYS12
+daily horizontal velocity at the $1000$ m parking depth, by fourth-order Runge--Kutta with a 1 h step, from
+2010-01-01 to the end of 2019. A float is removed when its life runs out or it leaves the domain. Vertical cycling
+is not simulated: a profile is taken every $10$ d after release at the float's interpolated parking position. The
+years 2010--2014 are a spin-up, so the in-box float population is in equilibrium by the scored years 2015--2019.
+
+```{python}
+#| label: fig-advection
+#| echo: false
+#| fig-cap: "Replicate 171: 80 randomly chosen deployed floats, their 10-day profile positions and tracks 2010-2019, coloured by profile year. Blue dashed: the velocity (advection) domain; green dashed: the OHC field domain; shaded: boxes A and B."
+
+_show_fig(ch.plot_advection(171))
+```
+
+**Profiles.** Each profile reads $Z$ at its containing native cell and day, with no measurement error. The map
+uses every profile in the buffer $14$--$55^\circ$N, $72$--$32^\circ$W, from the deployed and the initial floats.
+The DR weighting and the folds use only the deployed floats, whose law $\hat q$ describes. There are $1000$
+replicates; $\hat q$ uses all of them, and the maps and DR are run on the first $200$.
 
 **Quadrature.** For a field $g$, $Q_y(g)$ averages $g$ over the box's $0.5^\circ$ cells, located at their deep-area
 centroids and area-weighted, at three time nodes per month. The months are then day-weighted. The map and fold-map
 estimates are $Q_y(\hat m)$ and $Q_y(\hat m_{-k})$.
+
+## Sampling intensity: $q$, $\hat q$ and $w$
+
+Let $\nu$ be area $\times$ time measure on the deep ocean of a box-year $S_y$ and $\mathbb P_y=\nu/\nu(S_y)$ its
+normalized version, so $\theta_y=\int Z\,d\mathbb P_y$. One deployment produces a random set of in-box profile
+locations $\{s_i\}$, a point process $N$ on $S_y$. Its intensity measure $\Lambda(B)=\mathbb E\,N(B)$, the expected
+number of profiles in $B$ over deployments, is absolutely continuous with respect to $\nu$, and
+
+$$
+q=\frac{d\Lambda}{d\nu}
+$$
+
+is the **sampling intensity**: expected profiles per m$^2$ per day at each place and time. It describes the
+deployment law, not one array. A single replicate is one noisy draw from it. Campbell's theorem,
+$\mathbb E\sum_i g(s_i)=\int g\,q\,d\nu$, is what makes $1/q$ the right weight. Wherever $q>0$,
+$\mathbb E\sum_i g(s_i)/q(s_i)=\int g\,d\nu$, whatever the sampling pattern.
+
+The **normalized intensity** $w=q/\bar q_y$, with $\bar q_y=\int q\,d\mathbb P_y$, is the density of the profile
+locations relative to uniform sampling. $w=2$ means twice as many profiles as an even spread would give, and
+$w=1/2$ half as many. The naive mean averages $Z$ under $w\,d\mathbb P_y$ instead of $d\mathbb P_y$. Since
+$\int w\,d\mathbb P_y=1$,
+
+$$
+\int wZ\,d\mathbb P_y-\theta_y=\operatorname{Cov}_{\mathbb P_y}(w,Z),
+$$
+
+so floats over-sampling cold water ($w$ and $Z$ negatively correlated) make it too cold. This is preferential
+sampling in the design sense.
+
+$q$ is unknown, so it is estimated from the simulated deployments. For launch-year cohort $c$ with $N_c$ floats per
+replicate,
+
+$$
+\hat q^{(1)}_c(s)=\frac{\sum_{r}\sum_{i\in c,\,r}k_h(s-s_{ri})}{R\,N_c\int_{S}k_h(s-u)\,\nu(du)},
+\qquad
+\hat q=\sum_c N_c\,\hat q^{(1)}_c,
+$$
+
+where the sum runs over the cohort's profiles in the $R=1000$ replicates and $k_h$ is a Gaussian kernel with sd
+$1/6^\circ$ in latitude and longitude and $2$ d in time, truncated at $4$ sd. The denominator is the kernel mass on
+the ocean support $S$, which corrects for coasts and shelf. $\hat q^{(1)}_c$ is the intensity of one cohort-$c$
+float, so a fold of $n_{k,c}$ cohort-$c$ floats has intensity $\hat q_k=\sum_c n_{k,c}\hat q^{(1)}_c$. When
+$\hat q$ weights a replicate's own profiles, that replicate is left out ($R-1$ in the denominator). The plug-in
+$\hat w=\hat q/\int\hat q\,d\mathbb P_y$ is what the maps below show.
 
 ## Mean field
 
@@ -214,31 +226,86 @@ $$
 v_i = \frac{1}{\hat q_k(x_i)} .
 $$
 
-$\hat q_k = \sum_c n_{k,c}\,\hat q^{(1)}_{c}$ is fold $k$'s expected profile intensity. Here $n_{k,c}$ is fold $k$'s
-number of cohort-$c$ floats, and $\hat q^{(1)}_c$ is the per-float intensity of cohort $c$. The latter is the kernel
-estimate over all 1000 replicates with the evaluated replicate's own profiles removed. This keeps the weights
+$\hat q_k$ is fold $k$'s intensity from above, computed without the evaluated replicate. This keeps the weights
 independent of the floats they weight, which the unbiasedness argument (Campbell's theorem) requires.
 $Q_y(\hat m_{-k})$ is fold $k$'s map estimate. $\hat C_k$ estimates what it misses, $T_k = \theta_y - Q_y(\hat m_{-k})$,
 by a $1/\hat q_k$-weighted (Hájek) mean of the held-out residuals.
 
+# Where the floats sample: $\hat q$
+
+@fig-intensity shows $\hat w$, the estimated intensity relative to its mean, next to the OHC field it samples.
+
+```{python}
+#| label: example-data
+#| include: false
+
+EX_REP, EX_YEAR, EX_BOX = 171, 2017, "boxB"
+nd_ex = ch.node_maps(EX_REP, EX_YEAR)
+pf_ex = ch._with_union(ch.rep_profiles(EX_REP)[0])
+pf_ex = pf_ex[pf_ex.year == EX_YEAR]
+fm = ch.fold_means()
+fm_ex = fm[(fm.rep == EX_REP) & (fm.year == EX_YEAR)]
+EX_FOLD = int(fm_ex[fm_ex.box == EX_BOX].assign(a=lambda d: d["T"].abs()).sort_values("a").fold.iloc[-1])
+```
+
+```{python}
+#| label: fig-intensity
+#| echo: false
+#| fig-cap: "2017, box A (south) and box B (north). Left: annual-mean true OHC with one replicate's in-box profiles. Right: sampling intensity q-hat relative to its mean (log scale) with OHC contours (GJ per m2)."
+
+_show_fig(ch.plot_intensity(nd_ex[nd_ex.box != "boxAB"], pf_ex[pf_ex.box != "boxAB"]))
+```
+
+Floats are up to three times more dense than average in some places and under half as dense in others. In box B
+the dense and sparse regions line up with the OHC gradient across the Gulf Stream.
+
+```{python}
+#| label: fig-intensity-grid
+#| echo: false
+#| fig-cap: "Quarterly-mean sampling intensity q-hat of the full deployment law relative to its annual mean over A u B (log scale, common colour scale), 2015-2019."
+
+_show_fig(ch.plot_intensity_grid())
+```
+
+@fig-intensity-grid shows $\hat q$ by quarter. The pattern is stable within and across years: box B is
+sampled more densely than box A throughout (median $\hat w$ of $1.23$ vs $0.71$ over quarters), and the quarterly
+5--95% range of $\hat w$ in box B ($0.79$--$1.88$) is only slightly wider than the annual one ($0.84$--$1.77$).
+
+# Preferential sampling
+
+The naive mean's expected bias is $\operatorname{Cov}_{\mathbb P_y}(w,Z)$ (Methods). With the pooled float occupancy of all replicates in place of $w$ the identity is
+exact. @fig-naive compares the two.
+
+```{python}
+#| label: fig-naive
+#| echo: false
+#| fig-cap: "Naive bias (estimate minus truth, mean over 1000 replicates, +/- 2 Monte Carlo se) and the alignment Cov(w, Z) of the pooled float occupancy with OHC (GJ per m2)."
+
+al = pd.read_parquet(os.path.join(ch.OUT, "alignment.parquet"))
+_show_fig(ch.plot_naive_bias(ch.design_estimates(ch.load_points(ks="")), al, BOX_LAB))
+```
+
+Floats under-sample warm water. The naive mean is 1.2--2.5 GJ m$^{-2}$ too cold in box B and A $\cup$ B, and the
+alignment term accounts for all of it.
+
 # The bias--variance trade-off
 
-@fig-tradeoff puts every estimator on one plane: bias against sd over deployments, with RMSE as the distance from
-the origin.
+@fig-tradeoff puts every estimator on one plane: variance over deployments against $|\text{bias}|$. Since
+$\text{MSE}=\text{bias}^2+\text{variance}$, the curves of constant MSE are $\text{variance}=\text{MSE}-\text{bias}^2$.
 
 ```{python}
 #| label: fig-tradeoff
 #| echo: false
-#| fig-cap: "Bias against sd over 200 deployments (log axes). Large points pool 2015-2019, small points are single years; grey arcs are constant RMSE (GJ per m2)."
+#| fig-cap: "Variance ((GJ per m2) squared) against |bias| (GJ per m2) over 200 deployments, log axes. Large points pool 2015-2019, small points are single years; grey curves are constant MSE."
 
 _show_fig(ch.plot_tradeoff(s, EST_LAB, BOX_LAB))
 ```
 
-* **naive**: large bias at moderate sd.
-* **mean field**: small sd, with a bias of $-0.15$ GJ m$^{-2}$ that varies by year.
-* **map**: kriging cuts the mean field's bias and has the lowest RMSE annually in every box. The bias left is
+* **naive**: large bias at moderate variance.
+* **mean field**: small variance, with a bias of $-0.15$ GJ m$^{-2}$ that varies by year.
+* **map**: kriging cuts the mean field's bias and has the lowest MSE annually in every box. The bias left is
   $-0.10$ in A and $-0.08$ in A $\cup$ B.
-* **DR**: nearly unbiased ($-0.015$, $-0.04$, $-0.03$) at an sd somewhat above the map's. The weights act on the
+* **DR**: nearly unbiased ($-0.015$, $-0.04$, $-0.03$) at a variance somewhat above the map's. The weights act on the
   map residuals, which are much smaller than OHC, so the added variance is moderate.
 
 ```{python}
@@ -319,13 +386,13 @@ mean divides the variance by about five while the bias stays.
 ```{python}
 #| label: fig-derived
 #| echo: false
-#| fig-cap: "Map and DR RMSE (solid) and |bias| (dashed) for year-to-year changes, the 2015-2019 change and the 2015-2019 mean (GJ per m2), 200 replicates."
+#| fig-cap: "Map and DR MSE (solid) and squared bias (dashed) for year-to-year changes, the 2015-2019 change and the 2015-2019 mean ((GJ per m2) squared), 200 replicates."
 
 _show_fig(ch.plot_derived(ch.derived(e), BOX_LAB))
 ```
 
-For changes the map wins everywhere. For the five-year mean DR wins in box A (RMSE 0.095 against 0.130) and in
-A $\cup$ B (0.104 against 0.119), because the map's bias no longer averages out against its variance. Box B still
+For changes the map wins everywhere. For the five-year mean DR wins in box A (MSE 0.009 against 0.017 (GJ m$^{-2}$)$^2$) and in
+A $\cup$ B (0.011 against 0.014), because the map's bias no longer averages out against its variance. Box B still
 favours the map.
 
 # Kernel bandwidth
@@ -333,12 +400,12 @@ favours the map.
 DR's remaining bias comes from smoothing in $\hat q$. Rebuilding $\hat q$ on a $3\times3$ grid of space and time
 kernel widths, with the maps fixed, moves box B's DR bias steadily from $-0.10$ (widest) to $-0.02$ (narrowest).
 Narrower kernels cost variance and leave places where $\hat q$ is nearly zero. Production uses $(1/6^\circ,2\text{ d})$,
-the lowest box B RMSE on the grid.
+the lowest box B MSE on the grid.
 
 ```{python}
 #| label: fig-bandwidth
 #| echo: false
-#| fig-cap: "DR bias (+/- 2 Monte Carlo se) and RMSE against the kernel time sd, one line per space sd; the star is production (GJ per m2), 200 replicates."
+#| fig-cap: "DR bias (+/- 2 Monte Carlo se, GJ per m2) and MSE ((GJ per m2) squared) against the kernel time sd, one line per space sd; the star is production, 200 replicates."
 
 _show_fig(ch.plot_bandwidth(ch.bandwidth_sensitivity(), BOX_LAB))
 ```

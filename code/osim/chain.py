@@ -705,6 +705,15 @@ def plot_intensity(nd, prof, figsize=(12, 5.5)):
     return fig
 
 
+def plot_advection(rep, n_floats=80, figsize=(8.5, 7.2)):
+    """A random subset of one replicate's deployed floats, 2010-2019 tracks at the 10-day profiles over the
+    velocity domain, coloured by profile year."""
+    from osim import report as rp
+    p = pd.read_parquet(cs.profile_path(TAG, chunk=rep), columns=["float_id", "time", "lat", "lon"])
+    return rp._trajectory_map(p.assign(year=p.time.dt.year), max_floats=n_floats, figsize=figsize,
+                              years=list(range(2010, 2020)), subset_seed=rep)
+
+
 def plot_intensity_grid(nq=None, figsize=(12, 13)):
     """Quarterly-mean design intensity q-hat = sum_c N_c q-hat_c, years by quarters, relative to its
     area- and day-weighted mean over A u B in that year."""
@@ -853,24 +862,26 @@ def plot_naive_bias(de, al, box_lab, figsize=(7, 4)):
 
 
 def plot_tradeoff(s, est_lab, box_lab, figsize=(13, 4.3)):
-    """Bias-variance plane per box: |bias| against sd for each estimator, pooled over years (large) and per
-    year (small), on log axes with iso-RMSE curves."""
+    """Bias-variance plane per box: variance against |bias| for each estimator, pooled over years (large) and per
+    year (small), on log axes with iso-MSE curves variance = MSE - bias^2."""
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(1, len(box_lab), figsize=figsize, sharex=True, sharey=True)
     lo, hi = 3e-3, 4.0
-    t = np.linspace(0, np.pi / 2, 200)
+    bb = np.geomspace(lo, hi, 400)
     for a, b in zip(ax, box_lab):
-        for r in (0.1, 0.2, 0.5, 1, 2):
-            a.plot(r * np.cos(t), r * np.sin(t), color="0.8", lw=0.7, zorder=0)
-            a.text(r * np.cos(0.12), r * np.sin(0.12), f"RMSE {r:g}", fontsize=6, color="0.5")
+        for M in (0.01, 0.04, 0.25, 1, 4):
+            v = M - bb ** 2
+            a.plot(bb[v > 0], v[v > 0], color="0.8", lw=0.7, zorder=0)
+            a.text(lo * 1.15, M * 1.1, f"MSE {M:g}", fontsize=6, color="0.5")
         for c, lab in est_lab.items():
             x = s[(s.box == b) & (s.estimator == c)]
             yr, al = x[x.year != "all"], x[x.year == "all"]
-            a.scatter(yr.bias.abs().clip(lower=lo), yr.sd, s=12, color=EST_COL[c], alpha=0.45)
-            a.scatter(al.bias.abs().clip(lower=lo), al.sd, s=70, color=EST_COL[c], ec="k", lw=0.6, label=lab, zorder=3)
-        a.set(xscale="log", yscale="log", xlim=(lo, hi), ylim=(0.05, hi), title=box_lab[b], xlabel="|bias| (GJ/m2)")
-    ax[0].set_ylabel("sd over deployments (GJ/m2)")
-    ax[0].legend(fontsize=8, frameon=False, loc="upper left")
+            a.scatter(yr.bias.abs().clip(lower=lo), yr.sd ** 2, s=12, color=EST_COL[c], alpha=0.45)
+            a.scatter(al.bias.abs().clip(lower=lo), al.sd ** 2, s=70, color=EST_COL[c], ec="k", lw=0.6, label=lab,
+                      zorder=3)
+        a.set(xscale="log", yscale="log", xlim=(lo, hi), ylim=(2e-3, hi ** 2), title=box_lab[b], xlabel="|bias| (GJ/m2)")
+    ax[0].set_ylabel("variance over deployments (GJ/m2)^2")
+    ax[0].legend(fontsize=8, frameon=False, loc="upper right")
     fig.tight_layout()
     return fig
 
@@ -898,26 +909,26 @@ def plot_by_year(s, est_lab, box_lab, figsize=(13, 8)):
 
 
 def plot_derived(dv, box_lab, figsize=(13, 4.3)):
-    """Map and DR RMSE (solid) and |bias| (dashed) for the multi-year targets."""
+    """Map and DR MSE (solid) and squared bias (dashed) for the multi-year targets."""
     import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(1, len(box_lab), figsize=figsize, sharey=True)
+    fig, ax = plt.subplots(1, len(box_lab), figsize=figsize)
     for a, b in zip(ax, box_lab):
         x = dv[dv.box == b]
         i = np.arange(len(x))
         for c, lab in (("map", "map"), ("dr", "DR")):
             col = EST_COL["krige" if c == "map" else "dr"]
-            a.plot(i, x[f"{c}_rmse"], "o-", color=col, label=f"{lab} RMSE")
-            a.plot(i, x[f"{c}_bias"].abs(), "s--", color=col, mfc="none", label=f"{lab} |bias|")
+            a.plot(i, x[f"{c}_rmse"] ** 2, "o-", color=col, label=f"{lab} MSE")
+            a.plot(i, x[f"{c}_bias"] ** 2, "s--", color=col, mfc="none", label=f"{lab} bias^2")
         a.set_xticks(i, x.target.str.replace(" mean", "\nmean"), rotation=45, ha="right", fontsize=8)
         a.set_title(box_lab[b])
-    ax[0].set_ylabel("GJ/m2")
+    ax[0].set_ylabel("(GJ/m2)^2")
     ax[0].legend(fontsize=8, frameon=False)
     fig.tight_layout()
     return fig
 
 
 def plot_bandwidth(bw, box_lab, prod=SIGMA, figsize=(13, 6.5)):
-    """DR bias (+/- 2 MC se) and RMSE against the kernel time sd, one line per space sd; star at production."""
+    """DR bias (+/- 2 MC se) and MSE against the kernel time sd, one line per space sd; star at production."""
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(2, len(box_lab), figsize=figsize, sharex=True, sharey="row")
     for j, b in enumerate(box_lab):
@@ -926,15 +937,15 @@ def plot_bandwidth(bw, box_lab, prod=SIGMA, figsize=(13, 6.5)):
             g = g.sort_values("sigma_days")
             lab = f"sigma_s = 1/{round(1 / sd)} deg"
             ax[0, j].errorbar(g.sigma_days, g.dr_bias, 2 * g.dr_bias_se, marker="o", capsize=2, color=f"C{k}", label=lab)
-            ax[1, j].plot(g.sigma_days, g.dr_rmse, "o-", color=f"C{k}")
+            ax[1, j].plot(g.sigma_days, g.dr_rmse ** 2, "o-", color=f"C{k}")
         p = x[np.isclose(x.sigma_deg, prod[0], atol=1e-3) & np.isclose(x.sigma_days, prod[1])]
         ax[0, j].plot(p.sigma_days, p.dr_bias, "*", color="k", ms=13, zorder=4, label="production")
-        ax[1, j].plot(p.sigma_days, p.dr_rmse, "*", color="k", ms=13, zorder=4)
+        ax[1, j].plot(p.sigma_days, p.dr_rmse ** 2, "*", color="k", ms=13, zorder=4)
         ax[0, j].axhline(0, color="k", lw=0.6)
         ax[0, j].set_title(box_lab[b])
         ax[1, j].set(xlabel="kernel time sd (days)", xticks=(2, 4, 8))
     ax[0, 0].set_ylabel("DR bias (GJ/m2)")
-    ax[1, 0].set_ylabel("DR RMSE (GJ/m2)")
+    ax[1, 0].set_ylabel("DR MSE (GJ/m2)^2")
     ax[0, 0].legend(fontsize=8, frameon=False)
     fig.tight_layout()
     return fig
