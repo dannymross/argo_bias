@@ -232,13 +232,13 @@ def interp_matrix(lat, lon):
                       shape=(len(cols), len(C_LAT) * len(C_LON)))
 
 
-def fit_mean(obs):
+def fit_mean(obs, group="float_id"):
     """Least squares in the fixed window W(x*, y*) of every centre: spatial quadratic plus tbasis; keeps the
-    tbasis coefficients. Returns the full-data coefficients (C, N_T), the leave-one-float-out ones (F, C, N_T)
-    and the float ids indexing F. Leaving float f out drops its Gram contribution (exact refit)."""
+    tbasis coefficients. Returns the full-data coefficients (C, N_T), the leave-one-group-out ones (F, C, N_T)
+    and the group labels indexing F. Leaving a group out drops its Gram contribution (exact refit)."""
     lat, lon, z = obs.lat.values, obs.lon.values, obs.z.values
     T = kbasis(obs.day.values, _s(obs))
-    fid, fl = pd.factorize(obs.float_id.values)
+    fid, fl = pd.factorize(obs[group].values)
     nF, p = len(fl), 5 + N_K
     ridge = 1e-8 * np.eye(p)
     full = np.full((len(C_LAT) * len(C_LON), N_K), np.nan)
@@ -357,7 +357,7 @@ def mu_lofo_at(lofo, fidx, lat, lon, day, s=None):
     return np.stack([(interp_coef(W, lofo[f].astype(float)) * T).sum(-1) for f in fidx], -1)
 
 
-def krige_month(month, obs=None, params=None, nodes=None):
+def krige_month(month, obs=None, params=None, nodes=None, mean=None, group="float_id"):
     """One target month: full-data and leave-one-float-out anomaly predictions at the map nodes (LOFO stored as
     sparse changes from the full map) and each in-box profile's prediction without its own float.
 
@@ -367,7 +367,7 @@ def krige_month(month, obs=None, params=None, nodes=None):
     obs = pd.read_parquet(os.path.join(OUT, "obs_mean.parquet")) if obs is None else obs
     params = pd.read_csv(PARAMS) if params is None else params
     nodes = map_nodes() if nodes is None else nodes
-    full, lofo, fl = load_mean()
+    full, lofo, fl = load_mean() if mean is None else mean
     fpos = pd.Index(fl)
     m0 = pd.Timestamp(month)
     nd = m0.days_in_month
@@ -395,7 +395,7 @@ def krige_month(month, obs=None, params=None, nodes=None):
         R[np.diag_indices_from(R)] += max(float(p.nugget_ratio), JITTER)
         B = _inverse(R)
         a_full = B @ (ob.z.values - ob.mu.values)
-        fids, fcol = np.unique(ob.float_id.values, return_inverse=True)
+        fids, fcol = np.unique(ob[group].values, return_inverse=True)
         fidx = fpos.get_indexer(fids)
         Rm = ob.z.values[:, None] - mu_lofo_at(lofo, fidx, ob.lat.values, ob.lon.values, ob.day.values, _s(ob))
         Rm[np.arange(len(ob)), fcol] = 0.0
@@ -417,13 +417,15 @@ def krige_month(month, obs=None, params=None, nodes=None):
                                                           sn.loc[nc.index].to_numpy().ravel() if SLA else None))))
             dif = an_lofo - an_full[:, None]
             r, k = np.nonzero(np.abs(dif) > LOFO_TOL)
-            lofo_rows.append(pd.DataFrame(dict(node=nid[r], day=P[r, 2], float_id=fids[k],
-                                               d_anom=dif[r, k].astype(np.float32))))
+            lofo_rows.append(pd.DataFrame({"node": nid[r], "day": P[r, 2], group: fids[k],
+                                           "d_anom": dif[r, k].astype(np.float32)}))
         hc = here[here.cell == c]
         if len(hc):
             Ch = _corr(hc[["lon", "lat", "day"]].to_numpy(float), X, th)
-            own = np.searchsorted(fids, hc.float_id.values)
-            prof_rows.append(hc[["prof_id", "float_id", "box", "lat", "lon", "day", "z", "mu", "mu_lofo"]].assign(
+            own = np.searchsorted(fids, hc[group].values)
+            keep = ["prof_id", "float_id", *([group] if group != "float_id" else []), "box", "lat", "lon", "day", "z",
+                    "mu", "mu_lofo"]
+            prof_rows.append(hc[keep].assign(
                 anom=Ch @ a_full, anom_lofo=(Ch * A[:, own].T).sum(1), n_cond=len(sel)))
     cat = lambda r: pd.concat(r, ignore_index=True) if r else pd.DataFrame()
     nodes_out = cat(node_rows).merge(nodes[["lat", "lon", "area", "box"]], left_on="node", right_index=True)

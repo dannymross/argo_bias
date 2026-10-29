@@ -2,13 +2,7 @@ project:
   type: website
   render:
     - "index.qmd"
-    - "reports/osim.qmd"
-    - "reports/ipw.qmd"
-    - "reports/ipw_2.qmd"
-    - "reports/simex_intro.qmd"
-    - "reports/simex.qmd"
-    - "reports/meanfield.qmd"
-    - "reports/glorys_testbed.qmd"
+    - "reports/glorys_chain.qmd"
 
 execute:
   freeze: auto
@@ -26,13 +20,7 @@ website:
       - index.qmd
       - section: "Float simulation"
         contents:
-          - reports/osim.qmd
-          - reports/ipw.qmd
-          - reports/ipw_2.qmd
-          - reports/simex_intro.qmd
-          - reports/simex.qmd
-          - reports/meanfield.qmd
-          - reports/glorys_testbed.qmd
+          - reports/glorys_chain.qmd
 
 format:
   html:

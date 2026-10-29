@@ -138,10 +138,14 @@ def real_profiles(t0="2014-07-01", t1="2019-12-31"):
     return e.reset_index(drop=True)
 
 
-def folds(float_ids, k=N_FOLDS, seed=0):
-    u = np.unique(float_ids)
-    f = np.random.default_rng(seed).permutation(len(u)) % k
-    return pd.Series(f, index=u).reindex(float_ids).to_numpy()
+def folds(float_ids, k=N_FOLDS, seed=0, strata=None):
+    """Fold of each float; with `strata` (one label per float_ids entry), a random permutation within each
+    stratum, so every fold holds floor or ceil of n_s / k floats of stratum s."""
+    s = pd.Series(np.zeros(len(float_ids)) if strata is None else strata, index=float_ids)
+    s = s[~s.index.duplicated()].sort_index()
+    rng = np.random.default_rng(seed)
+    f = pd.concat([pd.Series(rng.permutation(len(g)) % k, index=g.index) for _, g in s.groupby(s, sort=True)])
+    return f.reindex(float_ids).to_numpy()
 
 
 def estimate(prof, box, year, zbar, mu_T, qds, params, area, kinds=("rho_age", "nominal")):

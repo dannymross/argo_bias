@@ -255,7 +255,9 @@ practice) or refitted per fold. The mean field is already refitted per fold.
 
 \subsection{Folds and the fold intensity}
 
-Each float gets a label $L_j$, i.i.d.\ uniform on $\{1,\dots,K\}$ and independent of everything else.
+Each float gets a label $L_j\in\{1,\dots,K\}$ by a uniform random permutation within its cohort, so
+fold $k$ holds $\lfloor N_c/K\rfloor$ or $\lceil N_c/K\rceil$ cohort-$c$ floats; the labels depend only on the
+fixed $N_c$ and are independent of everything else.
 Let $N_k$ count fold-$k$ profiles, and let $\mathcal G_{-k}$ be the $\sigma$-field of all labels, the
 deployments and profiles of floats outside fold $k$, and the design-fixed quantities (intensity
 estimates, quadrature, external covariance parameters). Then $\hat m_{-k}$ and the fold-cohort counts
@@ -284,9 +286,10 @@ array's: $\hat q^{(1)}_c$ is the intensity of one random draw from the whole coh
 holds about $N_c/K$ floats of every cohort.
 
 \begin{remark}[Why match cohorts]\label{rem:cohort}
-The simpler $\hat q/K$ targets $\E q_{k|-k}=q/K$. A realized fold has $n_{k,c}$ fluctuating around
+The simpler $\hat q/K$ targets $\E q_{k|-k}=q/K$. With unstratified labels $n_{k,c}$ fluctuates around
 $N_c/K$, so $\hat q/K$ carries a ratio error $K\sum_cn_{k,c}q^{(1)}_c/q$ that varies in space wherever
-the cohort mix does, of relative size about $(N_c/K)^{-1/2}$. Matching cohorts removes it at no cost.
+the cohort mix does, of relative size about $(N_c/K)^{-1/2}$. Stratifying the labels by cohort reduces
+the fluctuation to rounding, and matching cohorts removes what is left, both at no cost.
 \end{remark}
 
 \begin{assumption}[Simulated coverage]\label{ass:cover}

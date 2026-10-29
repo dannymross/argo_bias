@@ -1,0 +1,314 @@
+---
+title: "GLORYS Identical-Twin Chain"
+jupyter: python3
+fig-dpi: 300
+bibliography: ../paper/references.bib
+---
+
+```{=html}
+<style>
+table.dataframe { width: auto; max-width: 95%; font-size: 0.8em; margin-left: auto; margin-right: auto; }
+</style>
+```
+
+```{python}
+#| label: setup
+#| include: false
+
+import os, sys, glob
+sys.path.insert(0, os.path.abspath("../code"))
+
+import numpy as np, pandas as pd, matplotlib.pyplot as plt
+from IPython.display import display
+from osim import chain as ch
+
+plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.alpha": 0.25})
+BOX_LAB = {"boxA": "Box A", "boxB": "Box B", "boxAB": "Box A u B"}
+EST_LAB = {"naive": "naive", "hajek": "Hajek", "mean_field": "mean field", "krige": "map", "dr": "DR"}
+
+def fmt(df, dec=3):
+    return df.round(dec).to_html(index=False, border=0)
+
+def _emit(s=""):
+    print(s)
+    sys.stdout.flush()
+
+def _show_fig(fig):
+    display(fig)
+    plt.close(fig)
+
+def _tabs(items):
+    _emit("::: {.panel-tabset}")
+    for name, show in items:
+        _emit(f"\n## {name}\n")
+        show()
+    _emit(":::")
+
+HAVE_REPS = bool(glob.glob(os.path.join(ch.RUN, "r*", f"estimates{ch.KS}.parquet")))
+HAVE_ALIGN = os.path.exists(os.path.join(ch.OUT, "alignment.parquet"))
+```
+
+This report runs the identical-twin chain of the theory note (`paper/sections/theory.tex`, validation
+design) on boxes A, B and A $\cup$ B for 2015--2019. GLORYS12 velocity $u$ and OHC $Z$ are fixed. The
+randomness is the deployments, drawn from the year-stratified smoothed bootstrap $\mathcal D_c$ of the
+real 2010--2019 launches. Each replicate is one array advected at park depth in GLORYS.
+
+# Estimand and estimators
+
+For box $A$ and year $y$, $\mathcal X_y=A^{\mathrm{deep}}\times\mathcal T_y$, with
+$\mathbb P_y=\mu(\cdot\cap\mathcal X_y)/\mu(\mathcal X_y)$, $\mu=\alpha\otimes\mathrm{Leb}$, and
+$\theta_y=\int Z\,d\mathbb P_y$. $Z$ is constant on native $1/12^\circ$ cell-days, so $\theta_y$ is an
+exact finite sum. Per replicate and box-year:
+
+* **naive**: the mean of $Z$ at the in-box profiles;
+* **Hájek**: $\sum_i v_iZ_i/\sum_i v_i$, $v_i=1/\hat q_{-r}(x_i)$;
+* **map** $\hat\theta_{\mathrm K}=Q_y(\hat m)$: the local mean field [@sukianto2026, eq. 5] plus local simple
+  kriging of its anomaly [@kuusela2018], with covariance plug-ins fit once to the GLORYS anomaly
+  lattice (so external to every replicate). $Q_y$ is the $0.5^\circ\times$ three-nodes-per-month
+  quadrature, and the year is the day-weighted mean of its months; **mean field** is $Q_y(\hat\mu)$ alone.
+  The map data also include the 265 floats alive at the 2010-01-01 start of the record. They are fixed
+  by design (not drawn from $\mathcal D_c$), so they are never held out and never $1/\hat q$-weighted;
+* **DR**: $\hat\theta_{\mathrm{DR}}=K^{-1}\sum_k\{Q_y(\hat m_{-k})+\hat C_k\}$, $K=5$, with
+  $\hat C_k$ the Hájek mean of the held-out residuals $e_k=Z-\hat m_{-k}$ at fold-$k$ profiles,
+  weighted by $1/\hat q_k$, $\hat q_k=\sum_cn_{k,c}\hat q^{(1)}_{c,-r}$.
+
+Folds are a random permutation of floats within cohort (launch year), so $n_{k,c}\in\{\lfloor N_c/K\rfloor,
+\lceil N_c/K\rceil\}$. The fold maps are exact leave-fold-out refits by Gram and block downdates of
+the full fit. One convention departs from exact: which mean-field centres get fitted (at least 60
+profiles) and the ridge scale ($10^{-8}\operatorname{tr}G$) are taken from the full data. A direct
+refit without one fold changes the fold-map box means by under $10^{-5}$ GJ m$^{-2}$.
+
+**Intensity.** $\hat q^{(1)}_c$ is the edge-corrected Gaussian kernel estimate ($\sigma_s=1/6^\circ$,
+$\sigma_t=2$ d; see the bandwidth sensitivity below), evaluated exactly at the points (unbinned). $\hat q^{(1)}_{c,-r}$ drops replicate
+$r$'s own profiles. The kernel is a sum over replicates, so this is exact:
+$\hat q^{(1)}_{c,-r}=(RN_c\hat q^{(1)}_c-\kappa_{c,r})/((R-1)N_c)$, with $\kappa_{c,r}$ the
+(edge-corrected) kernel sum over replicate $r$'s cohort-$c$ profiles. It makes $1/\hat q$
+independent of the weighted array, which Campbell's theorem requires.
+
+**Variance.** $\hat{\mathcal V}_k$ is the float-cluster estimator of the theory note (Prop. var., part 3):
+per-float totals of $v_i(e_k-\hat C_k)$, centred within cohort, including the fold-$k$ floats that never
+reach $\mathcal X_y$. The interval is $\hat\theta_{\mathrm{DR}}\pm1.96(K^{-2}\sum_k\hat{\mathcal V}_k)^{1/2}$,
+a heuristic that ignores between-fold covariance.
+
+# (1) Preferential sampling: naive bias and $\operatorname{Cov}(\hat w,Z)$
+
+For the naive mean, $\mathbb E\sum_iZ_i/\mathbb E n=\int Zq\,d\mathbb P_y/\int q\,d\mathbb P_y=\theta_y+\operatorname{Cov}_{\mathbb P_y}(w,Z)$
+exactly, with $w=q/\bar q_y$. The naive estimator's own bias differs from this by the ratio
+remainder, which is $O(1/n)$. The table reports three quantities:
+
+* the Monte Carlo mean of naive $-\,\theta_y$ over all replicates;
+* the pooled ratio $\sum_r\sum_iZ_i/\sum_rn_r-\theta_y$, which *equals* $\operatorname{Cov}_{\mathbb P_y}(\tilde w,Z)$ for the pooled native-cell occupancy $\tilde w$;
+* $\operatorname{Cov}_{\mathbb P_y}(\hat w,Z)$ with $\hat w=\hat q/\bar{\hat q}_y$ from the binned native-grid kernel ($\sigma_s=1/6^\circ$, $\sigma_t=4$ d). Its gap to the previous column is kernel smoothing error.
+
+```{python}
+#| label: tbl-align
+#| echo: false
+#| output: asis
+#| tbl-cap: "Naive bias and alignment of the sampling intensity with OHC (GJ per m2), all replicates; qmin_rel is the minimum over the box-year of q-hat relative to its mean."
+
+if HAVE_ALIGN:
+    al = pd.read_parquet(os.path.join(ch.OUT, "alignment.parquet"))
+    de = ch.design_estimates(ch.load_points(ks=""))
+    nb = de.assign(b=(de.naive - de.theta) * 1e-9).groupby(["box", "year"]).b.agg(["mean", "sem", "count"])
+    t = al.set_index(["box", "year"])[["cov_w_occ", "cov_w", "qmin_rel"]].join(nb)
+    t[["cov_w_occ", "cov_w"]] *= 1e-9
+    t = t.rename(columns={"mean": "naive bias", "sem": "MC se", "count": "R", "cov_w_occ": "Cov(w-tilde, Z)",
+                          "cov_w": "Cov(w-hat, Z)"}).reset_index()
+    _emit(fmt(t[["box", "year", "R", "naive bias", "MC se", "Cov(w-tilde, Z)", "Cov(w-hat, Z)", "qmin_rel"]]))
+else:
+    _emit("Results pending.")
+```
+
+# (2)--(4) Map versus cross-fit DR
+
+```{python}
+#| label: tbl-summary
+#| echo: false
+#| output: asis
+#| tbl-cap: "Error (estimate minus truth, GJ per m2) over replicates: bias with its Monte Carlo se, sd, MSE with se, and RMSE, per box-year and pooled over years (all)."
+
+if HAVE_REPS:
+    e, f = ch.load_estimates()
+    s = ch.summary(e)
+    s["estimator"] = pd.Categorical(s.estimator.map(EST_LAB), list(EST_LAB.values()))
+    s["year"] = s.year.astype(str)
+    _tabs([(BOX_LAB[b], lambda b=b: _emit(fmt(s[s.box == b].sort_values(["year", "estimator"]).drop(columns="box"))))
+           for b in BOX_LAB])
+else:
+    _emit("Results pending.")
+```
+
+**Quadrature remainder.** The map estimates $Q_y(\hat m)$, so its error is
+$Q_y(\hat m)-\theta_y=Q_y(\hat m-Z)+\{Q_y(Z)-\theta_y\}$. The second term, the quadrature remainder, is what a perfect
+map would still miss. The table below evaluates it from the true $Z$ at the node-times against the native-cell
+$\theta_y$. $Z$ is piecewise constant on native cells, and each node, the area centroid of a $0.5^\circ$ cell's $6\times6$
+native block, sits on a native cell corner. So $Z$ at a node is taken as the mean of the four cells meeting there.
+A containing-cell lookup breaks the tie to one side, a $1/24^\circ$ shift that reads $+0.12$ GJ m$^{-2}$ too warm across
+the box B front. The remainder is below 0.01 GJ m$^{-2}$ everywhere, so the map errors above are interpolation error.
+
+```{python}
+#| label: tbl-quad
+#| echo: false
+#| output: asis
+#| tbl-cap: "Quadrature remainder Q_y(Z) - theta_y of the map functional applied to the true field (GJ per m2)."
+
+if HAVE_REPS:
+    qe = ch.quadrature_error().pivot(index="year", columns="box", values="quad_err").rename(columns=BOX_LAB)
+    _emit(fmt(qe.reset_index()))
+```
+
+**Paired difference.** $D=\hat\theta_{\mathrm{DR}}-\hat\theta_{\mathrm K}$ per replicate. $\Delta\mathrm{MSE}$
+is the mean of $(\hat\theta_{\mathrm K}-\theta)^2-(\hat\theta_{\mathrm{DR}}-\theta)^2$; positive means DR
+has the smaller MSE. Its se is the replicate sd over $\sqrt R$, valid because replicates are i.i.d.
+Coverage is that of the nominal 95% DR interval. $z_{\mathrm{map}}=D/\hat{\mathcal V}^{1/2}$ is the
+data-based test of map bias.
+
+```{python}
+#| label: tbl-paired
+#| echo: false
+#| output: asis
+#| tbl-cap: "DR minus map per replicate (GJ per m2), MSE difference map minus DR (GJ2 per m4), DR interval coverage and the map test."
+
+if HAVE_REPS:
+    p = ch.paired(e)
+    p["year"] = p.year.astype(str)
+    _emit(fmt(p, 4))
+else:
+    _emit("Results pending.")
+```
+
+The figure below shows the replicate distribution of each estimator's error by year: the naive profile mean
+(top panel, own scale), the mean field $Q_y(\hat\mu)$ alone, the map (mean field plus kriged anomalies) and DR.
+
+```{python}
+#| label: errors
+#| echo: false
+#| output: asis
+#| fig-cap: "Estimate minus truth (GJ per m2) over 200 replicates per box and year; boxes are quartiles, whiskers 1.5 IQR, diamonds means, the red line zero. Top: naive profile mean."
+
+BOX_EST = {"naive": "naive mean", "mean_field": "mean field", "krige": "map (mean field + kriging)", "dr": "DR"}
+if HAVE_REPS:
+    _tabs([(BOX_LAB[b], lambda b=b: _show_fig(ch.plot_errors(e, BOX_EST, b))) for b in BOX_LAB])
+```
+
+# How the DR correction reweights the kriging residuals
+
+Fold $k$'s correction targets $T_k=\theta_y-Q_y(\hat m_{-k})$, the area mean of the map error field $Z-\hat m_{-k}$, using the
+held-out residuals $e_k(x_i)$ at fold-$k$ profiles. Floats crowd where $q$ is large, so the unweighted residual mean
+estimates $\int e_k\,q\,d\mathbb P_y/\int q\,d\mathbb P_y$ instead of $T_k$. The weights $1/\hat q_k$ undo that
+tilt (Campbell's theorem). @fig-intensity shows the tilt itself. @fig-dr-example takes one replicate-year (box B 2017,
+replicate 171, picked for its large map error: map $+0.45$, DR $-0.02$ GJ m$^{-2}$). @fig-corrections shows the effect
+over all replicates.
+
+```{python}
+#| label: dr-example-data
+#| include: false
+
+EX_REP, EX_YEAR, EX_BOX = 171, 2017, "boxB"
+if HAVE_REPS:
+    nd_ex = ch.node_maps(EX_REP, EX_YEAR)
+    pf_ex = ch._with_union(ch.rep_profiles(EX_REP)[0])
+    pf_ex = pf_ex[pf_ex.year == EX_YEAR]
+    fm = ch.fold_means()
+    fm_ex = fm[(fm.rep == EX_REP) & (fm.year == EX_YEAR)]
+    EX_FOLD = int(fm_ex[fm_ex.box == EX_BOX].assign(a=lambda d: d["T"].abs()).sort_values("a").fold.iloc[-1])
+```
+
+```{python}
+#| label: fig-intensity
+#| echo: false
+#| fig-cap: "Box A (south) and box B (north), 2017. Left: annual-mean true OHC at the 0.5 deg map nodes with replicate 171's in-box profiles. Right: the production intensity q-hat (sigma 1/6 deg, 2 d, all 1000 replicates) relative to its A u B mean, log scale, with OHC contours (GJ per m2)."
+
+if HAVE_REPS:
+    _show_fig(ch.plot_intensity(nd_ex[nd_ex.box != "boxAB"], pf_ex[pf_ex.box != "boxAB"]))
+```
+
+```{python}
+#| label: fig-dr-example
+#| echo: false
+#| fig-cap: "Replicate 171, box B, 2017. Left: the error field of the map fitted without fold k (its node average equals T_k up to the quadrature remainder). Middle: fold k's held-out residuals at their profiles, marker area proportional to the weight 1/q-hat_k. Right: per fold, the target T_k, the unweighted residual mean and the 1/q-hat-weighted correction C_k (GJ per m2)."
+
+if HAVE_REPS:
+    _show_fig(ch.plot_dr_example(nd_ex, pf_ex, fm_ex, EX_FOLD, EX_BOX))
+```
+
+```{python}
+#| label: fig-corrections
+#| echo: false
+#| fig-cap: "All 200 replicates, years and folds: unweighted residual mean (grey) and the correction C_k (blue) against the target T_k; the line is 1:1, and the means of each minus T_k are printed."
+
+if HAVE_REPS:
+    _show_fig(ch.plot_corrections(fm, BOX_LAB))
+```
+
+Single folds are noisy. In the example, two of five folds correct in the wrong direction, and DR relies on the
+average over folds: $K^{-1}\sum_k\hat C_k=-0.53$ against $K^{-1}\sum_kT_k=-0.51$. Over all replicates the
+unweighted residual mean misses $T_k$ by $-0.21$ GJ m$^{-2}$ in box B and $-0.05$ in box A, the residual analogue
+of the naive bias. Weighting by $1/\hat q_k$ cuts this to $-0.04$ and $-0.015$. The rest is the kernel smoothing
+bias of the bandwidth sensitivity below.
+
+**MSE decomposition (Prop. mse).** Per fold, the error is $\hat\theta_k-\theta_y=\hat C_k-T_k=\beta_k+\xi_k$,
+with $T_k=\theta_y-Q_y(\hat m_{-k})$. So $\mathbb E(\hat C_k-T_k)^2=\mathbb E\beta_k^2+\mathbb E\mathcal V_k$, and
+$\mathbb E\hat{\mathcal V}_k$ estimates the second term. DR gains on the map when $\mathbb ET^2$ exceeds
+$\mathbb E(\hat C_k-T_k)^2$ (Eq. mse-sufficient, fold by fold). `cover_min` is the smallest
+$\min_{\mathcal X_y}\hat q_k/\bar{\hat q}_k$ over replicates and folds, the Ass. cover check at the map nodes.
+
+```{python}
+#| label: tbl-mse
+#| echo: false
+#| output: asis
+#| tbl-cap: "Fold-level MSE terms (GJ2 per m4): E T^2, E (C - T)^2, mean V-hat, mean of C - T (GJ per m2), minimum coverage ratio, mean fold ESS."
+
+if HAVE_REPS:
+    m = ch.mse_terms(f)
+    m["year"] = m.year.astype(str)
+    _emit(fmt(m, 4))
+else:
+    _emit("Results pending.")
+```
+
+# Multi-year targets
+
+The same replicate's annual estimates give any linear functional of $(\theta_y)_y$, here the year-to-year
+changes $\theta_{y+1}-\theta_y$, the 2015--2019 change and the day-weighted five-year mean. Bias is the
+same functional of the annual biases. Variance also needs the between-year covariance of the errors within a
+replicate, which is small for both estimators (mean correlation about 0.1 for the map, 0--0.04 for DR): changes add
+the annual variances while a persistent bias cancels, and the five-year mean divides the variance by about five
+while the bias remains.
+
+```{python}
+#| label: tbl-derived
+#| echo: false
+#| output: asis
+#| tbl-cap: "Map and DR error for year-to-year changes, the 2015-2019 change and the five-year mean (GJ per m2); dMSE is map minus DR (GJ2 per m4)."
+
+if HAVE_REPS:
+    dv = ch.derived(e)
+    _tabs([(BOX_LAB[b], lambda b=b: _emit(fmt(dv[dv.box == b].drop(columns="box"), 4))) for b in BOX_LAB])
+else:
+    _emit("Results pending.")
+```
+
+# Kernel bandwidth sensitivity
+
+The weights enter DR through $\beta^{\mathrm{prod}}\approx\int e_k(q/\hat q_k-1)\,d\mathbb P_y$, so a kernel error
+aligned with the map residual biases the correction. The fold maps and residuals are fixed; only $\hat q$ is
+rebuilt, on the $3\times3$ grid $\sigma_s\in\{1/12^\circ,1/6^\circ,1/3^\circ\}$, $\sigma_t\in\{2,4,8\}$ d, for the
+same 200 replicates. The DR bias moves monotonically toward zero as either bandwidth narrows (box B: $-0.10$ at
+$(1/3^\circ,8\text{ d})$, $-0.02$ at $(1/12^\circ,2\text{ d})$), which identifies it as kernel smoothing bias.
+Narrower kernels raise the variance and drive $\min\hat q_k/\bar{\hat q}_k$ toward zero (Ass. cover), so production uses
+$(1/6^\circ,2\text{ d})$, the smallest box B RMSE on the grid. The variance ratio $\operatorname{Var}/\mathbb E\hat{\mathcal V}$
+does not depend on the bandwidth. Hájek, which weights $Z$ instead of $e$, moves the other way.
+
+```{python}
+#| label: tbl-bw
+#| echo: false
+#| output: asis
+#| tbl-cap: "DR and Hajek error over 2015-2019 by kernel sd (deg, days), 200 replicates (GJ per m2); var_ratio is the replicate variance of DR over mean V-hat, cover_min the minimum fold coverage ratio, ess the mean fold ESS."
+
+if HAVE_REPS:
+    bw = ch.bandwidth_sensitivity()
+    _tabs([(BOX_LAB[b], lambda b=b: _emit(fmt(bw[bw.box == b].drop(columns="box"), 4))) for b in BOX_LAB])
+else:
+    _emit("Results pending.")
+```
