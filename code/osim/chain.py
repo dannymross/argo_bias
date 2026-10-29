@@ -568,21 +568,24 @@ def bandwidth_sensitivity(maxrep=200):
 
 
 def plot_errors(e, est_lab, box, split=("naive",), figsize=(11, 6.5)):
-    """Replicate errors (GJ/m2) of one box per estimator, grouped by year; the split estimators get their own
-    top panel and scale."""
+    """Replicate errors (GJ/m2) of one box per estimator, grouped by year, box plots over jittered replicate
+    points; the split estimators get their own top panel and scale."""
     import matplotlib.pyplot as plt
     groups = [{k: v for k, v in est_lab.items() if k in split}, {k: v for k, v in est_lab.items() if k not in split}]
     fig, ax = plt.subplots(2, 1, figsize=figsize, sharex=True, height_ratios=(1, 1.6))
     x, years = e[e.box == box], sorted(e.year.unique())
     cols = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     n, j0 = len(est_lab), 0
+    rng = np.random.default_rng(0)
     for a, grp in zip(ax, groups):
         for j, (c, lab) in enumerate(grp.items(), start=j0):
             pos = np.arange(len(years)) * (n + 1) + j
             d = [((x[x.year == y][c] - x[x.year == y].theta) * 1e-9).to_numpy() for y in years]
             bp = a.boxplot(d, positions=pos, widths=0.8, patch_artist=True, showfliers=False)
             for patch in bp["boxes"]:
-                patch.set(facecolor=cols[j], alpha=0.5)
+                patch.set(facecolor=cols[j], alpha=0.35)
+            for p, v in zip(pos, d):
+                a.plot(p + rng.uniform(-0.25, 0.25, len(v)), v, ".", ms=2.5, color=cols[j], alpha=0.4)
             a.plot(pos, [v.mean() for v in d], "D", color=cols[j], ms=4, label=lab)
         j0 += len(grp)
         a.axhline(0, color="#c0392b", lw=0.8)
@@ -872,28 +875,19 @@ def plot_tradeoff(s, est_lab, box_lab, figsize=(13, 4.3)):
     return fig
 
 
-def plot_by_year(s, est_lab, box_lab, e=None, figsize=(13, 10)):
-    """Bias (+/- 2 MC se), variance and MSE per year for each estimator; rows are statistics, columns boxes.
-    With e, a second row shows each replicate's error with the bias."""
+def plot_by_year(s, est_lab, box_lab, figsize=(13, 8)):
+    """Bias (+/- 2 MC se), variance and MSE per year for each estimator; rows are statistics, columns boxes."""
     import matplotlib.pyplot as plt
-    rows = [("bias", "bias (GJ/m2)"), ("var", "variance (GJ/m2)^2"), ("mse", "MSE (GJ/m2)^2")]
-    if e is not None:
-        rows.insert(1, ("err", "error per replicate (GJ/m2)"))
+    rows = (("bias", "bias (GJ/m2)"), ("var", "variance (GJ/m2)^2"), ("mse", "MSE (GJ/m2)^2"))
     fig, ax = plt.subplots(len(rows), len(box_lab), figsize=figsize, sharex=True, sharey="row")
-    off = dict(zip(est_lab, np.linspace(-0.12, 0.12, len(est_lab))))
     for j, b in enumerate(box_lab):
         for c, lab in est_lab.items():
             x = s[(s.box == b) & (s.estimator == c) & (s.year != "all")].sort_values("year")
             yr = x.year.astype(int)
             ax[0, j].errorbar(yr, x.bias, 2 * x.bias_se, marker="o", ms=4, capsize=2, color=EST_COL[c], label=lab)
-            if e is not None:
-                r = e[e.box == b]
-                ax[1, j].plot(r.year + off[c], (r[c] - r.theta) * 1e-9, ".", ms=3, alpha=0.15, color=EST_COL[c])
-                ax[1, j].plot(yr + off[c], x.bias, "o", ms=5, color=EST_COL[c], mec="k", mew=0.6)
-            ax[-2, j].plot(yr, x.sd ** 2, "o-", ms=4, color=EST_COL[c])
-            ax[-1, j].plot(yr, x.rmse ** 2, "o-", ms=4, color=EST_COL[c])
-        for i in range(len(rows) - 2):
-            ax[i, j].axhline(0, color="k", lw=0.6)
+            ax[1, j].plot(yr, x.sd ** 2, "o-", ms=4, color=EST_COL[c])
+            ax[2, j].plot(yr, x.rmse ** 2, "o-", ms=4, color=EST_COL[c])
+        ax[0, j].axhline(0, color="k", lw=0.6)
         ax[0, j].set_title(box_lab[b])
         ax[-1, j].set(xlabel="year", xticks=sorted(yr))
     for i, (_, lab) in enumerate(rows):

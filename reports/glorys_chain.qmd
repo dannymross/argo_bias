@@ -244,16 +244,16 @@ _show_fig(ch.plot_tradeoff(s, EST_LAB, BOX_LAB))
 ```{python}
 #| label: fig-by-year
 #| echo: false
-#| fig-cap: "Bias (+/- 2 Monte Carlo se, GJ per m2); the 200 replicate errors (faint points) with the bias (outlined); variance and MSE ((GJ per m2) squared) of the map and DR by year over 200 replicates."
+#| fig-cap: "Bias (+/- 2 Monte Carlo se, GJ per m2), variance and MSE ((GJ per m2) squared) of the map and DR by year over 200 replicates."
 
-_show_fig(ch.plot_by_year(s, {k: v for k, v in EST_LAB.items() if k in ("krige", "dr")}, BOX_LAB, e))
+_show_fig(ch.plot_by_year(s, {k: v for k, v in EST_LAB.items() if k in ("krige", "dr")}, BOX_LAB))
 ```
 
 The map's bias in box A is negative in every year and largest in 2018 ($-0.16$). DR's MSE exceeds the map's
 except in box A 2018--2019, where they tie. In box B the map's bias changes sign from year to year, and the
 variance of the DR correction dominates there.
 
-The distributions behind these summaries:
+The distributions behind these summaries, with each replicate's error as a faint point:
 
 ```{python}
 #| label: errors
