@@ -706,6 +706,158 @@ def plot_corrections(fm, box_lab, figsize=(12, 4.2)):
     fig.tight_layout()
     return fig
 
+def monthly_maps(maxrep=200):
+    """Monthly box means of the full map and the mean field alone per replicate, with the true box-month mean
+    (GJ/m2), cached."""
+    f = os.path.join(OUT, f"monthly_maps{KS}.parquet")
+    if os.path.exists(f):
+        return pd.read_parquet(f)
+    m = pd.concat(pd.read_parquet(os.path.join(RUN, f"r{r}", "maps.parquet"), columns=["box", "month", "full", "mu"])
+                  .assign(rep=r) for r in range(maxrep))
+    tr = pd.read_parquet(os.path.join(gd.OUT, "truth_monthly.parquet"))[["box", "month", "ohc"]]
+    m = m.merge(tr, on=["box", "month"])
+    m[["full", "mu", "ohc"]] *= 1e-9
+    m.to_parquet(f)
+    return m
+
+
+def plot_mean_series(m, box_lab, figsize=(11, 6.5)):
+    """Monthly true box mean (solid) and the replicate median mean field (dashed, 5-95% band), and below the
+    mean field's and the map's error (median and 5-95% band over replicates)."""
+    import matplotlib.pyplot as plt
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=figsize, sharex=True, height_ratios=(2, 1.2))
+    q = m.groupby(["box", "month"]).agg(ohc=("ohc", "first"), **{f"{c}_{p}": (c, lambda x, p=p: x.quantile(p))
+                                                                   for c in ("mu", "full") for p in (0.05, 0.5, 0.95)})
+    e = m.assign(mu=m.mu - m.ohc, full=m.full - m.ohc).groupby(["box", "month"])[["mu", "full"]].quantile(
+        [0.05, 0.5, 0.95]).unstack()
+    for i, b in enumerate(box_lab):
+        x, c = q.loc[b], f"C{i}"
+        a1.plot(x.index, x.ohc, color=c, lw=1.3, label=f"{box_lab[b]} truth")
+        a1.plot(x.index, x["mu_0.5"], color=c, lw=1.4, ls="--", label=f"{box_lab[b]} mean field")
+        a1.fill_between(x.index, x["mu_0.05"], x["mu_0.95"], color=c, alpha=0.2, lw=0)
+        y = e.loc[b]
+        a2.plot(y.index, y[("mu", 0.5)], color=c, ls="--", lw=1.2, label=f"{box_lab[b]} mean field")
+        a2.fill_between(y.index, y[("mu", 0.05)], y[("mu", 0.95)], color=c, alpha=0.15, lw=0)
+        a2.plot(y.index, y[("full", 0.5)], color=c, lw=1.2, label=f"{box_lab[b]} map")
+    a1.set_ylabel("box-mean OHC 0-2000 m (GJ/m2)")
+    a1.legend(fontsize=8, ncol=2, frameon=False)
+    a2.axhline(0, color="k", lw=0.7)
+    a2.set(ylabel="estimate - truth (GJ/m2)", xlabel="month")
+    a2.legend(fontsize=8, ncol=2, frameon=False)
+    fig.tight_layout()
+    return fig
+
+
+EST_COL = {"naive": "#7f7f7f", "hajek": "#9467bd", "mean_field": "#2ca02c", "krige": "#1f77b4", "dr": "#d62728"}
+
+
+def plot_naive_bias(de, al, box_lab, figsize=(7, 4)):
+    """Naive bias per box and year (+/- 2 MC se) with the pooled-occupancy alignment Cov(w-tilde, Z)."""
+    import matplotlib.pyplot as plt
+    nb = de.assign(b=(de.naive - de.theta) * 1e-9).groupby(["box", "year"]).b.agg(["mean", "sem"]).reset_index()
+    fig, a = plt.subplots(figsize=figsize)
+    for i, b in enumerate(box_lab):
+        x, c = nb[nb.box == b], f"C{i}"
+        a.errorbar(x.year, x["mean"], 2 * x["sem"], marker="o", color=c, capsize=3, label=f"{box_lab[b]}: naive bias")
+        y = al[al.box == b]
+        a.plot(y.year, y.cov_w_occ * 1e-9, "x--", color=c, ms=7, lw=0.8, label=f"{box_lab[b]}: Cov(w, Z)")
+    a.axhline(0, color="k", lw=0.6)
+    a.set(xlabel="year", ylabel="GJ/m2", xticks=sorted(nb.year.unique()))
+    a.legend(fontsize=7, frameon=False, ncol=2)
+    fig.tight_layout()
+    return fig
+
+
+def plot_tradeoff(s, est_lab, box_lab, figsize=(13, 4.3)):
+    """Bias-variance plane per box: |bias| against sd for each estimator, pooled over years (large) and per
+    year (small), on log axes with iso-RMSE curves."""
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(1, len(box_lab), figsize=figsize, sharex=True, sharey=True)
+    lo, hi = 3e-3, 4.0
+    t = np.linspace(0, np.pi / 2, 200)
+    for a, b in zip(ax, box_lab):
+        for r in (0.1, 0.2, 0.5, 1, 2):
+            a.plot(r * np.cos(t), r * np.sin(t), color="0.8", lw=0.7, zorder=0)
+            a.text(r * np.cos(0.12), r * np.sin(0.12), f"RMSE {r:g}", fontsize=6, color="0.5")
+        for c, lab in est_lab.items():
+            x = s[(s.box == b) & (s.estimator == c)]
+            yr, al = x[x.year != "all"], x[x.year == "all"]
+            a.scatter(yr.bias.abs().clip(lower=lo), yr.sd, s=12, color=EST_COL[c], alpha=0.45)
+            a.scatter(al.bias.abs().clip(lower=lo), al.sd, s=70, color=EST_COL[c], ec="k", lw=0.6, label=lab, zorder=3)
+        a.set(xscale="log", yscale="log", xlim=(lo, hi), ylim=(0.05, hi), title=box_lab[b], xlabel="|bias| (GJ/m2)")
+    ax[0].set_ylabel("sd over deployments (GJ/m2)")
+    ax[0].legend(fontsize=8, frameon=False, loc="upper left")
+    fig.tight_layout()
+    return fig
+
+
+def plot_by_year(s, est_lab, box_lab, figsize=(13, 8)):
+    """Bias (+/- 2 MC se), sd and RMSE per year for each estimator; rows are statistics, columns boxes."""
+    import matplotlib.pyplot as plt
+    rows = (("bias", "bias (GJ/m2)"), ("sd", "sd (GJ/m2)"), ("rmse", "RMSE (GJ/m2)"))
+    fig, ax = plt.subplots(len(rows), len(box_lab), figsize=figsize, sharex=True, sharey="row")
+    for j, b in enumerate(box_lab):
+        for c, lab in est_lab.items():
+            x = s[(s.box == b) & (s.estimator == c) & (s.year != "all")].sort_values("year")
+            yr = x.year.astype(int)
+            ax[0, j].errorbar(yr, x.bias, 2 * x.bias_se, marker="o", ms=4, capsize=2, color=EST_COL[c], label=lab)
+            ax[1, j].plot(yr, x.sd, "o-", ms=4, color=EST_COL[c])
+            ax[2, j].plot(yr, x.rmse, "o-", ms=4, color=EST_COL[c])
+        ax[0, j].axhline(0, color="k", lw=0.6)
+        ax[0, j].set_title(box_lab[b])
+        ax[-1, j].set(xlabel="year", xticks=sorted(yr))
+    for i, (_, lab) in enumerate(rows):
+        ax[i, 0].set_ylabel(lab)
+    for a in ax[1:].ravel():
+        a.set_yscale("log")
+    ax[0, 0].legend(fontsize=8, frameon=False)
+    fig.tight_layout()
+    return fig
+
+
+def plot_derived(dv, box_lab, figsize=(13, 4.3)):
+    """Map and DR RMSE (solid) and |bias| (dashed) for the multi-year targets."""
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(1, len(box_lab), figsize=figsize, sharey=True)
+    for a, b in zip(ax, box_lab):
+        x = dv[dv.box == b]
+        i = np.arange(len(x))
+        for c, lab in (("map", "map"), ("dr", "DR")):
+            col = EST_COL["krige" if c == "map" else "dr"]
+            a.plot(i, x[f"{c}_rmse"], "o-", color=col, label=f"{lab} RMSE")
+            a.plot(i, x[f"{c}_bias"].abs(), "s--", color=col, mfc="none", label=f"{lab} |bias|")
+        a.set_xticks(i, x.target.str.replace(" mean", "\nmean"), rotation=45, ha="right", fontsize=8)
+        a.set_title(box_lab[b])
+    ax[0].set_ylabel("GJ/m2")
+    ax[0].legend(fontsize=8, frameon=False)
+    fig.tight_layout()
+    return fig
+
+
+def plot_bandwidth(bw, box_lab, prod=SIGMA, figsize=(13, 6.5)):
+    """DR bias (+/- 2 MC se) and RMSE against the kernel time sd, one line per space sd; star at production."""
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(2, len(box_lab), figsize=figsize, sharex=True, sharey="row")
+    for j, b in enumerate(box_lab):
+        x = bw[bw.box == b]
+        for k, (sd, g) in enumerate(x.groupby("sigma_deg")):
+            g = g.sort_values("sigma_days")
+            lab = f"sigma_s = 1/{round(1 / sd)} deg"
+            ax[0, j].errorbar(g.sigma_days, g.dr_bias, 2 * g.dr_bias_se, marker="o", capsize=2, color=f"C{k}", label=lab)
+            ax[1, j].plot(g.sigma_days, g.dr_rmse, "o-", color=f"C{k}")
+        p = x[np.isclose(x.sigma_deg, prod[0], atol=1e-3) & np.isclose(x.sigma_days, prod[1])]
+        ax[0, j].plot(p.sigma_days, p.dr_bias, "*", color="k", ms=13, zorder=4, label="production")
+        ax[1, j].plot(p.sigma_days, p.dr_rmse, "*", color="k", ms=13, zorder=4)
+        ax[0, j].axhline(0, color="k", lw=0.6)
+        ax[0, j].set_title(box_lab[b])
+        ax[1, j].set(xlabel="kernel time sd (days)", xticks=(2, 4, 8))
+    ax[0, 0].set_ylabel("DR bias (GJ/m2)")
+    ax[1, 0].set_ylabel("DR RMSE (GJ/m2)")
+    ax[0, 0].legend(fontsize=8, frameon=False)
+    fig.tight_layout()
+    return fig
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("what", choices=("points", "nodes", "align", "rep", "estimate", "summary"))
