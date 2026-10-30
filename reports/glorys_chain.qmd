@@ -287,17 +287,7 @@ $$
 so DR's error is the average error of the five corrections, and DR is unbiased exactly when the corrections
 are unbiased for their targets on average.
 
-**Why five folds.** Cross-fitting needs only that each fold's map and weights be built without that fold's
-floats; the identity above and the unbiasedness argument hold for any fixed $K\ge2$. $K=5$ is the usual choice in
-cross-fitted estimation [@chernozhukov2018]. A larger $K$, up to leaving one float out, would bring each fold map
-closer to the full map: a fold map here uses $80\%$ of the floats, and its bias in box A is $-0.12$ against $-0.10$
-for the full map. It would not change what the correction does. The cost is computational: each fold needs its own
-mean field and kriging map for every month, and leaving one float out would mean about $1000$ fold maps per
-replicate instead of five. The residuals of one float are strongly correlated, so a fold must hold whole floats;
-with five folds each box-year fold still has about $10$ floats in box A and $15$ in box B, enough for a stable
-weighted mean. We have not run $K>5$.
-
-# Where the floats sample: $\hat q$
+# Sampling intensity
 
 ```{python}
 #| label: example-data
@@ -346,7 +336,7 @@ _show_fig(ch.plot_naive_bias(ch.design_estimates(ch.load_points(ks="")), al, BOX
 Floats under-sample warm water. The naive mean is 1.3--2.6 GJ m$^{-2}$ too cold in box B and A $\cup$ B, and the
 covariance accounts for $94$--$98\%$ of it; the small remainder is smoothing in $\hat w$.
 
-# bias--variance trade-off
+# Bias--variance trade-off
 
 ```{python}
 #| label: errors
@@ -368,7 +358,7 @@ The map's bias in box A is negative in every year and largest in 2018 ($-0.16$).
 except in box A 2018--2019, where they tie. In box B the map's bias changes sign from year to year, and the
 variance of the DR correction dominates there.
 
-# How DR reweights the kriging residuals
+# DR reweighting of kriging residuals
 
 The map fitted without fold $k$ misses the truth by $T_k=\theta_y-Q_y(\hat m_{-k})$. DR estimates $T_k$ from the
 fold-$k$ floats' residuals $e_k=Z-\hat m_{-k}$. Floats crowd where $q$ is large, so a plain average of the residuals is
