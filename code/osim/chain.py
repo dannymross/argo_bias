@@ -776,7 +776,7 @@ def plot_profile_density(d, deg=1.0, span=4.0, figsize=(8.5, 7.2)):
     diverging log scale centred at 1, on the domain base map."""
     from matplotlib.colors import LogNorm
     from osim import report as rp
-    fig, ax, pc, _ = rp._domain_base(BOXES, figsize)
+    fig, ax, pc, _ = rp._domain_base(BOXES, figsize, fill_boxes=False)
     la, lo = (np.arange(d[c].min(), d[c].max() + deg / 2, deg) for c in ("lat", "lon"))
     g = d.pivot(index="lat", columns="lon", values="n").reindex(index=la, columns=lo, method="nearest", tolerance=deg / 4)
     r = g.to_numpy() / d.n.mean()

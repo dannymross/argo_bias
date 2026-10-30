@@ -88,7 +88,7 @@ def _cluster_track_map(paths, float_ids, boxes=("boxA", "boxB"), figsize=(8.5, 7
     return fig
 
 
-def _domain_base(boxes=("boxA", "boxB"), figsize=(7.5, 6.4)):
+def _domain_base(boxes=("boxA", "boxB"), figsize=(7.5, 6.4), fill_boxes=True):
     """Base analysis-domain map: land, the velocity/thetao regions, and the boxes.
 
     Returns (fig, ax, pc, extents); the caller adds the legend and any overlay.
@@ -117,11 +117,11 @@ def _domain_base(boxes=("boxA", "boxB"), figsize=(7.5, 6.4)):
     for name in ("velocity", "thetao") + tuple(boxes):
         la0, la1, lo0, lo1 = e[name]
         color, label = style[name]
-        fill = name in boxes
+        fill = fill_boxes and name in boxes
         ax.add_patch(Rectangle((lo0, la0), lo1 - lo0, la1 - la0, transform=pc,
                                fill=fill, facecolor=color if fill else "none",
                                alpha=0.18 if fill else 1.0, edgecolor=color,
-                               lw=2.0, ls="-" if fill else "--", zorder=2, label=label))
+                               lw=2.0, ls="-" if name in boxes else "--", zorder=2, label=label))
     _geo_ticks(ax, ext, True, True, step=10.0)
     return fig, ax, pc, e
 

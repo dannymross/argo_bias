@@ -117,7 +117,7 @@ replicate.
 ```{python}
 #| label: fig-profile-density
 #| echo: false
-#| fig-cap: "Deployed-float profiles in 2015-2019 per year and 1 deg cell, mean over the 1000 replicates, relative to the mean over all sampled cells (log scale from 1/4 to 4; red above, blue below the mean), over the velocity domain. Shaded: boxes A and B."
+#| fig-cap: "Deployed-float profiles in 2015-2019 per year and 1 deg cell, mean over the 1000 replicates, relative to the mean over all sampled cells (log scale from 1/4 to 4; red above, blue below the mean), over the velocity domain. Solid outlines: boxes A and B."
 
 _show_fig(ch.plot_profile_density(ch.profile_density()))
 ```
@@ -443,54 +443,6 @@ weights. A good correction has its blue bar close to the black one. Single folds
 correct in the wrong direction). What enters the estimator is the average over folds, the right-most group: DR's
 error is the gap between the averaged blue and black bars, here $-0.53$ against $-0.51$.
 
-@fig-corrections shows these fold averages for every replicate-year as errors. The first box is the error of the
-fold maps alone, $-\bar T$. Adding the plain residual mean gives the second, and adding $\bar C$ gives the third,
-which is DR's error exactly.
-
-
-```{python}
-#| label: fig-corrections
-#| echo: false
-#| fig-cap: "Per replicate-year (200 replicates x 5 years), errors after averaging over the five folds: the fold maps alone (-T-bar), the fold maps plus the plain residual mean, and the fold maps plus C-bar, which is the DR error (GJ per m2). Diamonds are means; bias and sd are printed above."
-
-_show_fig(ch.plot_corrections(fm, BOX_LAB))
-```
-
-In box A the fold maps are $0.12$ GJ m$^{-2}$ too cold, and the plain residual mean removes only part of this
-because it is tilted toward the crowded cells; the weighted correction leaves $-0.015$. In box B the fold maps are
-nearly unbiased already ($-0.035$). The plain mean would push them to $-0.21$, the weighted correction leaves them at
-$-0.04$, and the price is a larger spread (sd $0.35\to0.42$).
-
-@fig-residual-cells shows where the weighted correction moves away from the plain mean. All held-out residuals are
-pooled over the 200 replicates, five years and five folds and binned to $0.5^\circ$ cells. A profile's relative
-weight is $r=\hat q_k^{-1}$ divided by its mean over the fold's profiles in that box-year, so
-$C_k-\bar e_k=n_k^{-1}\sum_i (r_i-1)\,e_i$. The right panel is each cell's share of the average of this gap,
-and over a box the shares sum to it exactly ($+0.03$ in box A and $+0.17$ in box B, GJ m$^{-2}$).
-
-```{python}
-#| label: fig-residual-cells
-#| echo: false
-#| fig-cap: "Held-out residuals pooled over 200 replicates, 2015-2019 and the five folds, per 0.5 deg cell with at least 30 residuals. Left: mean weight 1/q-hat_k relative to its fold mean (log scale). Middle: mean residual Z - m(-k) (GJ per m2). Right: the cell's contribution to the mean of C_k minus the plain residual mean."
-
-_show_fig(ch.plot_residual_cells(ch.residual_cells()))
-```
-
-In box B the densely sampled cells north of about $40^\circ$N (weight below $0.9$) have a mean residual of
-$-0.54$ GJ m$^{-2}$: the map is too warm there, and these cells dominate the plain mean. Down-weighting them
-provides $+0.09$ of the $+0.17$ shift, so most of the correction comes from shrinking the crowded cells, not from
-boosting the sparse ones. In box A the residuals have nearly the same mean at every weight ($0.06$--$0.12$), so
-reweighting changes little.
-
-# Multi-year targets
-
-The annual estimates of one replicate also give year-to-year changes and the five-year mean. Errors are close to
-uncorrelated across years. So a change adds two years' variance while a persistent bias cancels, and the five-year
-mean divides the variance by about five while the bias stays.
-
-For changes the map wins everywhere. For the five-year mean DR wins in box A (MSE 0.009 against 0.017 (GJ m$^{-2}$)$^2$) and in
-A $\cup$ B (0.011 against 0.014), because the map's bias no longer averages out against its variance. Box B still
-favours the map.
-
 # Kernel bandwidth
 
 DR's remaining bias comes from smoothing in $\hat q$. Rebuilding $\hat q$ on a $3\times3$ grid of space and time
@@ -517,6 +469,6 @@ deployments, which comes from the residuals of the one array actually deployed.
 
 * Floats preferentially sample cold water; the naive mean is biased by up to $-2.5$ GJ m$^{-2}$.
 * The map is the most precise annual estimator, but keeps a persistent bias of $-0.1$ GJ m$^{-2}$ in box A.
-* DR removes most of that bias at the price of more variance. It wins when the target averages variance away and
-  leaves bias, such as the five-year mean in A and A $\cup$ B. It loses for single years and for changes.
+* DR removes most of that bias at the price of more variance, and for single years the added variance outweighs
+  the bias removed in every box.
 * DR's remaining bias is kernel smoothing in $\hat q$, which narrower kernels or more replicates could reduce.
