@@ -81,6 +81,18 @@ and by $\pm 10$ d in time; a jittered seed off deep water is redrawn. The $265$ 
 2010-01-01 enter every replicate unchanged, at their first 2010 position with their remaining life. The random
 element of the study is this resampling, one independent draw per replicate.
 
+```{python}
+#| label: fig-deployment-draw
+#| echo: false
+#| fig-cap: "One bootstrap draw (replicate 171): the 994 real launch positions (grey, transparent) and the replicate's 994 jittered seeds (solid, coloured by launch year). Sampling with replacement repeats some launches and omits others; this draw uses 651 distinct real launches."
+
+_show_fig(ch.plot_deployment_draw(171))
+```
+
+@fig-deployment-draw shows one draw. Because it samples with replacement, some real launches appear two or more
+times and about a third are left out; the jitter is small at this scale, so repeated seeds sit almost on top of each
+other.
+
 **Advection.** All floats of a replicate are advected together in one continuous Parcels run through the GLORYS12
 daily horizontal velocity at the $1000$ m parking depth, by fourth-order Runge--Kutta with a 1 h step, from
 2010-01-01 to the end of 2019. A float is removed when its life runs out or it leaves the domain. Vertical cycling
@@ -105,7 +117,7 @@ replicate.
 ```{python}
 #| label: fig-profile-density
 #| echo: false
-#| fig-cap: "Deployed-float profiles in 2015-2019 per year and 1 deg cell, mean over the 1000 replicates (log scale), over the velocity domain. Shaded: boxes A and B."
+#| fig-cap: "Deployed-float profiles in 2015-2019 per year and 1 deg cell, mean over the 1000 replicates, relative to the mean over all sampled cells (log scale from 1/4 to 4; red above, blue below the mean), over the velocity domain. Shaded: boxes A and B."
 
 _show_fig(ch.plot_profile_density(ch.profile_density()))
 ```

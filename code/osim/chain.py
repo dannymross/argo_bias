@@ -731,6 +731,29 @@ def plot_deployments(figsize=(8.5, 7.2)):
     return fig
 
 
+def plot_deployment_draw(rep, figsize=(8.5, 7.2)):
+    """One replicate's bootstrap draw: the real launch positions (grey, transparent) and the replicate's jittered
+    seeds (solid, coloured by launch-year cohort)."""
+    import matplotlib.pyplot as plt
+    import matplotlib as mpl
+    from osim import report as rp
+    p = cs.read_resample_pool(POOL)
+    tab = cs.resample_seeds(p, rep, "2010-01-01", cs._velocity_end())[1]
+    tab = tab[tab.source == "deploy"].merge(p[["pool_idx", "year"]], on="pool_idx")
+    real, yr = pool(), list(range(YEARS[0] - 5, YEARS[-1] + 1))
+    cmap = plt.get_cmap("turbo", len(yr))
+    norm = mpl.colors.BoundaryNorm(np.arange(yr[0], yr[-1] + 2) - 0.5, cmap.N)
+    fig, ax, pc, _ = rp._domain_base(BOXES, figsize)
+    ax.scatter(real.lon, real.lat, s=30, color="0.45", alpha=0.3, lw=0, transform=pc, zorder=3,
+               label=f"real launches ({len(real)})")
+    ax.scatter(tab.seed_lon, tab.seed_lat, c=tab.year, cmap=cmap, norm=norm, s=9, edgecolor="k", linewidth=0.2,
+               transform=pc, zorder=4, label=f"replicate {rep} ({tab.pool_idx.nunique()} distinct launches)")
+    fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, ticks=yr, shrink=0.8, pad=0.02,
+                 label="launch year")
+    ax.legend(loc="lower left", fontsize=7, framealpha=0.9)
+    return fig
+
+
 def profile_density(deg=1.0):
     """Deployed-float profiles of 2015-2019 per replicate, year and deg x deg cell over the velocity domain, all
     replicates, cached."""
@@ -748,16 +771,19 @@ def profile_density(deg=1.0):
     return d
 
 
-def plot_profile_density(d, deg=1.0, figsize=(8.5, 7.2)):
-    """Mean profiles per replicate and year in each cell, 2015-2019, log colour scale, on the domain base map."""
+def plot_profile_density(d, deg=1.0, span=4.0, figsize=(8.5, 7.2)):
+    """Mean profiles per replicate and year in each cell, 2015-2019, relative to the mean over sampled cells, on a
+    diverging log scale centred at 1, on the domain base map."""
     from matplotlib.colors import LogNorm
     from osim import report as rp
     fig, ax, pc, _ = rp._domain_base(BOXES, figsize)
     la, lo = (np.arange(d[c].min(), d[c].max() + deg / 2, deg) for c in ("lat", "lon"))
     g = d.pivot(index="lat", columns="lon", values="n").reindex(index=la, columns=lo, method="nearest", tolerance=deg / 4)
-    m = ax.pcolormesh(lo, la, g.to_numpy(), cmap="viridis", transform=pc, norm=LogNorm(0.05, np.nanmax(g.to_numpy())),
-                      zorder=1, shading="nearest")
-    fig.colorbar(m, ax=ax, shrink=0.8, pad=0.02, label=f"profiles per year per {deg:g} deg cell (mean over replicates)")
+    r = g.to_numpy() / d.n.mean()
+    m = ax.pcolormesh(lo, la, r, cmap="RdBu_r", transform=pc, norm=LogNorm(1 / span, span), zorder=1,
+                      shading="nearest")
+    fig.colorbar(m, ax=ax, shrink=0.8, pad=0.02, extend="both",
+                 label=f"profiles per {deg:g} deg cell relative to the mean ({d.n.mean():.1f} per year), log scale")
     ax.legend(loc="lower left", fontsize=7, framealpha=0.9)
     return fig
 
