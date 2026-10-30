@@ -1,5 +1,5 @@
 ---
-title: "GLORYS Identical-Twin Chain"
+title: "GLORYS Validation"
 jupyter: python3
 fig-dpi: 300
 bibliography: ../paper/references.bib
