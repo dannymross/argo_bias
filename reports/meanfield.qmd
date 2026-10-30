@@ -44,24 +44,36 @@ DR, KR = mf.STAGE_LAB["dr"], mf.STAGE_LAB["krige"]
 b = lambda st, f: s.loc[(st, mf.FIT_LAB[f]), "bias"]
 bs = lambda scen, st, f, col="bias": sc.set_index(["scenario", "stage", "fit"]).loc[(scen, st, mf.FIT_LAB[f]), col]
 prof = ex["prof"]
-eta_prof = (prof.z - mf.mean_true(prof.y, prof.t)).mean()
+rms_mu = {f: np.sqrt(np.mean([((mf.mean_at(beta, f, sx.GX, sx.GY, ex["times"][k], mf.grid_lq(ex, k))
+                                - mf.mean_true(sx.GX, sx.GY, ex["times"][k]))**2).mean()
+                               for k in range(0, mf.N_SNAP, mf.TARGET_EVERY)])) for f in mf.FITS}
+n_win = np.array([((np.abs(mf._wrap(prof.x.values - cx)) <= mf.LAM_W) & (np.abs(prof.y.values - cy) <= mf.LAM_W)).sum()
+                  for cx, cy in mf.CENTERS])
+eta_prof = (prof.z - mf.mean_true(prof.x, prof.y, prof.t)).mean()
 ```
 
 Kriging predicts a field as a mean field plus a GP anomaly. Where floats are sparse the anomaly
 reverts to zero and the map falls back on the mean field, so a mean field fitted to preferentially
-sampled profiles carries their bias into the gaps. This report compares three fits of the mean
-field on the toy jet of [the toy report](simex.qmd), each followed by the same kriging step.
+sampled profiles carries their bias into the gaps. This report compares four fits of the mean
+field on the toy jet of [the toy report](simex.qmd), two global and two local in the style of
+Roemmich--Gilson and Kuusela--Stein, each followed by the same kriging step.
 
-## Toy with a seasonal cycle
+## Toy with a meander and a seasonal cycle
 
-The field is the Bickley-jet OHC plus a seasonal cycle that is stronger in the north,
+The field is the Bickley-jet OHC with a standing meander, plus a seasonal cycle whose amplitude
+varies with both latitude and longitude:
 $$
-Z(x,y,t) = \underbrace{-\tanh(y/L) + a(y)\cos\!\big(2\pi(t-t_0)/365\big)}_{\mu(y,t)} \;+\; \eta(x,y,t),
-\qquad a(y) = 0.3\,\big\{1+\tfrac12\tanh(y/L)\big\},
+Z(x,y,t) = \underbrace{-\tanh(y/L) + m\,\operatorname{sech}^2(y/L)\cos(k_m x) + a(x,y)\cos\!\big(2\pi(t-t_0)/365\big)}_{\mu(x,y,t)} \;+\; \eta(x,y,t),
 $$
-with $\eta$ the eddy part of the jet streamfunction. $\eta$ has zonal mean zero, so the box mean is
-$\bar Z(t) = \int Z(\cdot,t)\,d\mathbb P = 0.3\cos\{2\pi(t-t_0)/365\}$ exactly. The seasonal term
-is thermal only; the flow, including the weak drift toward warm water, is unchanged.
+$$
+a(x,y) = 0.3\,\big\{1+\tfrac12\tanh(y/L)\big\}\big\{1+\tfrac12\sin(2\pi x/L_x)\big\},
+$$
+with $m = `{python} f"{mf.MEANDER}"`$, $k_m = 4\pi/L_x$ (wavelength
+$`{python} f"{2 * np.pi / mf.K_M:.0f}"`$ km), and $\eta$ the travelling-eddy part of the jet
+streamfunction. The meander is a stationary mode of the streamfunction, so the floats and the
+clouds both follow it. The seasonal term is thermal only. $\eta$ and the meander integrate to zero
+over the periodic channel, so the box mean is
+$\bar Z(t) = \int Z(\cdot,t)\,d\mathbb P = 0.3\cos\{2\pi(t-t_0)/365\}$ exactly.
 
 Sixty floats are deployed uniformly on day $0$. After a one-year spin-up, $4$ years of $10$-day
 profiles give $146$ snapshots and $8{,}760$ profiles per replicate. In the example replicate below,
@@ -74,38 +86,67 @@ latitude band they also favour warm eddies: the anomaly $\eta$ averages
 _show_fig(mf.plot_setup(ex))
 ```
 
-## Three mean fits
+## Four mean fits
 
-All three fits use the same basis $h(y,t)$: a cubic in $u = y/250$ km, the annual harmonics, and
-the harmonics times $u$ (so the seasonal amplitude can vary with latitude). The cubic does not
-contain $\tanh$, so the mean is approximated, as in a real local window. The third fit adds
-$\log\hat q_t(x,y)$, where $\hat q$ is the stacked cloud density from anchors $4$ cycles back (as in
-the toy report), relative to uniform and floored at $0.05$.
+**Global fits.** One regression over the whole box on the basis $h(y,t)$: a cubic in
+$u = y/250$ km, the annual harmonics, and the harmonics times $u$. The basis has no $x$ terms, so
+it cannot represent the meander or the zonal change in seasonal amplitude; it stands in for a mean
+field fitted on too coarse a scale. $\log\hat q_t(x,y)$ is the stacked cloud density from anchors
+$4$ cycles back (as in the toy report), relative to uniform and floored at $0.05$.
+
+**Local fits.** Following Ridgway et al. (2002), Roemmich and Gilson (2009) and Kuusela and Stein
+(2018), for each centre $s^* = (x^*,y^*)$ of a $`{python} f"{mf.CX_N}"` \times `{python} f"{mf.CY_N}"`$
+grid ($\approx 25$ km spacing), the window
+$\mathcal W(s^*) = [x^*-\lambda, x^*+\lambda]\times[y^*-\lambda,y^*+\lambda]$ with
+$\lambda = `{python} f"{mf.LAM_W:.0f}"`$ km (periodic in $x$) is formed, and the profiles in it are
+fitted by least squares to
+$$
+m_{s^*}(x,y,t) = \beta_0 + \beta_1\Delta_x + \beta_2\Delta_y + \beta_3\Delta_x\Delta_y + \beta_4\Delta_x^2 + \beta_5\Delta_y^2
++ \sum_{k=1}^{6}\big\{\gamma_k\sin(2\pi k t/365) + \delta_k\cos(2\pi k t/365)\big\} + \nu_1(t-t_D) + \nu_2(t-t_D)^2,
+$$
+with $(\Delta_x,\Delta_y) = (x-x^*, y-y^*)$ and $t_D$ the middle of the record. The window mean is
+$\hat\mu(s^*,t) = \hat m_{s^*}(s^*,t)$, the intercept, harmonics and trend. Off the centres,
+$\hat\mu(\cdot,t)$ is the bilinear interpolant of the centre coefficients; this interpolation is our
+choice, not part of the RG/KS specification. A window with fewer than $`{python} f"{mf.N_MIN}"`$
+profiles would be widened by $25\%$ steps. In the example replicate every window already has at
+least `{python} f"{n_win.min()}"` profiles (median `{python} f"{np.median(n_win):.0f}"`). The
+local $+\log\hat q$ fit adds $\gamma\log\hat q_t(x,y)$ to $m_{s^*}$ and keeps
+$\hat\gamma_{s^*}\log\hat q_t$ in $\hat\mu$, so its $\hat q$ coefficient varies by window.
 
 | fit | coefficients | intuition |
 |---|---|---|
-| OLS, no $\hat q$ | $\hat\beta = (H^\top H)^{-1}H^\top z$ | every profile is one vote |
-| GLS, no $\hat q$ | $\hat\beta = (H^\top K^{-1}H)^{-1}H^\top K^{-1}z$ | correlated profiles share a vote |
-| GLS + $\log\hat q$ | as GLS, with $\log\hat q$ as an extra column of $H$ | crowded water is allowed to be warmer |
+| global OLS | $\hat\beta = (H^\top H)^{-1}H^\top z$ | every profile is one vote, one mean shape for the box |
+| global GLS + $\log\hat q$ | $\hat\beta = (H^\top K^{-1}H)^{-1}H^\top K^{-1}z$, $\log\hat q$ a column of $H$ | correlated profiles share a vote; crowded water may be warmer |
+| local LS (RG/KS) | ordinary least squares in each window | each place gets its own mean and seasonal cycle |
+| local LS + $\log\hat q$ | as local LS, with $\log\hat q$ a column in each window | as above, and crowding may be warmer, by a different amount in each window |
 
 $K$ is the anomaly covariance at the profiles: block diagonal by year (years as i.i.d. replicates),
 anisotropic exponential in $(x,y,t)$ with a $10^{-3}$ relative nugget. Its parameters are *oracle*
 values, the $e$-folding scales of the true $\eta$
 ($\ell_x = `{python} f"{kp['lx']:.0f}"`$ km, $\ell_y = `{python} f"{kp['ly']:.0f}"`$ km,
 $\ell_t = `{python} f"{kp['lt']:.0f}"`$ d), so that only the mean-field step differs between fits.
+The local fits are ordinary least squares, as in RG/KS; $K$ enters them only through kriging.
 
 ```{python}
-#| fig-cap: "Example replicate. Left: zonal mean of each fitted mean field against the true mean field on one cold-season day. Middle: latitude distribution of all profiles (dashed: uniform). Right: box mean of each fitted mean field alone, against the truth."
+#| fig-cap: "Example replicate. Left: zonal mean of each fitted mean field against the zonal mean of the true mean field on one cold-season day (the zonal mean hides the meander). Middle: latitude distribution of all profiles (dashed: uniform). Right: box mean of each fitted mean field alone, against the truth."
 _show_fig(mf.plot_fits(ex))
 ```
 
-OLS lets the crowded south and its warm eddies dominate, and its mean field runs warm in both
-halves of the box, most of all in the sparse north. GLS treats a cluster of nearby profiles as fewer
-independent votes, which removes the warm offset in the south but leaves much of it in the north. The $\log\hat q$ column lets the fit attribute the extra warmth of crowded water to the
-crowding itself ($\hat\gamma = `{python} f"{beta['glsq'][-1]:.2f}"`$ here), so where $\hat q$ is
-typical or low the mean is not pulled warm. The $\hat q$ column also shifts the latitude
-coefficients, because $\hat q$ itself varies with latitude; $\hat\gamma$ is therefore not an
-interpretable effect, only part of a better prediction.
+Global OLS lets the crowded south and its warm eddies dominate, so its mean field runs warm. The
+local fit follows the meander and the zonal change in the seasonal amplitude, which lowers the root-mean-square error of the mean
+field over the box and the target days in this replicate from `{python} f"{rms_mu['ols']:.3f}"` to
+`{python} f"{rms_mu['loc']:.3f}"`. Its box mean is
+nevertheless almost as warm as the global OLS mean (right panel). Least squares within a window is
+still one vote per profile, so each window is pulled toward the warm water its floats crowd into.
+
+The $\log\hat q$ column lets a fit attribute the extra warmth of crowded water to the crowding
+itself. Globally, $\hat\gamma = `{python} f"{beta['glsq'][-1]:.2f}"`$ here, and it also shifts the
+latitude coefficients, because $\hat q$ itself varies with latitude. $\hat\gamma$ is therefore part
+of a better prediction, not an interpretable effect. Within a $300$ km window $\log\hat q$ varies
+less and is close to collinear with the quadratic terms. The window coefficients
+$\hat\gamma_{s^*}$ are then noisy, and the local $+\log\hat q$ mean field is rougher than the
+local one (root-mean-square error `{python} f"{rms_mu['locq']:.3f}"`) but less biased in its box
+mean.
 
 ```{python}
 #| fig-cap: "Left: expected float density q-hat on one day. Right: the true anomaly eta, with the contour where q-hat is twice uniform. Floats are expected where eta is warm."
@@ -120,12 +161,12 @@ $$
 \hat Z_{\mathrm{K}}(t^*) \;=\; \int \hat\mu(\cdot,t^*)\,d\mathbb P \;+\; \sum_i w_i\,\big\{Z_i - \hat\mu(x_i)\big\},
 $$
 with block-kriging weights $w_i$ from all profiles within $\pm 30$ d of $t^*$. The weights depend
-only on the profile positions and $K$, so they are the same for the three fits; only the residuals
+only on the profile positions and $K$, so they are the same for the four fits; only the residuals
 differ.
 
 **Cross-fit DR, leave one float out.** For each float $f$, the map $\hat m^{(-f)}$ is the mean
-fit plus kriging computed without any of float $f$'s profiles. In its GLS + $\log\hat q$ fit, the
-covariate comes from the other floats' clouds only. The pooled $\hat q$ at a time after $t^*$ is
+fit plus kriging computed without any of float $f$'s profiles; for the local fits every window is
+refit. In the two $\log\hat q$ fits, the covariate comes from the other floats' clouds only. The pooled $\hat q$ at a time after $t^*$ is
 anchored partly on float $f$'s own positions near $t^*$, so using it would let float $f$'s realized
 position into the map that float $f$ checks. With $q_f$ the cloud density of float $f$ (expected
 profiles per km$^2$), $q = \sum_f q_f$ the stacked density, and $|\mathcal X|$ the box area,
@@ -149,7 +190,7 @@ error comes only from Monte Carlo and kernel smoothing in $\hat q_f$ ($200$ part
 $10$ km bandwidth) and from binning to the $5$ km grid. On average $C$ covers
 `{python} f"{dc.cover.mean():.1%}"` of the box.
 
-The DR step is applied to all three mean fits. Estimates are taken at every third snapshot of each
+The DR step is applied to all four mean fits. Estimates are taken at every third snapshot of each
 of `{python} df.rep.nunique()` replicates. The $60$ leave-one-out kriging maps share one
 cross-covariance per target. Each needs only the solve
 $K_{-f}^{-1}\,(Z-\hat\mu^{(-f)})$, so leave-one-float-out costs little more than a single map.
@@ -162,17 +203,18 @@ $Z$, and all errors share one diverging scale. The box mean of each map is in it
 day shows how each estimator builds its answer, not how well it does on average; that is the next
 section.
 
-**Mean field.** Each fit's $\hat\mu(\cdot, t^*)$ next to the true $\mu$. OLS and GLS vary only with
-latitude, as their basis allows. The GLS + $\log\hat q$ fit also follows the $\hat q$ pattern, so
-it is warmer where floats are expected to gather.
+**Mean field.** Each fit's $\hat\mu(\cdot, t^*)$ next to the true $\mu$. The global fits vary
+only with latitude, as their basis allows, apart from the $\hat q$ pattern that the GLS
+$+\log\hat q$ fit adds. The local fits follow the meander. The local $+\log\hat q$ fit adds its
+window-by-window $\hat q$ term on top.
 
 ```{python}
-#| fig-cap: "Top: the true mean field and the three fitted mean fields on one day. Bottom: their errors, mapped and as a zonal mean by latitude."
+#| fig-cap: "Top: the true mean field and the four fitted mean fields on one day. Bottom: their errors, mapped and as a zonal mean by latitude."
 _show_fig(mf.plot_mean_maps(st))
 ```
 
 **Mean field + kriging.** Kriging adds the anomaly near the floats. Where floats are dense the
-three maps agree and follow the eddies. In the gaps they fall back to their own mean field, so
+four maps agree and follow the eddies. In the gaps they fall back to their own mean field, so
 the mean-field errors above survive there.
 
 ```{python}
@@ -215,28 +257,37 @@ HTML(fmt(mf.summary(dc)))
 the Monte Carlo standard error of the bias, computed from the $30$ replicate-level mean errors, and
 `bias_over_se` compares the two.
 
-- **Mean field alone.** The bias falls from `{python} f"{b('mean field only', 'ols'):+.3f}"` (OLS) to
-  `{python} f"{b('mean field only', 'gls'):+.3f}"` (GLS) to
-  `{python} f"{b('mean field only', 'glsq'):+.3f}"` (GLS + $\log\hat q$), against
-  `{python} f"{s.loc[('simple mean of profiles', ''), 'bias']:+.3f}"` for the simple mean of a
-  snapshot's profiles. Most of the simple mean's bias is latitude, which any of the mean fits
-  absorbs.
-- **After kriging.** Kriging repairs much of the OLS mean in the dense south, so OLS and GLS end up
-  similar (`{python} f"{b('mean field + kriging', 'ols'):+.3f}"` and
-  `{python} f"{b('mean field + kriging', 'gls'):+.3f}"`). The bias that remains is in the sparse
-  north, where the map reverts to the mean field (table below). The $\log\hat q$ fit changes the
-  mean field there and gives `{python} f"{b('mean field + kriging', 'glsq'):+.3f}"`.
-- **Cross-fit DR.** With leave-one-float-out cross-fitting, all three DR estimators are within $2$ Monte Carlo
-  standard errors of zero: `{python} f"{b(DR, 'ols'):+.4f}"` (OLS map),
-  `{python} f"{b(DR, 'gls'):+.4f}"` (GLS map) and `{python} f"{b(DR, 'glsq'):+.4f}"`
-  (GLS + $\log\hat q$ map). Under the correct cloud model the map hardly matters, because the
-  correction is exact up to the error in $\hat q$. The price is variance. The DR sd
-  (`{python} f"{s.loc[(DR, mf.FIT_LAB['glsq']), 'sd']:.3f}"`) is almost twice that of the
-  GLS + $\log\hat q$ kriging map (`{python} f"{s.loc[(KR, mf.FIT_LAB['glsq']), 'sd']:.3f}"`), so per
-  target day the kriging map has the lower RMSE
-  (`{python} f"{s.loc[(KR, mf.FIT_LAB['glsq']), 'rmse']:.3f}"` against
-  `{python} f"{s.loc[(DR, mf.FIT_LAB['glsq']), 'rmse']:.3f}"`). The sd is per target day and averages
-  down over many days, but a bias does not.
+- **Mean field alone.** Global OLS and the local fit are biased by similar amounts
+  (`{python} f"{b('mean field only', 'ols'):+.3f}"` and `{python} f"{b('mean field only', 'loc'):+.3f}"`),
+  so fitting locally fixes the shape of the mean field but not its preferential-sampling bias.
+  Adding $\log\hat q$ cuts the bias to `{python} f"{b('mean field only', 'glsq'):+.3f}"` (global GLS)
+  and `{python} f"{b('mean field only', 'locq'):+.3f}"` (local). For comparison, the simple mean of a
+  snapshot's profiles is biased by `{python} f"{s.loc[('simple mean of profiles', ''), 'bias']:+.3f}"`.
+- **After kriging.** Kriging repairs the mean field where floats are dense. The biases become
+  `{python} f"{b(KR, 'ols'):+.3f}"` (global OLS), `{python} f"{b(KR, 'loc'):+.3f}"` (local),
+  `{python} f"{b(KR, 'glsq'):+.3f}"` (global GLS + $\log\hat q$) and
+  `{python} f"{b(KR, 'locq'):+.4f}"` (local + $\log\hat q$). The last is within
+  `{python} f"{abs(s.loc[(KR, mf.FIT_LAB['locq']), 'bias_over_se']):.0f}"` Monte Carlo standard error of
+  zero; with the correct cloud model, the local fit with the $\hat q$ covariate leaves no bias that
+  kriging cannot remove.
+- **Cross-fit DR.** On the two maps without $\hat q$, DR is unbiased within Monte Carlo error:
+  `{python} f"{b(DR, 'ols'):+.4f}"` (global OLS map) and `{python} f"{b(DR, 'loc'):+.4f}"` (local
+  map). On the two $\log\hat q$ maps it is `{python} f"{b(DR, 'glsq'):+.4f}"` and
+  `{python} f"{b(DR, 'locq'):+.4f}"`, which are small but
+  `{python} f"{s.loc[(DR, mf.FIT_LAB['glsq']), 'bias_over_se']:.0f}"` and
+  `{python} f"{s.loc[(DR, mf.FIT_LAB['locq']), 'bias_over_se']:.0f}"` standard errors from zero. A
+  likely cause, not yet tested, is that the covariate and the weights are built from the same
+  cloud particles. The Monte Carlo error in $\hat q$ then enters both $\hat m^{(-f)}$ and $1/\hat q$,
+  so the product term $\int (Z-\hat m)(q-\hat q)/\hat q\,d\mathbb P$ is no longer a product of
+  independent errors. Building the covariate from independent particle draws would test this.
+- **Variance.** The local map gives the least variable DR estimate
+  (sd `{python} f"{s.loc[(DR, mf.FIT_LAB['loc']), 'sd']:.3f}"`, against
+  `{python} f"{s.loc[(DR, mf.FIT_LAB['ols']), 'sd']:.3f}"` on the global OLS map), because its
+  residuals are smaller. The local $+\log\hat q$ kriging map is still less variable than any DR
+  estimate (sd `{python} f"{s.loc[(KR, mf.FIT_LAB['locq']), 'sd']:.3f}"`, RMSE
+  `{python} f"{s.loc[(KR, mf.FIT_LAB['locq']), 'rmse']:.3f}"`), so under the correct cloud model it
+  has the lowest per-day RMSE. The sd is per target day and averages down over many days, but a
+  bias does not.
 
 ```{python}
 HTML(fmt(mf.region_split(ex)))
@@ -252,9 +303,11 @@ table, so the same summary is split by the phase of the seasonal cycle.
 HTML(fmt(ss[ss.stage != "simple mean of profiles"]))
 ```
 
-The DR biases stay within $\pm 0.002$ of zero in every season, so the annual figure is not hiding
-cancellation. The GLS + $\log\hat q$ kriging map's bias varies with season and is largest in the
-cold season. Across replicates, $\hat\gamma$ is
+On the maps without $\hat q$, the DR biases are within $2$ Monte Carlo standard errors of zero in
+every season, so the annual figure is not hiding cancellation. The local $+\log\hat q$ kriging map
+stays within `{python} f"{ss[(ss.stage == KR) & (ss.fit == mf.FIT_LAB['locq'])].bias.abs().max():.3f}"`
+of zero in every season, while the global GLS $+\log\hat q$ kriging map is largest in the cold
+season. Across replicates the global $\hat\gamma$ is
 `{python} f"{gam[gam.scenario == 'correct'].gamma.mean():.3f}"`
 (sd `{python} f"{gam[gam.scenario == 'correct'].gamma.std():.3f}"`).
 
@@ -269,16 +322,16 @@ wrong models, the same ones as in [the toy report](simex.qmd):
 - the cloud noise is too large ($4K$).
 
 The wrong $\hat q$ enters the $\log\hat q$ covariate, the mixing weights $q_f/q$, the residual
-weights $1/q$, and the covered set. The OLS and GLS maps do not use $\hat q$, so for them only the
-DR correction changes.
+weights $1/q$, and the covered set. The global OLS and local maps do not use $\hat q$, so for them
+only the DR correction changes.
 
 ```{python}
-#| fig-cap: "Bias of the three DR estimators (filled) and of the GLS + log q-hat kriging map (open), under each cloud model. Bars: 95% Monte Carlo intervals."
+#| fig-cap: "Bias of the four DR estimators (filled) and of the local + log q-hat kriging map (open), under each cloud model. Bars: 95% Monte Carlo intervals."
 _show_fig(mf.plot_scenarios(df))
 ```
 
 ```{python}
-t = sc[(sc.stage == DR) | ((sc.stage == KR) & (sc.fit == mf.FIT_LAB["glsq"]))]
+t = sc[(sc.stage == DR) | ((sc.stage == KR) & (sc.fit == mf.FIT_LAB["locq"]))]
 t = t.assign(scenario=t.scenario.map(mf.sx.SCEN_LAB))
 HTML(fmt(t[["scenario", "stage", "fit", "bias", "se", "bias_over_se", "sd", "rmse"]]))
 ```
@@ -287,30 +340,38 @@ With a wrong cloud model, DR is no longer unbiased. Its bias is then the product
 residuals times the error in $\hat q$. The quality of the map starts to matter.
 
 - **Drift omitted, or noise too large.** The clouds no longer concentrate where floats actually
-  gather, so the weights are too flat and the correction is too small. DR removes roughly a third to
-  a half of the kriging bias. The $\log\hat q$ map is the best of the three in both cases
-  (`{python} f"{bs('no_conv', DR, 'glsq'):+.4f}"` and `{python} f"{bs('K_large', DR, 'glsq'):+.4f}"`).
-- **Eddies displaced.** $\hat q$ is high in the wrong places, so the covariate carries almost no
-  information ($\hat\gamma$ falls to
-  `{python} f"{gam[gam.scenario == 'shifted'].gamma.mean():.3f}"`), and the three DR estimators end
-  up similar (`{python} f"{bs('shifted', DR, 'ols'):+.4f}"` to
-  `{python} f"{bs('shifted', DR, 'glsq'):+.4f}"`), still below the kriging maps.
+  gather, so the weights are too flat and the correction is too small. The local $+\log\hat q$
+  map gives the smallest DR bias in both cases (`{python} f"{bs('no_conv', DR, 'locq'):+.4f}"` and
+  `{python} f"{bs('K_large', DR, 'locq'):+.4f}"`), at most half that of the other three maps
+  (`{python} f"{bs('no_conv', DR, 'ols'):+.4f}"` and `{python} f"{bs('K_large', DR, 'ols'):+.4f}"`
+  on the global OLS map).
+- **Eddies displaced.** $\hat q$ is high in the wrong places, so the covariate carries little
+  information (the global $\hat\gamma$ falls to
+  `{python} f"{gam[gam.scenario == 'shifted'].gamma.mean():.3f}"`), and the four DR estimators end up
+  similar (`{python} f"{sc[(sc.scenario == 'shifted') & (sc.stage == DR)].bias.min():+.4f}"` to
+  `{python} f"{sc[(sc.scenario == 'shifted') & (sc.stage == DR)].bias.max():+.4f}"`). That is
+  still below the kriging maps' bias.
 - **Noise too small.** This is the dangerous direction. Clouds that are too tight give floats
-  landing in their thin tails very large weights, so DR over-corrects. On the OLS and GLS maps the
-  bias becomes `{python} f"{bs('K_small', DR, 'ols'):+.4f}"`, larger in size than the uncorrected
-  kriging bias and of the opposite sign. On the $\log\hat q$ map, whose residuals are small, the
-  over-correction shrinks to `{python} f"{bs('K_small', DR, 'glsq'):+.4f}"`. Coverage also drops to
+  landing in their thin tails very large weights, so DR over-corrects. On the maps without
+  $\hat q$ the bias becomes `{python} f"{bs('K_small', DR, 'ols'):+.4f}"` (global OLS) and
+  `{python} f"{bs('K_small', DR, 'loc'):+.4f}"` (local), larger in size than the uncorrected
+  kriging bias and of the opposite sign. On the $\log\hat q$ maps, whose residuals are small, it
+  is `{python} f"{bs('K_small', DR, 'glsq'):+.4f}"` (global) and
+  `{python} f"{bs('K_small', DR, 'locq'):+.4f}"` (local). Coverage also drops to
   `{python} f"{df[df.scenario == 'K_small'].cover.mean():.0%}"` on average.
 
-Across all five cloud models, the largest absolute bias of DR on the GLS + $\log\hat q$ map is
-`{python} f"{sc[(sc.stage == DR) & (sc.fit == mf.FIT_LAB['glsq'])].bias.abs().max():.4f}"`, against
-`{python} f"{sc[(sc.stage == DR) & (sc.fit == mf.FIT_LAB['ols'])].bias.abs().max():.4f}"` for DR on
-the OLS map and
-`{python} f"{sc[(sc.stage == KR) & (sc.fit == mf.FIT_LAB['glsq'])].bias.abs().max():.4f}"` for the
-GLS + $\log\hat q$ kriging map alone. A good map limits how much a wrong $\hat q$ can hurt. And
+Across all five cloud models, the largest absolute DR bias is
+`{python} f"{sc[(sc.stage == DR) & (sc.fit == mf.FIT_LAB['locq'])].bias.abs().max():.4f}"` on the
+local $+\log\hat q$ map, against
+`{python} f"{sc[(sc.stage == DR) & (sc.fit == mf.FIT_LAB['loc'])].bias.abs().max():.4f}"` on the local
+map, `{python} f"{sc[(sc.stage == DR) & (sc.fit == mf.FIT_LAB['ols'])].bias.abs().max():.4f}"` on the
+global OLS map, and
+`{python} f"{sc[(sc.stage == KR) & (sc.fit == mf.FIT_LAB['locq'])].bias.abs().max():.4f}"` for the
+local $+\log\hat q$ kriging map alone. A good map limits how much a wrong $\hat q$ can hurt. And
 since too little cloud noise costs more than too much, the noise should be calibrated, or erred on
 the wide side.
 
 **Not included here.** The covariance is oracle. An Argo-only version would estimate $K$ from the
 profiles, which preferential sampling also biases. That affects only the maps, not the validity
-argument for the DR step.
+argument for the DR step. The window half-width $\lambda$ was fixed at
+$`{python} f"{mf.LAM_W:.0f}"`$ km and not tuned.

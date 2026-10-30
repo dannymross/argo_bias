@@ -299,8 +299,6 @@ weighted mean. We have not run $K>5$.
 
 # Where the floats sample: $\hat q$
 
-@fig-intensity shows $\hat w$, the estimated intensity relative to its mean, next to the OHC field it samples.
-
 ```{python}
 #| label: example-data
 #| include: false
@@ -312,14 +310,6 @@ pf_ex = pf_ex[pf_ex.year == EX_YEAR]
 fm = ch.fold_means()
 fm_ex = fm[(fm.rep == EX_REP) & (fm.year == EX_YEAR)]
 EX_FOLD = int(fm_ex[fm_ex.box == EX_BOX].assign(a=lambda d: d["T"].abs()).sort_values("a").fold.iloc[-1])
-```
-
-```{python}
-#| label: fig-intensity
-#| echo: false
-#| fig-cap: "2017, box A (south) and box B (north). Left: annual-mean true OHC with one replicate's in-box profiles. Right: sampling intensity q-hat relative to its mean (log scale) with OHC contours (GJ per m2)."
-
-_show_fig(ch.plot_intensity(nd_ex[nd_ex.box != "boxAB"], pf_ex[pf_ex.box != "boxAB"]))
 ```
 
 Floats are up to three times more dense than average in some places and under half as dense in others. In box B
@@ -356,33 +346,7 @@ _show_fig(ch.plot_naive_bias(ch.design_estimates(ch.load_points(ks="")), al, BOX
 Floats under-sample warm water. The naive mean is 1.3--2.6 GJ m$^{-2}$ too cold in box B and A $\cup$ B, and the
 covariance accounts for $94$--$98\%$ of it; the small remainder is smoothing in $\hat w$.
 
-# The bias--variance trade-off
-
-**Why DR adds variance.** By the identity in Methods, the map's error is $-T$ (its own miss) and DR's error is
-$\frac1K\sum_k(\hat C_k-T_k)$. DR swaps the map's systematic miss for the sampling error of the corrections, and
-three things make that error larger than the map's own variability:
-
-* each $\hat C_k$ is a mean over one fold's profiles, about a fifth of the floats (about $10$ floats per box-year
-  in box A and $15$ in box B), and the profiles of one float are strongly correlated, so it averages few
-  independent pieces of information;
-* the $1/\hat q_k$ weights are uneven, which lowers the effective sample size further (to about $80\%$ of the
-  profile count in box A);
-* each fold map is built from $80\%$ of the floats, so $Q_y(\hat m_{-k})$ is noisier than $Q_y(\hat m)$, and the
-  average over five folds only partly recovers this.
-
-**When DR lowers MSE.** Since $\text{MSE}=\text{bias}^2+\text{variance}$, DR beats the map exactly when the squared
-bias it removes exceeds the variance it adds:
-
-$$
-\text{bias}^2_{\text{map}}-\text{bias}^2_{\text{DR}}\;>\;\operatorname{Var}_{\text{DR}}-\operatorname{Var}_{\text{map}}.
-$$
-
-Pooled over 2015--2019, box A removes $0.010$ (GJ m$^{-2}$)$^2$ of squared bias and adds $0.015$ of variance;
-box B removes $0.0005$ and adds $0.054$. DR is therefore likely to win when the map's bias is persistent and large
-next to the residual noise: when the target averages the variance away but not the bias (multi-year means, larger
-regions), or when more floats per fold shrink the correction's variance.
-
-The error of every replicate, by box and year:
+# bias--variance trade-off
 
 ```{python}
 #| label: errors
@@ -391,24 +355,6 @@ The error of every replicate, by box and year:
 
 _tabs([(BOX_LAB[b], lambda b=b: _show_fig(ch.plot_errors(e, EST_LAB, b))) for b in BOX_LAB])
 ```
-
-@fig-tradeoff puts every estimator on one plane: variance over deployments against $|\text{bias}|$. The curves of
-constant MSE are $\text{variance}=\text{MSE}-\text{bias}^2$.
-
-```{python}
-#| label: fig-tradeoff
-#| echo: false
-#| fig-cap: "Variance ((GJ per m2) squared) against |bias| (GJ per m2) over 200 deployments, log axes. Large points pool 2015-2019, small points are single years; grey curves are constant MSE."
-
-_show_fig(ch.plot_tradeoff(s, EST_LAB, BOX_LAB))
-```
-
-* **naive**: large bias at moderate variance.
-* **mean field**: small variance, with a bias of $-0.15$ GJ m$^{-2}$ that varies by year.
-* **map**: kriging cuts the mean field's bias and has the lowest MSE annually in every box. The bias left is
-  $-0.10$ in A and $-0.08$ in A $\cup$ B.
-* **DR**: nearly unbiased ($-0.015$, $-0.04$, $-0.03$) at a variance somewhat above the map's. The weights act on the
-  map residuals, which are much smaller than OHC, so the added variance is moderate.
 
 ```{python}
 #| label: fig-by-year
@@ -442,28 +388,6 @@ target. The blue bar $\hat C_k$ is DR's estimate of it, and the grey bar is the 
 weights. A good correction has its blue bar close to the black one. Single folds are noisy (two of five here
 correct in the wrong direction). What enters the estimator is the average over folds, the right-most group: DR's
 error is the gap between the averaged blue and black bars, here $-0.53$ against $-0.51$.
-
-# Kernel bandwidth
-
-DR's remaining bias comes from smoothing in $\hat q$. Rebuilding $\hat q$ on a $3\times3$ grid of space and time
-kernel widths, with the maps fixed, moves box B's DR bias steadily from $-0.10$ (widest) to $-0.02$ (narrowest).
-Narrower kernels cost variance and leave places where $\hat q$ is nearly zero. Production uses $(1/6^\circ,2\text{ d})$,
-the lowest box B MSE on the grid.
-
-```{python}
-#| label: fig-bandwidth
-#| echo: false
-#| fig-cap: "DR bias (+/- 2 Monte Carlo se, GJ per m2) and MSE ((GJ per m2) squared) against the kernel time sd, one line per space sd; the star is production, 200 replicates."
-
-_show_fig(ch.plot_bandwidth(ch.bandwidth_sensitivity(), BOX_LAB))
-```
-
-More simulated trajectories would let the kernel shrink. The smoothing bias of $\hat q$ falls as the kernel narrows,
-roughly with its squared width, while the Monte Carlo noise of $\hat q$ grows as fewer simulated profiles fall
-inside the kernel, roughly as $1/(R h_s^2 h_t)$ for $R$ replicates and widths $h_s,h_t$. With more replicates the
-kernel can be narrowed at the same noise, so DR's remaining bias should go to zero as $R$ grows; this is standard
-kernel asymptotics, not something tested here beyond $R=1000$. More trajectories do not reduce DR's variance over
-deployments, which comes from the residuals of the one array actually deployed.
 
 # Summary
 

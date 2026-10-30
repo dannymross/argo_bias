@@ -29,3 +29,7 @@ __pycache__/
 
 **/*.quarto_ipynb
 /output
+
+# local notes
+sim_edits.md
+plans/dr.tex
