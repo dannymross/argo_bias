@@ -64,7 +64,15 @@ is accurate to 0.01 GJ m$^{-2}$, so all map error below is interpolation error.
 **Deployment pool.** The pool is every real Argo float launched in 2010--2019 inside the GLORYS velocity domain
 ($11$--$66^\circ$N, $87$--$12^\circ$W) on water at least $1000$ m deep: $994$ floats. Each keeps its launch position
 and date (from the GDAC metadata, or its first profile when the metadata are inconsistent) and its operating
-life, launch to last profile (median $1380$ d).
+life, launch to last profile (median $1380$ d). @fig-deployments shows the launch positions.
+
+```{python}
+#| label: fig-deployments
+#| echo: false
+#| fig-cap: "The deployment pool: launch positions of the 994 floats deployed in the velocity domain in 2010-2019, coloured by launch year. Blue dashed: the velocity (advection) domain; green dashed: the OHC field domain; shaded: boxes A and B."
+
+_show_fig(ch.plot_deployments())
+```
 
 **Resampling.** A replicate is a year-stratified smoothed bootstrap of the pool. Within each launch year $y$ it
 draws the year's $N_y$ floats with replacement, so every replicate has the real yearly counts but a different
@@ -90,11 +98,32 @@ _show_fig(ch.plot_advection(171))
 **Profiles.** Each profile reads $Z$ at its containing native cell and day, with no measurement error. The map
 uses every profile in the buffer $14$--$55^\circ$N, $72$--$32^\circ$W, from the deployed and the initial floats.
 The DR weighting and the folds use only the deployed floats, whose law $\hat q$ describes. There are $1000$
-replicates; $\hat q$ uses all of them, and the maps and DR are run on the first $200$.
+replicates; $\hat q$ uses all of them, and the maps and DR are run on the first $200$. @fig-profile-density shows
+where the profiles fall in the scored years: on average $930$ profiles per year in box A and $1170$ in box B per
+replicate.
 
-**Quadrature.** For a field $g$, $Q_y(g)$ averages $g$ over the box's $0.5^\circ$ cells, located at their deep-area
-centroids and area-weighted, at three time nodes per month. The months are then day-weighted. The map and fold-map
-estimates are $Q_y(\hat m)$ and $Q_y(\hat m_{-k})$.
+```{python}
+#| label: fig-profile-density
+#| echo: false
+#| fig-cap: "Deployed-float profiles in 2015-2019 per year and 1 deg cell, mean over the 1000 replicates (log scale), over the velocity domain. Shaded: boxes A and B."
+
+_show_fig(ch.plot_profile_density(ch.profile_density()))
+```
+
+**Quadrature.** The target $\theta_y=\int Z\,d\mathbb P_y$ is an integral; a map is turned into a box-year mean by
+the quadrature rule
+
+$$
+Q_y(g)=\sum_{m\in y}\frac{d_m}{D_y}\sum_{j}\frac{a_j}{\sum_{j'}a_{j'}}\cdot\frac13\sum_{l=1}^{3}g\bigl(c_j,\;t_m+\tau_l d_m\bigr),
+\qquad \tau\in\{\tfrac16,\tfrac12,\tfrac56\}.
+$$
+
+Here $m$ runs over the months of year $y$, with $d_m$ days, start $t_m$ and $D_y=\sum_m d_m$; $j$ runs over the
+box's $0.5^\circ$ cells, with $a_j$ the area of the cell's water deeper than $2000$ m and $c_j$ its area centroid.
+So $Q_y$ is an area-weighted mean over cells at three times per month, and the months are day-weighted. The map and
+fold-map estimates are $Q_y(\hat m)$ and $Q_y(\hat m_{-k})$. Applied to the true field, $Q_y(Z)$ differs from
+$\theta_y$ by at most $0.01$ GJ m$^{-2}$, so the quadrature remainder $\theta_y-Q_y(Z)$ is negligible next to every
+error below.
 
 ## Sampling intensity: $q$, $\hat q$ and $w$
 
@@ -228,8 +257,33 @@ $$
 
 $\hat q_k$ is fold $k$'s intensity from above, computed without the evaluated replicate. This keeps the weights
 independent of the floats they weight, which the unbiasedness argument (Campbell's theorem) requires.
-$Q_y(\hat m_{-k})$ is fold $k$'s map estimate. $\hat C_k$ estimates what it misses, $T_k = \theta_y - Q_y(\hat m_{-k})$,
-by a $1/\hat q_k$-weighted (Hájek) mean of the held-out residuals.
+$Q_y(\hat m_{-k})$ is fold $k$'s map estimate, and
+
+$$
+T_k=\theta_y-Q_y(\hat m_{-k})
+$$
+
+is what it misses: the error of the map fitted without fold $k$, with the sign of a correction. $\hat C_k$, a
+$1/\hat q_k$-weighted (Hájek) mean of fold $k$'s residuals, estimates $T_k$. In practice $T_k$ is unknown because
+$\theta_y$ is; here the truth is known, so $T_k$ can be computed and every correction checked against its target.
+Subtracting $\theta_y$ from the estimator gives the exact identity
+
+$$
+\hat\theta_{\mathrm{DR}}-\theta_y=\frac1K\sum_{k=1}^K\bigl(\hat C_k-T_k\bigr),
+$$
+
+so DR's error is the average error of the five corrections, and DR is unbiased exactly when the corrections
+are unbiased for their targets on average.
+
+**Why five folds.** Cross-fitting needs only that each fold's map and weights be built without that fold's
+floats; the identity above and the unbiasedness argument hold for any fixed $K\ge2$. $K=5$ is the usual choice in
+cross-fitted estimation [@chernozhukov2018]. A larger $K$, up to leaving one float out, would bring each fold map
+closer to the full map: a fold map here uses $80\%$ of the floats, and its bias in box A is $-0.12$ against $-0.10$
+for the full map. It would not change what the correction does. The cost is computational: each fold needs its own
+mean field and kriging map for every month, and leaving one float out would mean about $1000$ fold maps per
+replicate instead of five. The residuals of one float are strongly correlated, so a fold must hold whole floats;
+with five folds each box-year fold still has about $10$ floats in box A and $15$ in box B, enough for a stable
+weighted mean. We have not run $K>5$.
 
 # Where the floats sample: $\hat q$
 
@@ -273,25 +327,61 @@ sampled more densely than box A throughout (median $\hat w$ of $1.23$ vs $0.71$ 
 
 # Preferential sampling
 
-The naive mean's expected bias is $\operatorname{Cov}_{\mathbb P_y}(w,Z)$ (Methods). With the pooled float occupancy of all replicates in place of $w$ the identity is
-exact. @fig-naive compares the two.
+The naive mean's expected bias is $\operatorname{Cov}_{\mathbb P_y}(w,Z)$ (Methods): how strongly the sampling
+intensity lines up with OHC. @fig-naive compares the naive bias, averaged over 1000 replicates, with this
+covariance computed from the kernel estimate $\hat w$ and the true field alone, without using any replicate's
+naive mean.
 
 ```{python}
 #| label: fig-naive
 #| echo: false
-#| fig-cap: "Naive bias (estimate minus truth, mean over 1000 replicates, +/- 2 Monte Carlo se) and the alignment Cov(w, Z) of the pooled float occupancy with OHC (GJ per m2)."
+#| fig-cap: "Naive bias (estimate minus truth, mean over 1000 replicates, +/- 2 Monte Carlo se) and the alignment Cov(w-hat, Z) of the kernel sampling intensity with OHC (GJ per m2)."
 
 al = pd.read_parquet(os.path.join(ch.OUT, "alignment.parquet"))
 _show_fig(ch.plot_naive_bias(ch.design_estimates(ch.load_points(ks="")), al, BOX_LAB))
 ```
 
-Floats under-sample warm water. The naive mean is 1.2--2.5 GJ m$^{-2}$ too cold in box B and A $\cup$ B, and the
-alignment term accounts for all of it.
+Floats under-sample warm water. The naive mean is 1.3--2.6 GJ m$^{-2}$ too cold in box B and A $\cup$ B, and the
+covariance accounts for $94$--$98\%$ of it; the small remainder is smoothing in $\hat w$.
 
 # The bias--variance trade-off
 
-@fig-tradeoff puts every estimator on one plane: variance over deployments against $|\text{bias}|$. Since
-$\text{MSE}=\text{bias}^2+\text{variance}$, the curves of constant MSE are $\text{variance}=\text{MSE}-\text{bias}^2$.
+**Why DR adds variance.** By the identity in Methods, the map's error is $-T$ (its own miss) and DR's error is
+$\frac1K\sum_k(\hat C_k-T_k)$. DR swaps the map's systematic miss for the sampling error of the corrections, and
+three things make that error larger than the map's own variability:
+
+* each $\hat C_k$ is a mean over one fold's profiles, about a fifth of the floats (about $10$ floats per box-year
+  in box A and $15$ in box B), and the profiles of one float are strongly correlated, so it averages few
+  independent pieces of information;
+* the $1/\hat q_k$ weights are uneven, which lowers the effective sample size further (to about $80\%$ of the
+  profile count in box A);
+* each fold map is built from $80\%$ of the floats, so $Q_y(\hat m_{-k})$ is noisier than $Q_y(\hat m)$, and the
+  average over five folds only partly recovers this.
+
+**When DR lowers MSE.** Since $\text{MSE}=\text{bias}^2+\text{variance}$, DR beats the map exactly when the squared
+bias it removes exceeds the variance it adds:
+
+$$
+\text{bias}^2_{\text{map}}-\text{bias}^2_{\text{DR}}\;>\;\operatorname{Var}_{\text{DR}}-\operatorname{Var}_{\text{map}}.
+$$
+
+Pooled over 2015--2019, box A removes $0.010$ (GJ m$^{-2}$)$^2$ of squared bias and adds $0.015$ of variance;
+box B removes $0.0005$ and adds $0.054$. DR is therefore likely to win when the map's bias is persistent and large
+next to the residual noise: when the target averages the variance away but not the bias (multi-year means, larger
+regions), or when more floats per fold shrink the correction's variance.
+
+The error of every replicate, by box and year:
+
+```{python}
+#| label: errors
+#| echo: false
+#| output: asis
+
+_tabs([(BOX_LAB[b], lambda b=b: _show_fig(ch.plot_errors(e, EST_LAB, b))) for b in BOX_LAB])
+```
+
+@fig-tradeoff puts every estimator on one plane: variance over deployments against $|\text{bias}|$. The curves of
+constant MSE are $\text{variance}=\text{MSE}-\text{bias}^2$.
 
 ```{python}
 #| label: fig-tradeoff
@@ -320,16 +410,6 @@ The map's bias in box A is negative in every year and largest in 2018 ($-0.16$).
 except in box A 2018--2019, where they tie. In box B the map's bias changes sign from year to year, and the
 variance of the DR correction dominates there.
 
-The distributions behind these summaries, with each replicate's error as a faint point:
-
-```{python}
-#| label: errors
-#| echo: false
-#| output: asis
-
-_tabs([(BOX_LAB[b], lambda b=b: _show_fig(ch.plot_errors(e, EST_LAB, b))) for b in BOX_LAB])
-```
-
 # How DR reweights the kriging residuals
 
 The map fitted without fold $k$ misses the truth by $T_k=\theta_y-Q_y(\hat m_{-k})$. DR estimates $T_k$ from the
@@ -340,22 +420,34 @@ replicate-year, picked for its large map error (box B 2017, replicate 171: map $
 ```{python}
 #| label: fig-dr-example
 #| echo: false
-#| fig-cap: "Replicate 171, box B, 2017. Left: error field of the map fitted without fold k. Middle: fold k's residuals at its floats' profiles, marker area proportional to the weight 1/q-hat. Right: per fold, the target T_k, the plain residual mean and the weighted correction C_k (GJ per m2)."
+#| fig-cap: "Replicate 171, box B, 2017. Left: error field of the map fitted without fold k. Middle: fold k's residuals at its floats' profiles, marker area proportional to the weight 1/q-hat. Right: per fold and averaged over folds, the target T_k, the plain residual mean and the weighted correction C_k (GJ per m2)."
 
 _show_fig(ch.plot_dr_example(nd_ex, pf_ex, fm_ex, EX_FOLD, EX_BOX))
 ```
 
-Single folds are noisy (two of five here correct in the wrong direction), but the five-fold average is $-0.53$
-against a target of $-0.51$. Over all replicates (@fig-corrections), the plain residual mean misses $T_k$ by $-0.21$
-in box B. The weighted correction misses it by $-0.04$.
+In the right panel each fold is one estimation problem. The black bar $T_k$ is what fold $k$'s map misses, the
+target. The blue bar $\hat C_k$ is DR's estimate of it, and the grey bar is the same residuals averaged without
+weights. A good correction has its blue bar close to the black one. Single folds are noisy (two of five here
+correct in the wrong direction). What enters the estimator is the average over folds, the right-most group: DR's
+error is the gap between the averaged blue and black bars, here $-0.53$ against $-0.51$.
+
+@fig-corrections shows these fold averages for every replicate-year as errors. The first box is the error of the
+fold maps alone, $-\bar T$. Adding the plain residual mean gives the second, and adding $\bar C$ gives the third,
+which is DR's error exactly.
+
 
 ```{python}
 #| label: fig-corrections
 #| echo: false
-#| fig-cap: "All replicates, years and folds: plain residual mean (grey) and the weighted correction C_k (blue) against the target T_k, with the 1:1 line (GJ per m2)."
+#| fig-cap: "Per replicate-year (200 replicates x 5 years), errors after averaging over the five folds: the fold maps alone (-T-bar), the fold maps plus the plain residual mean, and the fold maps plus C-bar, which is the DR error (GJ per m2). Diamonds are means; bias and sd are printed above."
 
 _show_fig(ch.plot_corrections(fm, BOX_LAB))
 ```
+
+In box A the fold maps are $0.12$ GJ m$^{-2}$ too cold, and the plain residual mean removes only part of this
+because it is tilted toward the crowded cells; the weighted correction leaves $-0.015$. In box B the fold maps are
+nearly unbiased already ($-0.035$). The plain mean would push them to $-0.21$, the weighted correction leaves them at
+$-0.04$, and the price is a larger spread (sd $0.35\to0.42$).
 
 @fig-residual-cells shows where the weighted correction moves away from the plain mean. All held-out residuals are
 pooled over the 200 replicates, five years and five folds and binned to $0.5^\circ$ cells. A profile's relative
@@ -383,14 +475,6 @@ The annual estimates of one replicate also give year-to-year changes and the fiv
 uncorrelated across years. So a change adds two years' variance while a persistent bias cancels, and the five-year
 mean divides the variance by about five while the bias stays.
 
-```{python}
-#| label: fig-derived
-#| echo: false
-#| fig-cap: "Map and DR MSE (solid) and squared bias (dashed) for year-to-year changes, the 2015-2019 change and the 2015-2019 mean ((GJ per m2) squared), 200 replicates."
-
-_show_fig(ch.plot_derived(ch.derived(e), BOX_LAB))
-```
-
 For changes the map wins everywhere. For the five-year mean DR wins in box A (MSE 0.009 against 0.017 (GJ m$^{-2}$)$^2$) and in
 A $\cup$ B (0.011 against 0.014), because the map's bias no longer averages out against its variance. Box B still
 favours the map.
@@ -409,6 +493,13 @@ the lowest box B MSE on the grid.
 
 _show_fig(ch.plot_bandwidth(ch.bandwidth_sensitivity(), BOX_LAB))
 ```
+
+More simulated trajectories would let the kernel shrink. The smoothing bias of $\hat q$ falls as the kernel narrows,
+roughly with its squared width, while the Monte Carlo noise of $\hat q$ grows as fewer simulated profiles fall
+inside the kernel, roughly as $1/(R h_s^2 h_t)$ for $R$ replicates and widths $h_s,h_t$. With more replicates the
+kernel can be narrowed at the same noise, so DR's remaining bias should go to zero as $R$ grows; this is standard
+kernel asymptotics, not something tested here beyond $R=1000$. More trajectories do not reduce DR's variance over
+deployments, which comes from the residuals of the one array actually deployed.
 
 # Summary
 

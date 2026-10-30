@@ -714,6 +714,54 @@ def plot_advection(rep, n_floats=80, figsize=(8.5, 7.2)):
                               years=list(range(2010, 2020)), subset_seed=rep)
 
 
+def plot_deployments(figsize=(8.5, 7.2)):
+    """The deployment pool: every launch position, coloured by launch year, on the domain base map."""
+    import matplotlib.pyplot as plt
+    import matplotlib as mpl
+    from osim import report as rp
+    d, yr = pool(), list(range(YEARS[0] - 5, YEARS[-1] + 1))
+    cmap = plt.get_cmap("turbo", len(yr))
+    norm = mpl.colors.BoundaryNorm(np.arange(yr[0], yr[-1] + 2) - 0.5, cmap.N)
+    fig, ax, pc, _ = rp._domain_base(BOXES, figsize)
+    ax.scatter(d.lon, d.lat, c=d.year, cmap=cmap, norm=norm, s=14, edgecolor="k", linewidth=0.25, transform=pc,
+               zorder=3)
+    fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax, ticks=yr, shrink=0.8, pad=0.02,
+                 label="launch year")
+    ax.legend(loc="lower left", fontsize=7, framealpha=0.9)
+    return fig
+
+
+def profile_density(deg=1.0):
+    """Deployed-float profiles of 2015-2019 per replicate, year and deg x deg cell over the velocity domain, all
+    replicates, cached."""
+    f = os.path.join(OUT, f"profile_density_{deg:g}.parquet")
+    if os.path.exists(f):
+        return pd.read_parquet(f)
+    out = []
+    for fn in rep_files():
+        p = pd.read_parquet(fn, columns=["time", "lat", "lon"])
+        p = p[p.time.dt.year.isin(YEARS)]
+        out.append(pd.DataFrame(dict(lat=(np.floor(p.lat / deg) + 0.5) * deg, lon=(np.floor(p.lon / deg) + 0.5) * deg))
+                   .value_counts().rename("n"))
+    d = pd.concat(out).groupby(level=[0, 1]).sum().div(len(out) * len(YEARS)).rename("n").reset_index()
+    d.to_parquet(f)
+    return d
+
+
+def plot_profile_density(d, deg=1.0, figsize=(8.5, 7.2)):
+    """Mean profiles per replicate and year in each cell, 2015-2019, log colour scale, on the domain base map."""
+    from matplotlib.colors import LogNorm
+    from osim import report as rp
+    fig, ax, pc, _ = rp._domain_base(BOXES, figsize)
+    la, lo = (np.arange(d[c].min(), d[c].max() + deg / 2, deg) for c in ("lat", "lon"))
+    g = d.pivot(index="lat", columns="lon", values="n").reindex(index=la, columns=lo, method="nearest", tolerance=deg / 4)
+    m = ax.pcolormesh(lo, la, g.to_numpy(), cmap="viridis", transform=pc, norm=LogNorm(0.05, np.nanmax(g.to_numpy())),
+                      zorder=1, shading="nearest")
+    fig.colorbar(m, ax=ax, shrink=0.8, pad=0.02, label=f"profiles per year per {deg:g} deg cell (mean over replicates)")
+    ax.legend(loc="lower left", fontsize=7, framealpha=0.9)
+    return fig
+
+
 def plot_intensity_grid(nq=None, figsize=(12, 13)):
     """Quarterly-mean design intensity q-hat = sum_c N_c q-hat_c, years by quarters, relative to its
     area- and day-weighted mean over A u B in that year."""
@@ -769,35 +817,45 @@ def plot_dr_example(nd, pf, fm, k, box="boxB", figsize=(13, 4.8)):
         (la0, la1), (lo0, lo1) = cfg.BOXES[box]["lat_bounds"], cfg.BOXES[box]["lon_bounds"]
         a.set(xlim=(lo0 - 0.5, lo1 + 0.5), ylim=(la0 - 0.5, la1 + 0.5))
     f = fm[fm.box == box].sort_values("fold")
-    x = np.arange(len(f))
+    f = pd.concat([f, f[["T", "e_mean", "C"]].mean().to_frame().T.assign(fold="mean")], ignore_index=True)
+    x = np.arange(len(f)) + np.r_[np.zeros(len(f) - 1), 0.5]
     for dx, c, lab, col in ((-0.25, "T", "T_k (truth)", "k"), (0, "e_mean", "unweighted mean e", "#999999"),
                             (0.25, "C", "C_k (1/q-hat weighted)", "#1f77b4")):
         ax[2].bar(x + dx, f[c], width=0.25, color=col, label=lab)
     ax[2].axhline(0, color="k", lw=0.6)
-    ax[2].set_xticks(x, [f"fold {i}" for i in f.fold])
+    ax[2].axvline(x[-1] - 0.75, color="0.6", lw=0.6, ls=":")
+    ax[2].set_xticks(x, [f"fold {i}" if i != "mean" else "mean over\nfolds" for i in f.fold], fontsize=8)
     ax[2].set_ylabel("GJ/m2")
     ax[2].legend(fontsize=8, frameon=False)
     return fig
 
 
 def plot_corrections(fm, box_lab, figsize=(12, 4.2)):
-    """Over replicates, years and folds: the unweighted residual mean and the Hajek correction C_k against
-    their target T_k."""
+    """Per replicate-year, the fold-averaged map error -T-bar and the errors left after adding the fold-averaged
+    unweighted residual mean or C-bar; the last is the DR error exactly."""
     import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(1, len(box_lab), figsize=figsize)
+    g = fm.groupby(["rep", "box", "year"])[["T", "e_mean", "C"]].mean().reset_index()
+    cols = (("fold maps: -T", "#1f77b4", lambda d: -d["T"]), ("+ unweighted mean e", "#999999", lambda d: d.e_mean - d["T"]),
+            ("+ C (DR)", "#d62728", lambda d: d.C - d["T"]))
+    fig, ax = plt.subplots(1, len(box_lab), figsize=figsize, sharey=True)
+    rng = np.random.default_rng(0)
     for a, b in zip(ax, box_lab):
-        f = fm[fm.box == b]
-        a.plot(f["T"], f.e_mean, ".", color="#999999", ms=2, alpha=0.5, label="unweighted mean e")
-        a.plot(f["T"], f.C, ".", color="#1f77b4", ms=2, alpha=0.5, label="C_k")
-        lo, hi = np.nanquantile(np.r_[f["T"], f.C, f.e_mean], [0.005, 0.995])
-        a.plot([lo, hi], [lo, hi], "k", lw=0.8)
-        a.set(xlim=(lo, hi), ylim=(lo, hi), xlabel="T_k = theta - Q(m_{-k}) (GJ/m2)", title=box_lab[b])
-        a.text(0.03, 0.97, f"mean(e - T) = {(f.e_mean - f['T']).mean():+.3f}\nmean(C - T) = {(f.C - f['T']).mean():+.3f}",
-               transform=a.transAxes, va="top", fontsize=8)
-    ax[0].set_ylabel("correction (GJ/m2)")
-    ax[0].legend(fontsize=8, frameon=False, loc="lower right", markerscale=4)
+        d = g[g.box == b]
+        for i, (lab, col, fn) in enumerate(cols):
+            v = fn(d).to_numpy()
+            bp = a.boxplot([v], positions=[i], widths=0.6, patch_artist=True, showfliers=False)
+            bp["boxes"][0].set(facecolor=col, alpha=0.35)
+            a.plot(i + rng.uniform(-0.2, 0.2, len(v)), v, ".", ms=2.5, color=col, alpha=0.4)
+            a.plot(i, v.mean(), "D", color="k", ms=5)
+            a.text(i, 1.0, f"bias {v.mean():+.3f}\nsd {v.std():.3f}", transform=a.get_xaxis_transform(), ha="center",
+                   va="bottom", fontsize=7)
+        a.axhline(0, color="k", lw=0.6)
+        a.set_xticks(range(len(cols)), [c[0] for c in cols], fontsize=8)
+        a.set_title(box_lab[b], pad=24)
+    ax[0].set_ylabel("error (GJ/m2)")
     fig.tight_layout()
     return fig
+
 
 def monthly_maps(maxrep=200):
     """Monthly box means of the full map and the mean field alone per replicate, with the true box-month mean
@@ -845,7 +903,7 @@ EST_COL = {"naive": "#7f7f7f", "hajek": "#9467bd", "mean_field": "#2ca02c", "kri
 
 
 def plot_naive_bias(de, al, box_lab, figsize=(7, 4)):
-    """Naive bias per box and year (+/- 2 MC se) with the pooled-occupancy alignment Cov(w-tilde, Z)."""
+    """Naive bias per box and year (+/- 2 MC se) with the kernel alignment Cov(w-hat, Z)."""
     import matplotlib.pyplot as plt
     nb = de.assign(b=(de.naive - de.theta) * 1e-9).groupby(["box", "year"]).b.agg(["mean", "sem"]).reset_index()
     fig, a = plt.subplots(figsize=figsize)
@@ -853,7 +911,7 @@ def plot_naive_bias(de, al, box_lab, figsize=(7, 4)):
         x, c = nb[nb.box == b], f"C{i}"
         a.errorbar(x.year, x["mean"], 2 * x["sem"], marker="o", color=c, capsize=3, label=f"{box_lab[b]}: naive bias")
         y = al[al.box == b]
-        a.plot(y.year, y.cov_w_occ * 1e-9, "x--", color=c, ms=7, lw=0.8, label=f"{box_lab[b]}: Cov(w, Z)")
+        a.plot(y.year, y.cov_w * 1e-9, "x--", color=c, ms=7, lw=0.8, label=f"{box_lab[b]}: Cov(w-hat, Z)")
     a.axhline(0, color="k", lw=0.6)
     a.set(xlabel="year", ylabel="GJ/m2", xticks=sorted(nb.year.unique()))
     a.legend(fontsize=7, frameon=False, ncol=2)
@@ -901,6 +959,8 @@ def plot_by_year(s, est_lab, box_lab, figsize=(13, 8)):
         ax[0, j].axhline(0, color="k", lw=0.6)
         ax[0, j].set_title(box_lab[b])
         ax[-1, j].set(xlabel="year", xticks=sorted(yr))
+    for a in ax[1:, 0]:
+        a.set_ylim(bottom=0)
     for i, (_, lab) in enumerate(rows):
         ax[i, 0].set_ylabel(lab)
     ax[0, 0].legend(fontsize=8, frameon=False)
