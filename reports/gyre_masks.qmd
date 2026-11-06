@@ -1,0 +1,168 @@
+---
+title: "Gyre Masks"
+jupyter: python3
+fig-dpi: 300
+execute:
+  cache: false
+---
+
+```{python}
+#| label: setup
+#| include: false
+
+import os, sys
+sys.path.insert(0, os.path.abspath("../code"))
+
+import numpy as np, pandas as pd, xarray as xr, matplotlib.pyplot as plt
+from IPython.display import display, Markdown
+from osim import gyre_mask as gm, osim_config as cfg
+
+ds = xr.open_dataset(os.path.join(cfg.OUT_DIR, "gyre_masks.nc"))
+r = pd.read_csv(os.path.join(cfg.OUT_DIR, "gyre_masks.csv"))
+BOX = {k: dict(lat=v["lat_bounds"], lon=v["lon_bounds"]) for k, v in cfg.BOXES.items() if k in ("boxA", "boxB")}
+rule = r[r.group == "rule"].set_index("name")
+mdt = r[r.group == "mdt"].iloc[0]
+pick = lambda n, c: rule.loc[n, c]
+
+def table(d, first):
+    t = d.assign(area=d.area_km2 / 1e6, lat=[f"{a:.1f} to {b:.1f}" for a, b in zip(d.lat_min, d.lat_max)],
+                 lon=[f"{a:.1f} to {b:.1f}" for a, b in zip(d.lon_min, d.lon_max)])
+    t = t.rename(columns={"name": first, "gyre": "Gyre", "level": "Level (m)", "area": "Area ($10^6$ km$^2$)", "lat": "Latitude",
+                          "lon": "Longitude", "frac_vel": "In velocity domain", "box_a": "Box A inside", "box_b": "Box B inside",
+                          "iou": "IoU with primary"})
+    fmt = {"Level (m)": "{:.3f}", "Area ($10^6$ km$^2$)": "{:.2f}", "In velocity domain": "{:.0%}", "Box A inside": "{:.0%}",
+           "Box B inside": "{:.0%}", "IoU with primary": "{:.2f}"}
+    keep = [c for c in [first, "Gyre", *fmt, "Latitude", "Longitude"] if c in t and t[c].notna().any()]
+    return Markdown(t[keep].assign(**{c: t[c].map(f.format) for c, f in fmt.items() if c in keep}).to_markdown(index=False))
+```
+
+Boxes A and B were chosen for convenience and cut across the circulation. This report replaces them with candidate
+regions drawn from the mean circulation: a fixed subtropical and a fixed subpolar gyre mask, defined by rules applied to
+mean GLORYS12 sea surface height (SSH).
+
+# Definition
+
+Let $\zeta(s,t)$ be monthly GLORYS12 SSH and $\bar\zeta$ its time mean over a reference period $\mathcal R$, taken as
+`{python} ds.attrs["period"]`. This period ends before the 2010--2019 simulation starts, so no simulated year enters a
+mask. Let $O$ be the ocean in $0$--$70^\circ$N, $100^\circ$W--$5^\circ$E, $\alpha$ surface measure and, for a level $c$,
+
+$$
+L_c=\{s\in O:\bar\zeta(s)\ge c\} .
+$$
+
+Masks are fixed Borel subsets of $O$. A mask $G$ enters the theory only through the analysis region: with $M$ the deep
+water mask and $A^*\subseteq G\cap M$ the reachable part of $G$, the estimand stays $\theta_y=\int Z\,d\mathbb P_y$, with
+$\mathbb P_y$ the normalized area $\times$ time measure on $A^*\times\mathcal T_y$. Under the design frame the ocean is
+fixed, so a function of $\bar\zeta$ is a fixed set and the design results are unchanged. On real data this needs one
+assumption: GLORYS assimilates in-situ profiles, so the mask is not strictly independent of Argo. Using a reference
+period that excludes all scored years limits this.
+
+**Plain closed contour.** Write $C_c$ for the water-connected component of $L_c$ holding the gyre's SSH maximum, on the
+model grid with 4-neighbour connectivity, so coasts close contours. The largest closed contour is the smallest $c$ at
+which $C_c$ does not reach the open edge of $O$.
+
+**Subtropical mask.** The plain rule fails (Results), so two physical limits replace it:
+
+1. *North:* the jet level $c_J$ is the median of $\bar\zeta$ under the measure with density $|u_g|$ with respect to
+   $\alpha$ on the Gulf Stream -- North Atlantic Current corridor ($33$--$46^\circ$N, $75$--$35^\circ$W), where
+   $u_g=(g/f)\,\hat k\times\nabla\bar\zeta$ is the mean geostrophic velocity. Half of the corridor's speed-weighted area
+   lies on each side of the contour.
+2. *South:* east of $61^\circ$W, the mask stops at $\tau(\lambda)$, the latitude of the minimum of $\bar\zeta$ in
+   $5$--$28^\circ$N at longitude $\lambda$, median-smoothed over $3^\circ$. Along this SSH trough the zonal geostrophic
+   flow changes sign, so it separates the westward North Equatorial Current from the tropics.
+
+The mask is the component of $L_{c_J}$ holding the SSH maximum, restricted to latitudes above $\tau$, excluding the
+Caribbean and Gulf of Mexico by a fixed polygon along the island arcs, and excluding the Mediterranean.
+
+**Subpolar mask.** The analogous low: the component of $\{\bar\zeta\le c\}$ holding the SSH minimum, at the largest $c$ that does
+not reach the open edge of the domain cut at $66^\circ$N.
+
+These rules do not use OHC or any residual. They do retain analyst choices, namely the corridor, the trough's latitude
+band, the marginal-sea polygon and the $66^\circ$N cut, and they are heuristic in that sense.
+
+# Results
+
+```{python}
+#| label: fig-masks
+#| echo: false
+#| fig-cap: "Gyre masks from mean GLORYS12 SSH over the reference period, with the plain closed contour, boxes A and B, the velocity domain (blue dashed) and the OHC field domain (green dashed). Land is grey."
+
+_f = gm.plot_masks(ds, BOX)
+display(_f)
+plt.close(_f)
+```
+
+```{python}
+#| label: tbl-rules
+#| echo: false
+#| tbl-cap: "Mask rules on the primary reference period. Box columns give the share of each box's water inside the mask."
+
+display(table(rule.reset_index(), "Rule"))
+```
+
+The plain contour is closed only at a high level. Lowering it further leaks through the tropics to the southern edge of
+the domain, because SSH in the tropics is as high as in the western gyre and higher than in the eastern gyre. So it stops
+near `{python} f"{-pick('plain closed contour', 'lon_max'):.0f}"`$^\circ$W, misses the eastern gyre and holds only
+`{python} f"{pick('plain closed contour', 'box_a'):.0%}"` of box A. The trough rule lifts that restriction: the
+subtropical mask holds `{python} f"{pick('jet and trough', 'box_a'):.0%}"` of box A and
+`{python} f"{pick('jet and trough', 'box_b'):.0%}"` of box B, with
+`{python} f"{pick('jet and trough', 'frac_vel'):.0%}"` of its area in the velocity domain.
+
+## Sensitivity
+
+```{python}
+#| label: tbl-level
+#| echo: false
+#| tbl-cap: "Subtropical mask with the jet level shifted (m). IoU is the area of the intersection over the union, on grid cells, against the primary mask."
+
+display(table(r[r.group == "level"], "Shift"))
+```
+
+The jet level sets the northern and eastern limits, so it is the most influential choice.
+
+```{python}
+#| label: tbl-period
+#| echo: false
+#| tbl-cap: "The same rules on other reference periods, against the primary masks."
+
+display(table(r[r.group == "period"], "Period"))
+```
+
+Applied to the CNES-CLS22 mean dynamic topography (1993--2012) instead of GLORYS, the subtropical rule gives an IoU of
+`{python} f"{mdt.iou:.2f}"` with the primary mask. The levels differ because the two fields have different reference
+offsets, and the jet level is defined relative to each field.
+
+# Data coverage
+
+GLORYS velocity at the 1000 m parking depth covers $11$--$66^\circ$N, $87$--$12^\circ$W and the daily OHC field covers
+$14$--$55^\circ$N, $72$--$32^\circ$W, both for 2010--2019.
+
+```{python}
+#| label: fig-coverage
+#| echo: false
+#| fig-cap: "Each gyre mask coloured by the data held there: OHC and velocity, velocity only, or neither. Dashed boxes: velocity domain (blue) and OHC field domain (green). Grey lines: mean SSH every 0.1 m."
+
+_f = gm.plot_coverage(ds)
+display(_f)
+plt.close(_f)
+```
+
+```{python}
+#| label: tbl-coverage
+#| echo: false
+#| tbl-cap: "Share of each mask's area by the data available, before removing shallow or unreachable water."
+
+_c = pd.DataFrame(gm.data_coverage(ds)).T
+display(Markdown(pd.DataFrame({"Mask": ["Subtropical", "Subpolar"], "Area ($10^6$ km$^2$)": (_c.area / 1e6).map("{:.2f}".format).values,
+                               "OHC and velocity": _c.both.map("{:.0%}".format).values, "Velocity only": _c.velocity.map("{:.0%}".format).values,
+                               "No data": _c.neither.map("{:.0%}".format).values}).to_markdown(index=False)))
+```
+
+# Using the masks
+
+* The velocity domain ends at $11^\circ$N and $12^\circ$W, so the masks are cut there, and $A^*$ also removes
+  shallow and unreachable water. Areas above are before those cuts.
+* Water outside the OHC field domain in @tbl-coverage needs more OHC data before a mask can be used in full. The
+  replicates and both fields stop at 2019.
+* Part of box B falls north of the subtropical mask. The mask follows the jet's core, so water on the Gulf Stream's
+  northern flank, where sampling is most uneven, is not in either mask.
