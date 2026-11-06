@@ -1,8 +1,8 @@
 {
-  "hash": "41082b173ff393ab59c8cde7c1bc849c",
+  "hash": "34cb81f9dc01644303674f7d0b74a388",
   "result": {
     "engine": "jupyter",
-    "markdown": "---\ntitle: \"North Atlantic Domain\"\njupyter: python3\nfig-dpi: 300\nexecute:\n  cache: false\n---\n\n::: {#cell-fig-domain .cell execution_count=1}\n\n::: {.cell-output .cell-output-display}\n![GLORYS12 bathymetry with depth contours. Red outline: water at least 2000 m deep, connected through such water to the open North Atlantic, north of 10N.](domain_files/figure-html/fig-domain-output-1.png){#fig-domain width=3333 height=2015}\n:::\n:::\n\n\n",
+    "markdown": "---\ntitle: \"North Atlantic Domain\"\njupyter: python3\nfig-dpi: 300\nexecute:\n  cache: false\n---\n\n::: {#cell-fig-domain .cell execution_count=1}\n\n::: {.cell-output .cell-output-display}\n![GLORYS12 bathymetry with depth contours. Red outline: water at least 2000 m deep, connected through such water to the open North Atlantic, north of 10N.](domain_files/figure-html/fig-domain-output-1.png){#fig-domain width=3333 height=2015}\n:::\n:::\n\n\n::: {#cell-fig-launches .cell execution_count=2}\n\n::: {.cell-output .cell-output-display}\n![Launch positions of all floats with at least one profile in the domain (metadata, with 14 implausible entries replaced by the first profile). Blue lines: extended regions enclosing the given percentage of those floats' profiles over their whole lives, 1998-2026. Along each stretch of border a region reaches as far through water as the profiles that left the domain there, using a local distance quantile over a 300 km window of border; one quantile is solved per line so that it holds exactly that percentage of all profiles. Where no profile left, the line stays on the border.](domain_files/figure-html/fig-launches-output-1.png){#fig-launches width=3335 height=2398}\n:::\n:::\n\n\n",
     "supporting": [
       "domain_files"
     ],

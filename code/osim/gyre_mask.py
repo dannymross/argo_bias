@@ -107,17 +107,17 @@ def spg_closed(h, lat, lon, seed=SPG["seed"]):
     return c, out
 
 
-def _geo(ax):
+def _geo(ax, extent=(-100, 5, 0, 70)):
     """Land, coast, borders, place names and degree ticks on a PlateCarree axis."""
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
     from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
     pc = ccrs.PlateCarree()
-    ax.set_extent([-100, 5, 0, 70], crs=pc)
+    ax.set_extent(extent, crs=pc)
     ax.add_feature(cfeature.LAND.with_scale("10m"), facecolor="#e6e1d6", zorder=3)
     ax.add_feature(cfeature.COASTLINE.with_scale("10m"), edgecolor="#333333", lw=.5, zorder=4)
-    ax.set_xticks(np.arange(-100, 6, 20), crs=pc)
-    ax.set_yticks(np.arange(0, 71, 10), crs=pc)
+    ax.set_xticks(np.arange(-100, extent[1] + 1, 20), crs=pc)
+    ax.set_yticks(np.arange(np.ceil(extent[2] / 10) * 10, extent[3] + 1, 10), crs=pc)
     ax.xaxis.set_major_formatter(LongitudeFormatter())
     ax.yaxis.set_major_formatter(LatitudeFormatter())
     ax.tick_params(labelsize=8)
@@ -217,4 +217,96 @@ def plot_domain(depth, lat, lon, z=2000.0, south=10.0, figsize=(11, 7.6)):
                        Line2D([], [], color="#222222", lw=.6, label=f"{z:.0f} m depth contour"),
                        Line2D([], [], color="#9db8cf", lw=.6, label="1000, 3000, 4000, 5000 m contours")],
               loc="lower left", fontsize=8, framealpha=.95).set_zorder(7)
+    return fig
+
+
+def _xyz(lat, lon):
+    la, lo = np.deg2rad(lat), np.deg2rad(lon)
+    return np.column_stack([np.cos(la) * np.cos(lo), np.cos(la) * np.sin(lo), np.sin(la)])
+
+
+def water_paths(depth, lat, lon, mask):
+    """Shortest through-water distance (km) from every ocean cell to the mask's border cells on the 8-neighbour grid,
+    without cutting land corners, and the grid index of the border cell each path reaches (-1 on land)."""
+    from scipy import sparse
+    from scipy.sparse.csgraph import dijkstra
+    wet = np.nan_to_num(depth) > 0
+    n, m = wet.shape
+    idx = np.arange(n * m).reshape(n, m)
+    dy, dx = 6371.0 * np.deg2rad(lat[1] - lat[0]), 6371.0 * np.deg2rad(lon[1] - lon[0]) * np.cos(np.deg2rad(lat))
+    I, J, W = [], [], []
+    for a, b, ok, w in (((slice(None), slice(None, -1)), (slice(None), slice(1, None)), None, dx[:, None] * np.ones((n, m - 1))),
+                        ((slice(None, -1), slice(None)), (slice(1, None), slice(None)), None, dy * np.ones((n - 1, m))),
+                        ((slice(None, -1), slice(None, -1)), (slice(1, None), slice(1, None)), wet[:-1, 1:] & wet[1:, :-1],
+                         np.hypot(dy, dx[:-1, None]) * np.ones((n - 1, m - 1))),
+                        ((slice(None, -1), slice(1, None)), (slice(1, None), slice(None, -1)), wet[:-1, :-1] & wet[1:, 1:],
+                         np.hypot(dy, dx[:-1, None]) * np.ones((n - 1, m - 1)))):
+        k = wet[a] & wet[b] if ok is None else wet[a] & wet[b] & ok
+        I.append(idx[a][k]); J.append(idx[b][k]); W.append(w[k])
+    I, J, W = map(np.concatenate, (I, J, W))
+    G = sparse.csr_matrix((np.r_[W, W], (np.r_[I, J], np.r_[J, I])), shape=(n * m, n * m))
+    src = idx[mask & ~ni.binary_erosion(mask)]
+    km, _, s = dijkstra(G, directed=False, indices=src, min_only=True, return_predecessors=True)
+    return km.reshape(n, m), s.reshape(n, m)
+
+
+def local_reach(km, src, lat, lon, mask, rlat, rlon, pct, window=300.0):
+    """Extended regions enclosing pct% of records. Each border cell's reach is a quantile of the through-water distances
+    of outside records whose path reaches the border within window km of it (0 where none did); one quantile per level
+    is solved so the region holds exactly that share of all records. Returns {pct: mask}, the quantiles and the inside share."""
+    from scipy.spatial import cKDTree
+    i, j = np.searchsorted(lat, rlat).clip(0, len(lat) - 1), np.searchsorted(lon, rlon).clip(0, len(lon) - 1)
+    wet = np.where(np.isfinite(km) & (src >= 0))
+    dry = ~(np.isfinite(km[i, j]) & (src[i, j] >= 0))
+    if dry.any():
+        t = cKDTree(_xyz(lat[wet[0]], lon[wet[1]]))
+        p = t.query(_xyz(rlat[dry], rlon[dry]))[1]
+        i, j = i.copy(), j.copy()
+        i[dry], j[dry] = wet[0][p], wet[1][p]
+    inside = mask[i, j]
+    dr, sr = km[i, j][~inside], src[i, j][~inside]
+    b = np.unique(src[src >= 0])
+    bi, bj = np.unravel_index(b, km.shape)
+    bx = _xyz(lat[bi], lon[bj])
+    ri, rj = np.unravel_index(sr, km.shape)
+    near = cKDTree(_xyz(lat[ri], lon[rj])).query_ball_point(bx, 2 * np.sin(window / 2 / 6371.0))
+    sd = [np.sort(dr[k]) for k in near]
+    pos = np.searchsorted(b, sr)
+
+    def reach(q):
+        return np.array([x[int(np.ceil(q * len(x))) - 1] if len(x) else 0.0 for x in sd])
+
+    out, Q = {}, {}
+    for p in pct:
+        target = (p / 100 - inside.mean()) / (1 - inside.mean())
+        lo, hi = 0.0, 1.0
+        for _ in range(22):
+            q = (lo + hi) / 2
+            lo, hi = (q, hi) if (dr <= reach(q)[pos]).mean() < target else (lo, q)
+        full = np.zeros(km.shape)
+        ok = src >= 0
+        full[ok] = reach(hi)[np.searchsorted(b, src[ok])]
+        out[p], Q[p] = (ok & (km <= full)) | mask, hi
+    return out, Q, inside.mean()
+
+
+def plot_launches(ds, launches, inside, extent=(-100, 25, -8, 82), figsize=(11, 8.6)):
+    """Launch positions, domain border and the extended regions enclosing given shares of the floats' records."""
+    import cartopy.crs as ccrs
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    la, lo = ds.latitude.values, ds.longitude.values
+    pct = [float(v.split("_")[1]) for v in ds.data_vars if v.startswith("ext_")]
+    col = ["#7fb6e6", "#3f94d8", "#1f77c9", "#0b4f8a"]
+    fig, ax = plt.subplots(figsize=figsize, subplot_kw=dict(projection=ccrs.PlateCarree()), constrained_layout=True)
+    pc = _geo(ax, extent)
+    h = []
+    for p, c in zip(pct, col):
+        ax.contour(lo, la, ds[f"ext_{p:g}"].values.astype(float), [.5], colors=c, linewidths=1.0, transform=pc, zorder=2)
+        h.append(Line2D([], [], color=c, lw=1.2, label=f"{p:g}% of profiles"))
+    ax.contour(lo, la, ds.domain.values.astype(float), [.5], colors="#d1495b", linewidths=.7, transform=pc, zorder=6)
+    ax.scatter(launches.lon, launches.lat, s=5, color="#222222", alpha=.55, linewidths=0, transform=pc, zorder=7)
+    ax.legend(handles=[Line2D([], [], color="#d1495b", lw=.7, label=f"domain border ({inside:.0%} of profiles inside)"),
+                       Line2D([], [], color="#222222", marker="o", ms=3, ls="", alpha=.7, label=f"launch positions ({len(launches):,} floats)"), *h],
+              loc="lower left", fontsize=8, framealpha=.95).set_zorder(8)
     return fig
