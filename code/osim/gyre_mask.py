@@ -42,6 +42,8 @@ JET = dict(lat=(33, 46), lon=(-75, -35))
 VEL = dict(lat=(11, 66), lon=(-87, -12))
 OHC = dict(lat=(14, 55), lon=(-72, -32))
 BARRIER_S, TROUGH_WEST, MED_LON = (5, 28), -61.0, -5.6
+PLACES = [(-98, 40, "N. America"), (-58, 4, "S. America"), (-10, 16, "Africa"), (-2, 48, "Europe"), (-41, 68, "Greenland"),
+          (-3, 37.5, "Med.")]
 MARGINAL = [(-100, 5), (-100, 31), (-81.5, 31), (-80, 25.5), (-78.5, 23), (-74, 20), (-68.5, 18.5), (-64.5, 18.5),
             (-61, 16), (-61, 5)]
 
@@ -105,33 +107,51 @@ def spg_closed(h, lat, lon, seed=SPG["seed"]):
     return c, out
 
 
-def plot_masks(ds, boxes, figsize=(10, 6.6)):
-    """Subtropical and subpolar masks over mean SSH, with the plain closed contour, boxes and velocity domain."""
+def _geo(ax):
+    """Land, coast, borders, place names and degree ticks on a PlateCarree axis."""
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+    from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
+    pc = ccrs.PlateCarree()
+    ax.set_extent([-100, 5, 0, 70], crs=pc)
+    ax.add_feature(cfeature.LAND.with_scale("10m"), facecolor="#e6e1d6", zorder=3)
+    ax.add_feature(cfeature.COASTLINE.with_scale("10m"), edgecolor="#333333", lw=.5, zorder=4)
+    ax.set_xticks(np.arange(-100, 6, 20), crs=pc)
+    ax.set_yticks(np.arange(0, 71, 10), crs=pc)
+    ax.xaxis.set_major_formatter(LongitudeFormatter())
+    ax.yaxis.set_major_formatter(LatitudeFormatter())
+    ax.tick_params(labelsize=8)
+    for x, y, n in PLACES:
+        ax.text(x, y, n, transform=pc, fontsize=8, color="#555555", ha="center", va="center", zorder=5)
+    return pc
+
+
+def plot_masks(ds, boxes, figsize=(10.5, 7.4)):
+    """Subtropical and subpolar masks over mean SSH, with the plain closed contour, boxes and data domains."""
+    import cartopy.crs as ccrs
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
     la, lo, h = ds.latitude.values, ds.longitude.values, ds.h.values
-    frame = lambda b, **k: ax.plot(np.array(b["lon"])[[0, 1, 1, 0, 0]], np.array(b["lat"])[[0, 0, 1, 1, 0]], **k)
-    fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
-    ax.set_facecolor("#d9d9d9")
-    ax.grid(False)
-    ax.contourf(lo, la, ds.stg.values.astype(float), [.5, 1.5], colors=["#d1495b"], alpha=.35)
-    ax.contourf(lo, la, ds.spg.values.astype(float), [.5, 1.5], colors=["#1f77c9"], alpha=.35)
-    ax.contour(lo, la, h, np.arange(-1.2, 1.5, .1), colors="#666666", linewidths=.35)
-    ax.contour(lo, la, ds.stg_plain.values.astype(float), [.5], colors="#222222", linewidths=1.2, linestyles="-.")
+    fig, ax = plt.subplots(figsize=figsize, subplot_kw=dict(projection=ccrs.PlateCarree()), constrained_layout=True)
+    pc = _geo(ax)
+    frame = lambda b, **k: ax.plot(np.array(b["lon"])[[0, 1, 1, 0, 0]], np.array(b["lat"])[[0, 0, 1, 1, 0]], transform=pc, zorder=6, **k)
+    ax.contourf(lo, la, ds.stg.values.astype(float), [.5, 1.5], colors=["#d1495b"], alpha=.35, transform=pc)
+    ax.contourf(lo, la, ds.spg.values.astype(float), [.5, 1.5], colors=["#1f77c9"], alpha=.35, transform=pc)
+    ax.contour(lo, la, h, np.arange(-1.2, 1.5, .1), colors="#666666", linewidths=.35, transform=pc)
+    ax.contour(lo, la, ds.stg_plain.values.astype(float), [.5], colors="#222222", linewidths=1.2, linestyles="-.", transform=pc)
     for k, b in boxes.items():
         frame(b, color="#222222", lw=1)
-        ax.text(b["lon"][0] + .6, b["lat"][1] - 2.4, f"Box {k[-1]}", fontsize=9, color="#222222")
+        ax.text(b["lon"][0] + .6, b["lat"][1] - 2.4, f"Box {k[-1]}", fontsize=9, color="#222222", transform=pc, zorder=6)
     frame(VEL, color="#0b4f8a", lw=1.4, ls="--")
     frame(OHC, color="#2a7f62", lw=1.4, ls="--")
-    ax.set(xlim=(-100, 5), ylim=(0, 70), xlabel="longitude (deg)", ylabel="latitude (deg)", aspect=1.22)
     ax.legend(handles=[Patch(color="#d1495b", alpha=.35, label="subtropical mask"), Patch(color="#1f77c9", alpha=.35, label="subpolar mask"),
                        Line2D([], [], color="#222222", ls="-.", label="plain closed contour"),
                        Line2D([], [], color="#222222", label="boxes A and B"),
                        Line2D([], [], color="#0b4f8a", ls="--", label="velocity domain"),
                        Line2D([], [], color="#2a7f62", ls="--", label="OHC field domain"),
                        Line2D([], [], color="#666666", lw=.5, label="mean SSH, 0.1 m interval")],
-              loc="lower left", fontsize=8, framealpha=.95)
+              loc="lower left", fontsize=8, framealpha=.95).set_zorder(7)
     return fig
 
 
@@ -149,25 +169,24 @@ def data_coverage(ds):
                 "area": a[ds[k].values > 0].sum()} for k in ("stg", "spg")}
 
 
-def plot_coverage(ds, figsize=(12, 6)):
+def plot_coverage(ds, figsize=(13, 6.2)):
     """Each gyre mask coloured by the data held there, over mean SSH contours."""
+    import cartopy.crs as ccrs
     import matplotlib.pyplot as plt
     from matplotlib.colors import ListedColormap
     from matplotlib.patches import Patch
     la, lo, h = ds.latitude.values, ds.longitude.values, ds.h.values
     v, o = inside(VEL, la, lo), inside(OHC, la, lo)
     col = ["#d1495b", "#e0a030", "#17a673"]
-    fig, ax = plt.subplots(1, 2, figsize=figsize, sharey=True, constrained_layout=True)
+    fig, ax = plt.subplots(1, 2, figsize=figsize, subplot_kw=dict(projection=ccrs.PlateCarree()), constrained_layout=True)
     for a, k, name in zip(ax, ("stg", "spg"), ("Subtropical mask", "Subpolar mask")):
+        pc = _geo(a)
         c = np.where(ds[k].values > 0, np.where(v & o, 2.0, np.where(v, 1.0, 0.0)), np.nan)
-        a.set_facecolor("#d9d9d9")
-        a.grid(False)
-        a.pcolormesh(lo[::3], la[::3], c[::3, ::3], cmap=ListedColormap(col), vmin=-.5, vmax=2.5, shading="auto", rasterized=True)
-        a.contour(lo, la, h, np.arange(-1.2, 1.5, .1), colors="#666666", linewidths=.3)
+        a.pcolormesh(lo[::3], la[::3], c[::3, ::3], cmap=ListedColormap(col), vmin=-.5, vmax=2.5, shading="auto", rasterized=True, transform=pc)
+        a.contour(lo, la, h, np.arange(-1.2, 1.5, .1), colors="#666666", linewidths=.3, transform=pc)
         for b, cl in ((VEL, "#0b4f8a"), (OHC, "#2a7f62")):
-            a.plot(np.array(b["lon"])[[0, 1, 1, 0, 0]], np.array(b["lat"])[[0, 0, 1, 1, 0]], color=cl, lw=1.4, ls="--")
-        a.set(xlim=(-100, 5), ylim=(0, 70), xlabel="longitude (deg)", title=name, aspect=1.22)
-    ax[0].set_ylabel("latitude (deg)")
+            a.plot(np.array(b["lon"])[[0, 1, 1, 0, 0]], np.array(b["lat"])[[0, 0, 1, 1, 0]], color=cl, lw=1.4, ls="--", transform=pc, zorder=6)
+        a.set_title(name, fontsize=11)
     fig.legend(handles=[Patch(color=col[2], label="OHC and velocity"), Patch(color=col[1], label="velocity only"),
                         Patch(color=col[0], label="no data")], loc="outside lower center", ncol=3, fontsize=9)
     return fig

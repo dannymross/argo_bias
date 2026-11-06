@@ -33,7 +33,7 @@ def table(d, first):
     fmt = {"Level (m)": "{:.3f}", "Area ($10^6$ km$^2$)": "{:.2f}", "In velocity domain": "{:.0%}", "Box A inside": "{:.0%}",
            "Box B inside": "{:.0%}", "IoU with primary": "{:.2f}"}
     keep = [c for c in [first, "Gyre", *fmt, "Latitude", "Longitude"] if c in t and t[c].notna().any()]
-    return Markdown(t[keep].assign(**{c: t[c].map(f.format) for c, f in fmt.items() if c in keep}).to_markdown(index=False))
+    return Markdown(t[keep].assign(**{c: t[c].map(f.format) for c, f in fmt.items() if c in keep}).to_markdown(index=False, disable_numparse=True))
 ```
 
 Boxes A and B were chosen for convenience and cut across the circulation. This report replaces them with candidate
@@ -43,8 +43,7 @@ mean GLORYS12 sea surface height (SSH).
 # Definition
 
 Let $\zeta(s,t)$ be monthly GLORYS12 SSH and $\bar\zeta$ its time mean over a reference period $\mathcal R$, taken as
-`{python} ds.attrs["period"]`. This period ends before the 2010--2019 simulation starts, so no simulated year enters a
-mask. Let $O$ be the ocean in $0$--$70^\circ$N, $100^\circ$W--$5^\circ$E, $\alpha$ surface measure and, for a level $c$,
+the full record `{python} ds.attrs["period"]`. Let $O$ be the ocean in $0$--$70^\circ$N, $100^\circ$W--$5^\circ$E, $\alpha$ surface measure and, for a level $c$,
 
 $$
 L_c=\{s\in O:\bar\zeta(s)\ge c\} .
@@ -54,8 +53,8 @@ Masks are fixed Borel subsets of $O$. A mask $G$ enters the theory only through 
 water mask and $A^*\subseteq G\cap M$ the reachable part of $G$, the estimand stays $\theta_y=\int Z\,d\mathbb P_y$, with
 $\mathbb P_y$ the normalized area $\times$ time measure on $A^*\times\mathcal T_y$. Under the design frame the ocean is
 fixed, so a function of $\bar\zeta$ is a fixed set and the design results are unchanged. On real data this needs one
-assumption: GLORYS assimilates in-situ profiles, so the mask is not strictly independent of Argo. Using a reference
-period that excludes all scored years limits this.
+assumption: GLORYS assimilates in-situ profiles, and the reference period includes the scored years, so the mask is not
+strictly independent of Argo. @tbl-period includes the mask from 1993--2009, which excludes those years.
 
 **Plain closed contour.** Write $C_c$ for the water-connected component of $L_c$ holding the gyre's SSH maximum, on the
 model grid with 4-neighbour connectivity, so coasts close contours. The largest closed contour is the smallest $c$ at
@@ -155,7 +154,7 @@ plt.close(_f)
 _c = pd.DataFrame(gm.data_coverage(ds)).T
 display(Markdown(pd.DataFrame({"Mask": ["Subtropical", "Subpolar"], "Area ($10^6$ km$^2$)": (_c.area / 1e6).map("{:.2f}".format).values,
                                "OHC and velocity": _c.both.map("{:.0%}".format).values, "Velocity only": _c.velocity.map("{:.0%}".format).values,
-                               "No data": _c.neither.map("{:.0%}".format).values}).to_markdown(index=False)))
+                               "No data": _c.neither.map("{:.0%}".format).values}).to_markdown(index=False, disable_numparse=True)))
 ```
 
 # Using the masks

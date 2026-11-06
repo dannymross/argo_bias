@@ -5,7 +5,7 @@ matplotlib.use("Agg")
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from osim import gyre_mask as gm, osim_config as cfg
 
-Y0, Y1 = 1993, 2009
+Y0, Y1 = 1993, 2025
 OUT = os.path.join(cfg.OUT_DIR, "gyre_masks")
 zos = xr.open_mfdataset(sorted(glob.glob(os.path.join(cfg.GLORYS_DIR, "zos_monthly", "zos_monthly_natl_*.nc")))).zos.load()
 zos = zos.sortby("latitude")
@@ -56,7 +56,7 @@ for d in (-.10, -.05, .05, .10):
     m = gm.stg_jet(h, la, lo, c_j + d)[1]
     R.append(row("level", f"{d:+.2f}", "STG", c_j + d, m, stg))
     L.append(f"STG level {d:+.2f}: {desc(m)}; IoU with primary {iou(m, stg):.2f}")
-for a, b in ((1993, 2003), (2004, 2014), (2015, 2025), (1993, 2025)):
+for a, b in ((1993, 2009), (1993, 2003), (2004, 2014), (2015, 2025)):
     if a <= int(zos.time.dt.year.max()) and b <= int(zos.time.dt.year.max()):
         hp = period(a, b)
         cp, m = gm.stg_jet(hp, la, lo)
