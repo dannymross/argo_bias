@@ -190,3 +190,31 @@ def plot_coverage(ds, figsize=(13, 6.2)):
     fig.legend(handles=[Patch(color=col[2], label="OHC and velocity"), Patch(color=col[1], label="velocity only"),
                         Patch(color=col[0], label="no data")], loc="outside lower center", ncol=3, fontsize=9)
     return fig
+
+
+def deep_domain(depth, lat, lon, z=2000.0, south=10.0, seed=(30.0, -50.0)):
+    """Water at least z deep, north of south, connected through such water to the seed (lat, lon)."""
+    d = np.nan_to_num(depth) >= z
+    d[lat < south] = False
+    lab = ni.label(d)[0]
+    return lab == lab[np.argmin(np.abs(lat - seed[0])), np.argmin(np.abs(lon - seed[1]))]
+
+
+def plot_domain(depth, lat, lon, z=2000.0, south=10.0, figsize=(11, 7.6)):
+    """Bathymetry with depth contours and the outline of the connected deep domain."""
+    import cartopy.crs as ccrs
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    m = deep_domain(depth, lat, lon, z, south)
+    fig, ax = plt.subplots(figsize=figsize, subplot_kw=dict(projection=ccrs.PlateCarree()), constrained_layout=True)
+    pc = _geo(ax)
+    f = ax.contourf(lon, lat, depth, np.arange(0, 6001, 500), cmap="Blues", extend="max", transform=pc)
+    ax.contour(lon, lat, depth, [1000, 3000, 4000, 5000], colors="#ffffff", linewidths=.3, alpha=.7, transform=pc)
+    ax.contour(lon, lat, depth, [z], colors="#222222", linewidths=.6, transform=pc)
+    ax.contour(lon, lat, m.astype(float), [.5], colors="#d1495b", linewidths=1.6, transform=pc)
+    fig.colorbar(f, ax=ax, shrink=.8, pad=.02, label="depth (m)")
+    ax.legend(handles=[Line2D([], [], color="#d1495b", lw=1.6, label=f"domain: connected water at least {z:.0f} m deep, north of {south:.0f}N"),
+                       Line2D([], [], color="#222222", lw=.6, label=f"{z:.0f} m depth contour"),
+                       Line2D([], [], color="#9db8cf", lw=.6, label="1000, 3000, 4000, 5000 m contours")],
+              loc="lower left", fontsize=8, framealpha=.95).set_zorder(7)
+    return fig

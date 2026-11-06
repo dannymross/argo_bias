@@ -1,0 +1,12 @@
+{
+  "hash": "41082b173ff393ab59c8cde7c1bc849c",
+  "result": {
+    "engine": "jupyter",
+    "markdown": "---\ntitle: \"North Atlantic Domain\"\njupyter: python3\nfig-dpi: 300\nexecute:\n  cache: false\n---\n\n::: {#cell-fig-domain .cell execution_count=1}\n\n::: {.cell-output .cell-output-display}\n![GLORYS12 bathymetry with depth contours. Red outline: water at least 2000 m deep, connected through such water to the open North Atlantic, north of 10N.](domain_files/figure-html/fig-domain-output-1.png){#fig-domain width=3333 height=2015}\n:::\n:::\n\n\n",
+    "supporting": [
+      "domain_files"
+    ],
+    "filters": [],
+    "includes": {}
+  }
+}

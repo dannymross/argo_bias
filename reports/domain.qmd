@@ -1,0 +1,25 @@
+---
+title: "North Atlantic Domain"
+jupyter: python3
+fig-dpi: 300
+execute:
+  cache: false
+---
+
+```{python}
+#| label: fig-domain
+#| echo: false
+#| fig-cap: "GLORYS12 bathymetry with depth contours. Red outline: water at least 2000 m deep, connected through such water to the open North Atlantic, north of 10N."
+
+import os, sys
+sys.path.insert(0, os.path.abspath("../code"))
+
+import matplotlib.pyplot as plt, xarray as xr
+from IPython.display import display
+from osim import gyre_mask as gm, osim_config as cfg
+
+b = xr.open_dataset(os.path.join(cfg.GLORYS_DIR, "static_natl", "deptho_natl.nc")).sortby("latitude")
+_f = gm.plot_domain(b.deptho.squeeze().values, b.latitude.values.astype(float), b.longitude.values.astype(float))
+display(_f)
+plt.close(_f)
+```
