@@ -310,3 +310,23 @@ def plot_launches(ds, launches, inside, extent=(-100, 25, -8, 82), figsize=(11, 
                        Line2D([], [], color="#222222", marker="o", ms=3, ls="", alpha=.7, label=f"launch positions ({len(launches):,} floats)"), *h],
               loc="lower left", fontsize=8, framealpha=.95).set_zorder(8)
     return fig
+
+
+def plot_download(ds, box, level=99, extent=(-100, 25, -8, 82), figsize=(11, 8.6)):
+    """Suggested velocity download box against the domain and one extended region; box is dict(lat=, lon=)."""
+    import cartopy.crs as ccrs
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Rectangle
+    la, lo = ds.latitude.values, ds.longitude.values
+    (s, n), (w, e) = box["lat"], box["lon"]
+    fig, ax = plt.subplots(figsize=figsize, subplot_kw=dict(projection=ccrs.PlateCarree()), constrained_layout=True)
+    pc = _geo(ax, extent)
+    ax.add_patch(Rectangle((w, s), e - w, n - s, fill=False, ec="#17a673", lw=2, transform=pc, zorder=5))
+    ax.contour(lo, la, ds[f"ext_{level:g}"].values.astype(float), [.5], colors="#1f77c9", linewidths=1.0, transform=pc, zorder=4)
+    ax.contour(lo, la, ds.domain.values.astype(float), [.5], colors="#d1495b", linewidths=.7, transform=pc, zorder=6)
+    ax.legend(handles=[Line2D([], [], color="#17a673", lw=2, label=f"suggested velocity download ({s}-{n}N, {abs(w)}W-{e}E)"),
+                       Line2D([], [], color="#1f77c9", lw=1.2, label=f"{level:g}% of profiles"),
+                       Line2D([], [], color="#d1495b", lw=.7, label="domain border")],
+              loc="lower left", fontsize=8, framealpha=.95).set_zorder(8)
+    return fig

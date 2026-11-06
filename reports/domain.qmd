@@ -35,3 +35,13 @@ _f = gm.plot_launches(ext, launch, ext.attrs["inside"])
 display(_f)
 plt.close(_f)
 ```
+
+```{python}
+#| label: fig-download
+#| echo: false
+#| fig-cap: "Suggested velocity download, 0-70N, 90W-5E, against the domain and the extended region holding 99% of the profiles."
+
+_f = gm.plot_download(ext, dict(lat=(0, 70), lon=(-90, 5)))
+display(_f)
+plt.close(_f)
+```
