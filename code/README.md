@@ -11,6 +11,7 @@ The pipeline runs in four stages; each writes to `data/osim/` and is resumable.
 |------|---------|
 | `ohc.py` | OHC depth integration. `profile_ohc` (0–z trapezoid) and `profile_ohc_layers` (PCHIP, four layers summing exactly to 0–2000 m). |
 | `osim/download_glorys.py` | `copernicusmarine.subset` wrappers: resumable, one JSON sidecar per file. |
+| `osim/download_natl.py` | **Entry point.** Deep North Atlantic store: month by month, thetao and uo/vo to scratch, five OHC layers and 1000 m velocity to `data/glorys_osim/natl/`. |
 | `osim/download_ohc_layers.py` | **Entry point.** Streams GLORYS thetao month by month over the buffer, collapses to the four OHC layers, deletes the raw file. ~300 GB of thetao becomes ~7 GB. |
 | `osim/download_velocity_full.py`, `osim/run_download.py` | Park-depth velocity over the advection domain; `configs/glorys.json` describes the regions. |
 

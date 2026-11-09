@@ -37,16 +37,18 @@ def to_park_depth(ds, depth=di.PARK_DEPTH):
     return out
 
 
-def convert(src, dst, complevel=1, overwrite=False):
+def convert(src, dst, complevel=1, overwrite=False, digits=None):
+    """digits: decimal places kept (netCDF least_significant_digit); float32 either way."""
     if os.path.exists(dst) and not overwrite:
         return False
-    with xr.open_dataset(src) as ds:
-        out = to_park_depth(ds).load()
-    shape = (1,) + out["uo"].shape[1:]
-    enc = {v: {"chunksizes": shape, "zlib": complevel > 0, "complevel": complevel,
-               "shuffle": complevel > 0} for v in ("uo", "vo")}
-    tmp = dst + ".tmp"
-    out.to_netcdf(tmp, encoding=enc)
+    with xr.open_dataset(src, chunks={"time": 4, "depth": -1, "latitude": -1, "longitude": -1}) as ds:
+        out = to_park_depth(ds)
+        shape = (1,) + out["uo"].shape[1:]
+        enc = {v: {"chunksizes": shape, "zlib": complevel > 0, "complevel": complevel,
+                   "shuffle": complevel > 0,
+                   **({"least_significant_digit": digits} if digits else {})} for v in ("uo", "vo")}
+        tmp = dst + ".tmp"
+        out.to_netcdf(tmp, encoding=enc)
     os.replace(tmp, dst)
     return True
 

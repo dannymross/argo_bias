@@ -31,6 +31,7 @@ DEPTHS = (700, 2000)
 # Layer edges for the split OHC integral: surface / lower / upper / deep. The
 # deep layer is where Argo thins out, so it is kept separable from the rest.
 OHC_LAYERS = (0.0, 15.0, 975.0, 1850.0, 2000.0)
+OHC_LAYERS_700 = (0.0, 15.0, 700.0, 975.0, 1850.0, 2000.0)
 
 
 # ---- CORE INTEGRATION ----------------------------------------------------
@@ -76,7 +77,25 @@ def profile_ohc(depth, theta, zmax):
     return integ * CP * RHO
 
 
-def profile_ohc_layers(depth, theta, edges=OHC_LAYERS):
+def _layers_to_floor(z, y, edges, floor):
+    """Layers of columns y (nz, ncol), each on its own valid levels; NaN where floor < layer bottom.
+
+    T is held constant from a column's deepest valid level to the layer bottom: a
+    level can lack T with the seafloor below it, so T alone cannot locate the floor.
+    """
+    out = np.full((edges.size - 1, y.shape[1]), np.nan)
+    n = np.isfinite(y).cumprod(axis=0).sum(axis=0)
+    for k in np.unique(n[n >= 2]):
+        c, zb = n == k, z[k - 1]
+        p = PchipInterpolator(z[:k], y[:k, c], axis=0)
+        for i, (a, b) in enumerate(zip(edges[:-1], edges[1:])):
+            out[i, c] = (p.integrate(max(a, z[0]), min(b, zb)) if a < zb else 0.0) \
+                + y[0, c] * max(z[0] - a, 0.0) + y[k - 1, c] * max(b - max(a, zb), 0.0)
+    out[floor < edges[1:, None]] = np.nan
+    return out
+
+
+def profile_ohc_layers(depth, theta, edges=OHC_LAYERS, floor=None):
     """OHC (J/m2) per layer ``(edges[i], edges[i+1]]``, depth along the last axis.
 
     One shape-preserving PCHIP per column over the native levels, integrated
@@ -94,6 +113,9 @@ def profile_ohc_layers(depth, theta, edges=OHC_LAYERS):
     fully resolved. Per-layer masks would need ``deptho`` above 18.5 / 1245.3 /
     2225.1 / 2533.3 m respectively (92.9 / 84.4 / 82.3 / 81.2 % of the buffer).
 
+    ``floor`` (seafloor depth, broadcast to the columns) replaces that rule with
+    per-layer masks: see ``_layers_to_floor``.
+
     Returns shape ``(len(edges) - 1,) + theta.shape[:-1]``.
     """
     depth = np.asarray(depth, dtype=float)
@@ -107,6 +129,9 @@ def profile_ohc_layers(depth, theta, edges=OHC_LAYERS):
 
     lead = theta.shape[:-1]
     y = theta[..., : need + 1].reshape(-1, z.size).T
+    if floor is not None:
+        out = _layers_to_floor(z, y, edges, np.broadcast_to(floor, lead).ravel())
+        return (out * CP * RHO).reshape((edges.size - 1,) + lead)
     ok = np.isfinite(y).all(axis=0)
 
     out = np.full((edges.size - 1, y.shape[1]), np.nan)
@@ -118,9 +143,9 @@ def profile_ohc_layers(depth, theta, edges=OHC_LAYERS):
     return (out * CP * RHO).reshape((edges.size - 1,) + lead)
 
 
-def _profile_ohc_layers_core(theta, depth, edges):
+def _profile_ohc_layers_core(theta, *floor, depth, edges):
     """theta-first adapter, layers on a trailing axis for apply_ufunc."""
-    return np.moveaxis(profile_ohc_layers(depth, theta, edges), 0, -1)
+    return np.moveaxis(profile_ohc_layers(depth, theta, edges, *floor), 0, -1)
 
 
 def _profile_ohc_core(theta, depth, zmax):
@@ -130,7 +155,7 @@ def _profile_ohc_core(theta, depth, zmax):
 
 # ---- TRUTH FIELD ---------------------------------------------------------
 def truth_ohc_field(theta_ds, depths=DEPTHS, theta_var="thetao", depth_dim="depth",
-                    layers=None):
+                    layers=None, floor=None):
     """Compute complete-coverage OHC fields from a GLORYS temperature dataset.
 
     Returns ``ohc_<zmax>`` per entry of ``depths`` (J/m2) on
@@ -159,8 +184,8 @@ def truth_ohc_field(theta_ds, depths=DEPTHS, theta_var="thetao", depth_dim="dept
         names = [f"ohc_{a:g}_{b:g}" for a, b in zip(edges[:-1], edges[1:])]
         stack = xr.apply_ufunc(
             _profile_ohc_layers_core,
-            theta,
-            input_core_dims=[[depth_dim]],
+            *([theta] if floor is None else [theta, floor]),
+            input_core_dims=[[depth_dim]] + ([] if floor is None else [[]]),
             output_core_dims=[["layer"]],
             kwargs={"depth": z, "edges": edges},
             dask="parallelized",

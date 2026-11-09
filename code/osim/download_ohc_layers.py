@@ -35,15 +35,24 @@ RAW_DIR = os.path.join(cfg.GLORYS_DIR, "_raw_tmp")
 CADENCE = {"daily": (dg.DAILY_ID, "P1D"), "monthly": (dg.MONTHLY_ID, "P1M")}
 
 
-def collapse(raw_path, out_path, layers=ohc.OHC_LAYERS, chunk=4):
-    """Layer OHC (J/m2, float32) from one raw thetao file, written compressed."""
-    with xr.open_dataset(raw_path, chunks={"time": chunk}) as ds:
-        out = ohc.truth_ohc_field(ds, depths=(), layers=layers).compute()
-    out = out.astype("float32")
-    out.attrs.update(source=os.path.basename(raw_path), layers=repr(tuple(layers)),
-                     max_depth=MAX_DEPTH, cp=ohc.CP, rho=ohc.RHO)
-    out.to_netcdf(out_path, encoding={v: {"zlib": True, "complevel": 4} for v in out.data_vars})
-    return out
+def collapse(raw_path, out_path, layers=ohc.OHC_LAYERS, chunk=4, tile=256, floor=None, encoding=None):
+    """Layer OHC (J/m2) from one raw thetao file, streamed to out_path chunk by chunk.
+
+    Default storage is float32; an integer ``encoding`` needs the float64 values.
+    """
+    with xr.open_dataset(raw_path, chunks={"time": chunk, "depth": -1, "latitude": tile,
+                                           "longitude": tile}) as ds:
+        out = ohc.truth_ohc_field(ds, depths=(), layers=layers, floor=floor)
+        if encoding is None:
+            out, encoding = out.astype("float32"), {"zlib": True, "complevel": 4}
+        out.attrs.update(source=os.path.basename(raw_path), layers=repr(tuple(layers)),
+                         max_depth=MAX_DEPTH, cp=ohc.CP, rho=ohc.RHO)
+        size = (min(chunk, ds.sizes["time"]), min(tile, ds.sizes["latitude"]),
+                min(tile, ds.sizes["longitude"]))
+        tmp = out_path + ".tmp"
+        out.to_netcdf(tmp, encoding={v: {**encoding, "chunksizes": size} for v in out.data_vars})
+    os.replace(tmp, out_path)
+    return out_path
 
 
 def run(cadence, start, end, lat_bounds=LAT_BOUNDS, lon_bounds=LON_BOUNDS,

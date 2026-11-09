@@ -26,6 +26,11 @@ BOXES = {
 LAYER_DIR = "ohc_layers"
 STATIC_PREFIX = "static_buffer/buffer"
 
+# Deep North Atlantic store written by download_natl.py. Raw files stay on scratch.
+NATL_BOX = {"lat_bounds": (0.0, 70.0), "lon_bounds": (-90.0, 5.0)}
+NATL_DIR = os.path.join(GLORYS_DIR, "natl")
+NATL_RAW = "/scratch/dmr6737/glorys_natl"
+
 ANALYSIS_YEARS = (2015, 2016, 2017, 2018, 2019)
 FIT_START_YEAR = 1995
 FIT_END_YEAR = 2019
