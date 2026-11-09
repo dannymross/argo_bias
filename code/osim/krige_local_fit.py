@@ -55,13 +55,13 @@ def _K(locs, r, tau2, want_parts=False):
 
 
 def _obj(lp, blocks, grad=True):
-    """Profiled negative log-likelihood (and gradient) on log parameters."""
+    """Profiled negative log-likelihood (and gradient) on log parameters. One pass, one block in memory at a time:
+    the gradient is 0.5 * (A - (N / q) B) with A = sum tr(K^-1 dK) and B = sum u' dK u, so q need not be known first."""
     p = np.exp(lp)
     r, tau2 = p[:3], p[3]
     N = sum(len(b[1]) for b in blocks)
-    logdet = 0.0
-    q = 0.0
-    cache = []
+    logdet = q = 0.0
+    A, B = np.zeros(4), np.zeros(4)
     for locs, z in blocks:
         K, d, parts = _K(locs, r, tau2, want_parts=grad)
         try:
@@ -71,26 +71,25 @@ def _obj(lp, blocks, grad=True):
         u = sla.cho_solve(c, z)
         logdet += 2.0 * np.log(np.diag(c[0])).sum()
         q += float(z @ u)
-        if grad:
-            cache.append((c, u, K, d, parts))
+        if not grad:
+            continue
+        Ki = sla.cho_solve(c, np.eye(len(z)))
+        K[np.diag_indices_from(K)] -= tau2          # exp(-d), nugget removed
+        with np.errstate(invalid="ignore", divide="ignore"):
+            K *= np.where(d > 0, 1.0 / np.where(d > 0, d, 1.0), 0.0)
+        del d
+        for m in range(3):
+            dK = K * parts[m] / r[m]                # dK/dr_m
+            A[m] += np.sum(Ki * dK)
+            B[m] += float(u @ (dK @ u))
+        A[3] += np.trace(Ki)                        # dK/dtau2 = I
+        B[3] += float(u @ u)
     if not np.isfinite(q) or q <= 0:
         return (1e10, np.zeros(4)) if grad else 1e10
     f = 0.5 * (N * np.log(q / N) + logdet + N)
     if not grad:
         return f
-
-    g = np.zeros(4)
-    for (c, u, K, d, parts), (locs, z) in zip(cache, blocks):
-        Ki = sla.cho_solve(c, np.eye(len(z)))
-        E = K.copy()
-        E[np.diag_indices_from(E)] -= tau2          # exp(-d), nugget removed
-        with np.errstate(invalid="ignore", divide="ignore"):
-            inv_d = np.where(d > 0, 1.0 / np.where(d > 0, d, 1.0), 0.0)
-        for m in range(3):
-            dK = E * parts[m] * inv_d / r[m]        # dK/dr_m
-            g[m] += 0.5 * (np.sum(Ki * dK) - (N / q) * float(u @ (dK @ u)))
-        g[3] += 0.5 * (np.trace(Ki) - (N / q) * float(u @ u))   # dK/dtau2 = I
-    return f, g * p
+    return f, 0.5 * (A - (N / q) * B) * p
 
 
 # Chosen by sweep, not by feel. The default (ftol 2.2e-9, gtol 1e-5) takes 15

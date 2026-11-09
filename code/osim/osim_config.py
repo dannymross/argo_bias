@@ -19,21 +19,20 @@ BOXES = {
     # Kriging near a box edge needs profiles from outside it, so the residual field
     # is built over this and the boxes are slices of it.
     "buffer": {"lat_bounds": (14.0, 55.0), "lon_bounds": (-72.0, -32.0)},
+    "natl": {"lat_bounds": (0.0, 70.0), "lon_bounds": (-90.0, 5.0)},
 }
 
-# Depth-layer OHC store written by download_ohc_layers.py; the four layers sum to
-# the 0-2000 m integral.
-LAYER_DIR = "ohc_layers"
-STATIC_PREFIX = "static_buffer/buffer"
-
-# Deep North Atlantic store written by download_natl.py. Raw files stay on scratch.
-NATL_BOX = {"lat_bounds": (0.0, 70.0), "lon_bounds": (-90.0, 5.0)}
+# Deep North Atlantic store written by download_natl.py, daily and monthly; the
+# layers sum to the 0-2000 m integral. Raw files stay on scratch.
+NATL_BOX = BOXES["natl"]
 NATL_DIR = os.path.join(GLORYS_DIR, "natl")
 NATL_RAW = "/scratch/dmr6737/glorys_natl"
+LAYER_DIR = "natl/ohc_layers"
+STATIC_PREFIX = "natl/static/natl"
 
-ANALYSIS_YEARS = (2015, 2016, 2017, 2018, 2019)
+ANALYSIS_YEARS = tuple(range(2015, 2026))
 FIT_START_YEAR = 1995
-FIT_END_YEAR = 2019
+FIT_END_YEAR = 2025
 ZMAX = 2000  # integration depth; int so ohc.truth_ohc_field names the var "ohc_2000"
 MIN_DEPTH = 2000.0  # bathymetry mask: retain deptho > MIN_DEPTH
 

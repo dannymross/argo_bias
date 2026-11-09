@@ -1,12 +1,12 @@
 """Build the native-grid OHC residual field for the float-simulation study.
 
 OHC (0-2000 m) on the GLORYS 1/12 deg grid, minus a per-cell mean field fitted
-from the 1995-2019 monthly record (quadratic trend + annual and semiannual
+from the cfg.FIT_START_YEAR-FIT_END_YEAR monthly record (quadratic trend + annual and semiannual
 harmonics). The residual Z is the field the test samples; the analysis grid is
 GLORYS' own grid, so the simple-function representation of theory.tex is exact
 and no quadrature error term arises.
 
-Run from the repo root: ``python code/osim/build_residual_field.py [box]``.
+Run from the repo root: ``python code/osim/build_residual_field.py [box] [--mean-only]``.
 """
 
 import calendar
@@ -42,8 +42,8 @@ def _store_years(cadence="daily"):
 def _ohc_from_layers(years, box, cadence, drop_leap=True):
     """Total 0-2000 m OHC over the box from the layer store.
 
-    The store holds the four depth layers; their sum is the full integral (they
-    share one mask, so the sum is NaN exactly where any layer is). ``drop_leap``
+    The layers sum to the full integral; a layer is NaN below the seafloor, so the
+    sum is NaN exactly where the floor is shallower than 2000 m. ``drop_leap``
     removes Feb 29 for the day-of-year-aligned layout; the real-calendar layout
     keeps it.
     """
@@ -64,7 +64,9 @@ def load_static(box):
     static = os.path.join(cfg.GLORYS_DIR, os.path.dirname(cfg.STATIC_PREFIX))
     pre = os.path.basename(cfg.STATIC_PREFIX)
     bathy = cfg.box_slice(xr.open_dataset(os.path.join(static, f"{pre}_bathy.nc")), box)
-    coords = cfg.box_slice(xr.open_dataset(os.path.join(static, f"{pre}_coords.nc")), box)
+    # The coords file can lack a row of the bathymetry grid (natl starts at 0.083 N).
+    coords = xr.open_dataset(os.path.join(static, f"{pre}_coords.nc")).reindex_like(
+        bathy, method="nearest", tolerance=1e-3).assign_coords(latitude=bathy.latitude, longitude=bathy.longitude)
     wet = (bathy["deptho"] > cfg.MIN_DEPTH).rename("wet")
     area = (coords["e1t"] * coords["e2t"]).where(wet).rename("cell_area")
     area.attrs.update(units="m2", long_name="e1t*e2t, masked to deptho > 2000 m")
@@ -152,7 +154,7 @@ def coarsen(zda, area, deg=cfg.COARSE_DEG, days=cfg.COARSE_DAYS):
     return out
 
 
-def main(box="boxB", quadratic=True, years=None, coarse=None, real_calendar=None):
+def main(box="boxB", quadratic=True, years=None, coarse=None, real_calendar=None, mean_only=False):
     """Mean field and residual field for one region.
 
     Two layouts. ``real_calendar`` gives a flat ``time`` axis on the true calendar,
@@ -175,6 +177,11 @@ def main(box="boxB", quadratic=True, years=None, coarse=None, real_calendar=None
     beta, t_ref, ok = fit_mean_field(monthly, quadratic=quadratic)
     print(f"  {ok.sum():,}/{ok.size:,} cells fitted, {beta.shape[0]} coefficients")
     del monthly
+    tag = f"{box}{'' if quadratic else '_lin'}"
+    if mean_only:
+        _write(_beta_ds(beta, shape, area, t_ref, quadratic), os.path.join(cfg.OUT_DIR, f"mean_field_coef_{tag}.nc"))
+        _write(area.to_dataset(), os.path.join(cfg.OUT_DIR, f"cell_area_{box}.nc"))
+        return None
 
     # Filled a year at a time: the buffer is ~10x a box, so holding the whole daily
     # record and its mean-field evaluation at once is several GB more than needed.
@@ -237,7 +244,6 @@ def main(box="boxB", quadratic=True, years=None, coarse=None, real_calendar=None
         means = pd.DataFrame({"year": list(years), "zbar": per_day.mean("doy").values,
                               "sd_Z": zda.std(("doy",) + space).values})
 
-    tag = f"{box}{'' if quadratic else '_lin'}"
     _write(zda.to_dataset(), os.path.join(cfg.OUT_DIR, f"residual_field_{tag}.nc"))
     _write(area.to_dataset(), os.path.join(cfg.OUT_DIR, f"cell_area_{box}.nc"))
     _write(_beta_ds(beta, shape, zda, t_ref, quadratic), os.path.join(cfg.OUT_DIR, f"mean_field_coef_{tag}.nc"))
@@ -289,9 +295,11 @@ if __name__ == "__main__":
     ap.add_argument("--years", help="comma-separated; default is every year in the layer store")
     ap.add_argument("--linear", action="store_true", help="drop the quadratic trend term")
     ap.add_argument("--coarse", action="store_true", help="also write the surrogate proposal field")
+    ap.add_argument("--mean-only", action="store_true",
+                    help="write only the mean-field coefficients and cell area (natl: the daily residual is ~22 GB)")
     ap.add_argument("--real-calendar", dest="real_calendar", action="store_true", default=None,
                     help="flat time axis on the true calendar (default for the buffer)")
     a = ap.parse_args()
     main(a.box, not a.linear,
          [int(y) for y in a.years.split(",")] if a.years else None,
-         coarse=True if a.coarse else None, real_calendar=a.real_calendar)
+         coarse=True if a.coarse else None, real_calendar=a.real_calendar, mean_only=a.mean_only)

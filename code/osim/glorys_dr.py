@@ -28,7 +28,11 @@ BOXES = {"boxA": ("boxA",), "boxB": ("boxB",), "boxAB": ("boxA", "boxB")}
 # analysis domain of the real-data outcome model; knots: cubic B-spline trend knot spacing (years), None = quadratic
 DOMAINS = {"buffer": dict(lat=cfg.BOXES["buffer"]["lat_bounds"], lon=cfg.BOXES["buffer"]["lon_bounds"],
                           years=(2010, 2019), knots=None, basin=False),
-           "natl": dict(lat=(0.0, 66.0), lon=(-100.0, 0.0), years=(2004, 2025), knots=5.0, basin=True)}
+           "natl": dict(lat=(0.0, 66.0), lon=(-100.0, 0.0), years=(2004, 2025), knots=5.0, basin=True),
+           # natl_sim.py: simulated floats over the GLORYS download box; the deep-domain mask is applied there.
+           # Quadratic trend, as Kuusela et al. eq. (5) (current practice)
+           "natl_sim": dict(lat=cfg.NATL_BOX["lat_bounds"], lon=cfg.NATL_BOX["lon_bounds"], years=(2010, 2025),
+                            knots=None, basin=False)}
 DOMAIN = os.environ.get("GLORYS_DR_DOMAIN", "buffer")
 DOM = DOMAINS[DOMAIN]
 YEARS = DOM["years"]

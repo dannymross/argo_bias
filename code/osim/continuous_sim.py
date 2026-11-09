@@ -172,8 +172,8 @@ SENTINEL_LATLON = (30.0, -45.0)   # deep open ocean, far from the velocity-domai
 
 
 def run_continuous(rep, out_zarr, n_floats, t_start, t_end, margin=SEED_MARGIN, seeds=None,
-                   vel_dir=None, output_days=CYCLE_DAYS, sentinel=True):
-    """Advect one realisation continuously over [t_start, t_end].
+                   vel_dir=None, output_days=CYCLE_DAYS, sentinel=True, dt_hours=1):
+    """Advect one realisation continuously over [t_start, t_end] with RK4 steps of dt_hours.
 
     `seeds`, if given, is a (lat, lon, release_datetime64, lifespan_days) tuple used
     verbatim (for the real-Argo deployment arms); otherwise the uniform space-time
@@ -233,7 +233,7 @@ def run_continuous(rep, out_zarr, n_floats, t_start, t_end, margin=SEED_MARGIN, 
         warnings.simplefilter("ignore")
         pset.execute([AdvectionRK4, Pin, DeleteOutOfBounds, Mortality],
                      endtime=np.datetime64(t_end, "s"),
-                     dt=np.timedelta64(1, "h"),
+                     dt=np.timedelta64(int(dt_hours), "h"),
                      output_file=pset.ParticleFile(name=out_zarr,
                                                    outputdt=np.timedelta64(output_days, "D")),
                      verbose_progress=False)

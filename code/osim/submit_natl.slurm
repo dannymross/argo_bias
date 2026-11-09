@@ -5,6 +5,7 @@
 #
 #   sbatch --array=2015 --time=03:00:00 code/osim/submit_natl.slurm 2015-01 2015-01    # pilot
 #   sbatch --array=2010-2025%16 code/osim/submit_natl.slurm
+#   sbatch --array=1993-2025%12 --mem=4G --time=04:00:00 --export=ALL,CADENCE=monthly code/osim/submit_natl.slurm
 #
 #SBATCH --job-name=natl_dl
 #SBATCH --partition=basic
@@ -23,4 +24,4 @@ cd "$SLURM_SUBMIT_DIR"
 YEAR="${SLURM_ARRAY_TASK_ID:?this script must be run as an array job}"
 PY=/storage/work/dmr6737/.conda/envs/argo_bias/bin/python
 
-"$PY" code/osim/download_natl.py --start "${1:-$YEAR-01}" --end "${2:-$YEAR-12}" --check
+"$PY" code/osim/download_natl.py --start "${1:-$YEAR-01}" --end "${2:-$YEAR-12}" --cadence "${CADENCE:-daily}" --check

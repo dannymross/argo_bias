@@ -351,12 +351,13 @@ def _pair_sum(ev, src, trunc):
     return out
 
 
-def _support_mass(lat, lon, t, sigma_deg, sigma_days, trunc, chunk=200_000):
+def _support_mass(lat, lon, t, sigma_deg, sigma_days, trunc, chunk=200_000, support=None, t_end=None):
     """int_S k(x - y) mu(dy) at points: exact Gaussian-CDF integrals over each native support
-    cell (mu uniform in lat/lon within a cell), times the window's time integral."""
+    cell (mu uniform in lat/lon within a cell), times the window's time integral. `support` (lat edges,
+    lon edges, support area per cell) and `t_end` override this module's box grid and velocity end."""
     from scipy.special import ndtr
-    le, oe, _ = native_grid()
-    a = support_area(le, oe)
+    le, oe, a = support if support is not None else (*native_grid()[:2], None)
+    a = support_area(le, oe) if a is None else a
     m = int(np.ceil(trunc * sigma_deg / np.diff(le).min())) + 1
     off = np.arange(-m, m + 1)
     iy = np.searchsorted(le, lat, side="right") - 1
@@ -370,7 +371,7 @@ def _support_mass(lat, lon, t, sigma_deg, sigma_days, trunc, chunk=200_000):
         wy = (ndtr((le[jy + 1] - lat[sl, None]) / sigma_deg) - ndtr((le[jy] - lat[sl, None]) / sigma_deg)) / (le[jy + 1] - le[jy])
         wx = (ndtr((oe[jx + 1] - lon[sl, None]) / sigma_deg) - ndtr((oe[jx] - lon[sl, None]) / sigma_deg)) / (oe[jx + 1] - oe[jx])
         out[sl] = np.einsum("ni,nij,nj->n", wy, a[jy[:, :, None], jx[:, None, :]], wx)
-    return out * ndtr((_days(np.datetime64(cs._velocity_end())) - t) / sigma_days)
+    return out * ndtr((_days(np.datetime64(t_end or cs._velocity_end())) - t) / sigma_days)
 
 
 def kernel_at_points(lat, lon, time, sigma_deg, sigma_days, tag="_argo_resample", exclude=(),
