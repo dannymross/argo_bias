@@ -571,9 +571,10 @@ def quadrature():
 
 
 COV_PARAMS = ("phi", "th_lon", "th_lat", "th_t")
-COV_LABELS = {"phi": "variance phi [(GJ/m2)^2]", "th_lon": "zonal range [deg]", "th_lat": "meridional range [deg]",
+COV_LABELS = {"phi": "variance phi [(GJ/m2)^2]", "th_lon": "zonal range [km]", "th_lat": "meridional range [km]",
               "th_t": "temporal range [days]"}
 RUNAWAY = {"th_lon": 40.0, "th_lat": 40.0, "th_t": 400.0}   # the bounds of krige_local_fit; beyond them a fit ran away
+KM_PER_DEG = 111.195   # mean Earth radius 6371 km
 
 
 def cov_windows(reps, layer):
@@ -582,14 +583,18 @@ def cov_windows(reps, layer):
                      ignore_index=True)
 
 
-def cov_plugins(reps, layer):
+def cov_plugins(reps, layer, km=False):
     """Plug-ins per 2 deg cell: each replicate's median over seasons, and "pooled", the median over all window fits
-    of all `reps` (seasons x replicates); runaway values (beyond RUNAWAY) set to NaN."""
+    of all `reps` (seasons x replicates); runaway values (beyond RUNAWAY, in deg) set to NaN; `km` converts the ranges
+    at the cell-centre latitude."""
     w = cov_windows(reps, layer)
     d = pd.concat([w.groupby(["rep", "lat", "lon"])[list(COV_PARAMS)].median().reset_index(),
                    w.groupby(["lat", "lon"])[list(COV_PARAMS)].median().reset_index().assign(rep="pooled")])
     for p, ub in RUNAWAY.items():
         d[p] = d[p].where(d[p] <= ub)
+    if km:
+        d["th_lon"] *= KM_PER_DEG * np.cos(np.deg2rad(d.lat))
+        d["th_lat"] *= KM_PER_DEG
     return d
 
 
@@ -599,8 +604,10 @@ def plot_cov(reps, layer, par):
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
     import matplotlib.pyplot as plt
+    from matplotlib.colors import LinearSegmentedColormap
     la, lo, m, _ = domain()
-    d = cov_plugins(reps, layer)
+    d = cov_plugins(reps, layer, km=True)
+    cmap = LinearSegmentedColormap.from_list("bgr", ["#2b5fd9", "#2ca25f", "#d7301f"])
     srcs = [*reps, "pooled"]
     nc = 3
     fig, ax = plt.subplots(-(-len(srcs) // nc), nc, figsize=(4.4 * nc, 3.5 * -(-len(srcs) // nc)), squeeze=False,
@@ -610,7 +617,7 @@ def plot_cov(reps, layer, par):
         g = d[d.rep.astype(str) == str(src)].pivot(index="lat", columns="lon", values=par)
         lat_e = np.r_[g.index.values - 1, g.index.values[-1] + 1]
         lon_e = np.r_[g.columns.values - 1, g.columns.values[-1] + 1]
-        pc = a.pcolormesh(lon_e, lat_e, g.values, vmin=v0, vmax=v1, cmap="viridis", transform=ccrs.PlateCarree())
+        pc = a.pcolormesh(lon_e, lat_e, g.values, vmin=v0, vmax=v1, cmap=cmap, transform=ccrs.PlateCarree())
         a.contour(lo, la, m.astype(float), levels=[0.5], colors="k", linewidths=0.6, transform=ccrs.PlateCarree())
         a.add_feature(cfeature.LAND, facecolor="0.85", zorder=2)
         a.coastlines(lw=0.4, zorder=3)
@@ -629,7 +636,7 @@ def cov_summary(reps):
     over cells of the between-replicate coefficient of variation, and the count of runaway cells."""
     rows = []
     for layer in LAYER_NAMES:
-        d = cov_plugins(reps, layer)
+        d = cov_plugins(reps, layer, km=True)
         r = d[d.rep != "pooled"]
         for p in COV_PARAMS:
             g = r.groupby(["lat", "lon"])[p]

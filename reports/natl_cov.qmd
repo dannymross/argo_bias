@@ -52,12 +52,12 @@ is the median over its four seasonal fits; the pooled plug-in is the median over
 
 A fit has run away when a range parameter leaves the bounds of a physically plausible window fit
 ($\theta_{\mathrm{lon}}, \theta_{\mathrm{lat}} \le 40^\circ$, $\theta_t \le 400$ days); such cells are left blank.
-Each parameter has one colour scale across the six maps, spanning all values that did not run away.
+Ranges are fitted in degrees (as in Sukianto, Kuusela et al.) and mapped in km, $\theta_{\mathrm{lon}}\cdot\frac{\pi R}{180}\cos(\mathrm{lat})$ and $\theta_{\mathrm{lat}}\cdot\frac{\pi R}{180}$ with $R = 6371$ km at the cell-centre latitude, so that a correlation isotropic in distance shows equal zonal and meridional ranges. Each parameter has one colour scale across the six maps, spanning all values that did not run away.
 
 ```{python}
 #| label: tbl-summary
 #| echo: false
-#| tbl-cap: "Domain median of the plug-ins per replicate and pooled; cv_between is the median over cells of the coefficient of variation of the five replicates' plug-ins; runaway counts replicate-cells left blank (of 5 x 733)."
+#| tbl-cap: "Domain median of the plug-ins (ranges in km and days) per replicate and pooled; cv_between is the median over cells of the coefficient of variation of the five replicates' plug-ins; runaway counts replicate-cells left blank (of 5 x 733)."
 
 t = ns.cov_summary(REPS)
 t["layer"] = t.layer.map(LAYER_LAB)
