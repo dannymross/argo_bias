@@ -75,3 +75,23 @@ display(Markdown(t.round(3).to_markdown(index=False)))
 _tabs([(LAYER_LAB[l], lambda l=l: _tabs([(PAR_LAB[p], lambda p=p: _show_fig(ns.plot_cov(REPS, l, p)))
                                            for p in ns.COV_PARAMS])) for l in ns.LAYER_NAMES])
 ```
+
+## Comparison with Sukianto, Kuusela et al.
+
+Our pooled plug-ins beside the published real-Argo estimates of Sukianto, Kuusela et al. (2026; Zenodo record
+18273718, `MLE.zip`): the same exponential space-time model, fitted to Argo residuals about their harmonic-plus-trend
+mean field for 2004--2022 on a $1^\circ$ grid, each a median over twelve monthly fits. Their values are the median of
+the four $1^\circ$ cells in each of our $2^\circ$ cells, ranges are converted to km as above, and their variance
+$\phi$ (unscaled, $(^\circ\mathrm{C}\,\mathrm{dbar})^2$) is multiplied by $(\rho_0 c_p)^2$ with their
+$\rho_0 = 1030$ kg m$^{-3}$, $c_p = 3989.244$ J kg$^{-1}$ K$^{-1}$, taking 1 dbar as 1 m. Their layers are 15--975 and
+975--1850 dbar against our 15--700 and 700--2000 m, so the ranges are comparable but $\phi$ is not: it differs by
+construction in level, and only its spatial pattern should be compared. Cells outside their data mask are blank.
+
+```{python}
+#| label: fig-kuusela
+#| echo: false
+#| output: asis
+
+_tabs([(LAYER_LAB[l], lambda l=l: _tabs([(PAR_LAB[p], lambda p=p: _show_fig(ns.plot_cov_kuusela(REPS, l, p)))
+                                           for p in ns.COV_PARAMS])) for l in ns.LAYER_NAMES])
+```

@@ -598,37 +598,78 @@ def cov_plugins(reps, layer, km=False):
     return d
 
 
-def plot_cov(reps, layer, par):
-    """One parameter of one layer on the 2 deg parameter grid: a map per replicate (median over seasons) and the
-    pooled median, on one colour scale spanning all non-runaway values; runaway cells left blank."""
+KUUSELA = os.path.join(cfg.REPO_ROOT, "data", "kuusela_mle", "raw", "MLE", "intTempLocalMLESpaceTimeTrend_{}_2004_2022.mat")
+KUUSELA_LAYERS = {"ohc_15_700": "15_975", "ohc_700_2000": "975_1850"}   # nearest of their two layers
+KUUSELA_RHO_CP = 1030 * 3989.244   # their rho0 * cp0; files are unscaled degC dbar, dbar taken as m
+
+
+def kuusela_plugins(layer, km=False):
+    """Sukianto, Kuusela et al. (2026) Zenodo 18273718 plug-ins (median over 12 monthly fits, 2004-2022, 1 deg) on our
+    2 deg cells: median of the 1 deg values in each cell, phi in (GJ/m2)^2, runaway rule as cov_plugins."""
+    from scipy.io import loadmat
+    m = loadmat(KUUSELA.format(KUUSELA_LAYERS[layer]))
+    lo, la = (a.ravel() for a in np.meshgrid(np.arange(20.5, 380), np.arange(-89.5, 90), indexing="ij"))
+    d = pd.DataFrame(dict(lat=2 * np.floor(la / 2) + 1, lon=2 * np.floor(((lo + 180) % 360 - 180) / 2) + 1,
+                          phi=m["thetasOpt"].ravel() * (KUUSELA_RHO_CP * 1e-9) ** 2, th_lon=m["thetaLongOpt"].ravel(),
+                          th_lat=m["thetaLatOpt"].ravel(), th_t=m["thetatOpt"].ravel()))
+    cells = pd.read_csv(os.path.join(OUT, "oracle_centres.csv"))[["lat", "lon"]].drop_duplicates()
+    d = cells.merge(d.dropna().groupby(["lat", "lon"]).median().reset_index(), how="left")
+    for p, ub in RUNAWAY.items():
+        d[p] = d[p].where(d[p] <= ub)
+    if km:
+        d["th_lon"] *= KM_PER_DEG * np.cos(np.deg2rad(d.lat))
+        d["th_lat"] *= KM_PER_DEG
+    return d
+
+
+def plot_cov_maps(panels, par, nc=3):
+    """Maps of one parameter on the 2 deg grid, one per (title, frame) in `panels`, on one blue-green-red colour
+    scale spanning all non-NaN values; NaN (runaway or missing) cells left blank."""
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
     import matplotlib.pyplot as plt
     from matplotlib.colors import LinearSegmentedColormap
     la, lo, m, _ = domain()
-    d = cov_plugins(reps, layer, km=True)
     cmap = LinearSegmentedColormap.from_list("bgr", ["#2b5fd9", "#2ca25f", "#d7301f"])
-    srcs = [*reps, "pooled"]
-    nc = 3
-    fig, ax = plt.subplots(-(-len(srcs) // nc), nc, figsize=(4.4 * nc, 3.5 * -(-len(srcs) // nc)), squeeze=False,
+    nr = -(-len(panels) // nc)
+    fig, ax = plt.subplots(nr, nc, figsize=(4.4 * nc, 3.5 * nr), squeeze=False,
                            subplot_kw=dict(projection=ccrs.PlateCarree()), layout="constrained")
-    v0, v1 = d[par].min(), d[par].max()
-    for a, src in zip(ax.flat, srcs):
-        g = d[d.rep.astype(str) == str(src)].pivot(index="lat", columns="lon", values=par)
+    v = pd.concat([d[par] for _, d in panels])
+    for a, (title, d) in zip(ax.flat, panels):
+        g = d.pivot(index="lat", columns="lon", values=par)
         lat_e = np.r_[g.index.values - 1, g.index.values[-1] + 1]
         lon_e = np.r_[g.columns.values - 1, g.columns.values[-1] + 1]
-        pc = a.pcolormesh(lon_e, lat_e, g.values, vmin=v0, vmax=v1, cmap=cmap, transform=ccrs.PlateCarree())
+        pc = a.pcolormesh(lon_e, lat_e, g.values, vmin=v.min(), vmax=v.max(), cmap=cmap, transform=ccrs.PlateCarree())
         a.contour(lo, la, m.astype(float), levels=[0.5], colors="k", linewidths=0.6, transform=ccrs.PlateCarree())
         a.add_feature(cfeature.LAND, facecolor="0.85", zorder=2)
         a.coastlines(lw=0.4, zorder=3)
         a.set_extent([lo.min(), lo.max(), SOUTH, la.max()], crs=ccrs.PlateCarree())
-        nb = int(d.loc[d.rep.astype(str) == str(src), par].isna().sum())
-        a.set_title(("pooled (5 replicates x 4 seasons)" if src == "pooled" else f"replicate {src}")
-                    + (f", {nb} runaway cells blank" if nb else ""), fontsize=9)
-    for a in ax.flat[len(srcs):]:
+        a.set_title(title, fontsize=9)
+    for a in ax.flat[len(panels):]:
         a.set_visible(False)
     fig.colorbar(pc, ax=ax, shrink=0.6).set_label(COV_LABELS[par])
     return fig
+
+
+def plot_cov(reps, layer, par):
+    """One map per replicate (median over seasons) and the pooled median; runaway cells blank."""
+    d = cov_plugins(reps, layer, km=True)
+    def title(src, g):
+        nb = int(g[par].isna().sum())
+        return (("pooled (5 replicates x 4 seasons)" if src == "pooled" else f"replicate {src}")
+                + (f", {nb} runaway cells blank" if nb else ""))
+    return plot_cov_maps([(title(src, g), g) for src in [*reps, "pooled"] for g in [d[d.rep.astype(str) == str(src)]]],
+                         par)
+
+
+def plot_cov_kuusela(reps, layer, par):
+    """Our pooled median beside the Sukianto, Kuusela et al. (2026) real-Argo plug-in, on one colour scale."""
+    d = cov_plugins(reps, layer, km=True)
+    k = kuusela_plugins(layer, km=True)
+    lo, hi = KUUSELA_LAYERS[layer].split("_")
+    return plot_cov_maps([(f"GLORYS sim, pooled ({layer.split('_', 1)[1].replace('_', '-')} m)",
+                           d[d.rep.astype(str) == "pooled"]),
+                          (f"Kuusela, real Argo 2004-2022 ({lo}-{hi} dbar)", k)], par, nc=2)
 
 
 def cov_summary(reps):
