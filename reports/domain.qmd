@@ -25,6 +25,16 @@ plt.close(_f)
 ```
 
 ```{python}
+#| label: fig-domain-1850
+#| echo: false
+#| fig-cap: "As above with a 1850 m threshold, the base of the deepest layer (975-1850 dbar) of Sukianto, Kuusela et al. (2026): water at least 1850 m deep, connected through such water to the open North Atlantic, north of 10N."
+
+_f = gm.plot_domain(b.deptho.squeeze().values, b.latitude.values.astype(float), b.longitude.values.astype(float), z=1850.0)
+display(_f)
+plt.close(_f)
+```
+
+```{python}
 #| label: fig-launches
 #| echo: false
 #| fig-cap: "Launch positions of all floats with at least one profile in the domain (metadata, with 14 implausible entries replaced by the first profile). Blue lines: extended regions enclosing the given percentage of those floats' profiles over their whole lives, 1998-2026. Along each stretch of border a region reaches as far through water as the profiles that left the domain there, using a local distance quantile over a 300 km window of border; one quantile is solved per line so that it holds exactly that percentage of all profiles. Where no profile left, the line stays on the border."
