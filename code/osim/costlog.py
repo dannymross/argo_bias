@@ -33,16 +33,24 @@ def step(path, name, **meta):
 def sacct(jobs):
     """Elapsed, CPU, peak RSS and billing of every task of the given jobs (one row per task)."""
     out = subprocess.run(["sacct", "-j", ",".join(map(str, jobs)), "-n", "-P", "--units=G", "-o",
-                          "JobID,JobName,State,ElapsedRaw,TotalCPU,MaxRSS,AllocTRES"],
+                          "JobID,JobName,State,ElapsedRaw,TotalCPU,MaxRSS,AllocTRES,NodeList"],
                          capture_output=True, text=True, check=True).stdout
     d = pd.read_csv(io.StringIO(out), sep="|", header=None,
-                    names=["id", "name", "state", "elapsed_s", "cpu", "maxrss", "tres"])
+                    names=["id", "name", "state", "elapsed_s", "cpu", "maxrss", "tres", "node"])
     rss = d[d.id.str.endswith(".batch")].assign(id=lambda x: x.id.str[:-6]).set_index("id").maxrss
     d = d[~d.id.str.contains(r"\.")].set_index("id")
     d["maxrss_gb"] = rss.reindex(d.index).str.rstrip("G").astype(float)
     d["billing"] = d.tres.str.extract(r"billing=(\d+)", expand=False).astype(float)
     d["billing_min"] = d.billing * d.elapsed_s / 60
+    d["cpu_arch"] = d.node.map({n: node_arch(n) for n in d.node.dropna().unique()})
     return d.drop(columns="tres").reset_index()
+
+
+def node_arch(node):
+    """CPU generation feature of a node (e.g. icelake), from its Slurm features."""
+    out = subprocess.run(["scontrol", "show", "node", node], capture_output=True, text=True).stdout
+    f = next((w.split("=", 1)[1] for w in out.split() if w.startswith("AvailableFeatures=")), "")
+    return ",".join(x for x in f.split(",") if x not in ("sc", "bc", "standard", "basic", "open")) or None
 
 
 def ledger(path, md=None):

@@ -5,6 +5,7 @@ project:
     - "reports/glorys_chain.qmd"
     - "reports/gyre_masks.qmd"
     - "reports/domain.qmd"
+    - "reports/natl_cov.qmd"
 
 execute:
   freeze: auto
@@ -25,6 +26,7 @@ website:
           - reports/glorys_chain.qmd
           - reports/gyre_masks.qmd
           - reports/domain.qmd
+          - reports/natl_cov.qmd
 
 format:
   html:

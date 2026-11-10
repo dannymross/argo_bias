@@ -14,4 +14,5 @@
 
 set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
+module load r/4.5.0 2>/dev/null || true
 /storage/work/dmr6737/.conda/envs/argo_bias/bin/python code/osim/natl_sim.py "$@"

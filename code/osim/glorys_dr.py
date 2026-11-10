@@ -31,8 +31,10 @@ DOMAINS = {"buffer": dict(lat=cfg.BOXES["buffer"]["lat_bounds"], lon=cfg.BOXES["
            "natl": dict(lat=(0.0, 66.0), lon=(-100.0, 0.0), years=(2004, 2025), knots=5.0, basin=True),
            # natl_sim.py: simulated floats over the GLORYS download box; the deep-domain mask is applied there.
            # Quadratic trend, as Kuusela et al. eq. (5) (current practice)
+           # Kriging as Sukianto, Kuusela et al. (2026): each prediction on the 1 deg x 1 month grid conditions on the data
+           # in its own +/-10 deg x +/-1.5 month window (window="point").
            "natl_sim": dict(lat=cfg.NATL_BOX["lat_bounds"], lon=cfg.NATL_BOX["lon_bounds"], years=(2010, 2025),
-                            knots=None, basin=False)}
+                            knots=None, basin=False, window="point", lambda_t=45.0, node_deg=1.0, t_nodes=(0.5,))}
 DOMAIN = os.environ.get("GLORYS_DR_DOMAIN", "buffer")
 DOM = DOMAINS[DOMAIN]
 YEARS = DOM["years"]
@@ -310,8 +312,11 @@ def load_mean():
 KTAG = os.environ.get("GLORYS_DR_KTAG", "")   # "_argomean": plug-ins refitted to our own anomaly
 PROF = os.environ.get("GLORYS_DR_PROF", "box")  # "all": own-float-out predictions at every buffer profile
 PARAMS = os.path.join(cfg.OUT_DIR, f"krige_plugin_{KTAG.lstrip('_') or 'oracle'}.csv")
-LAMBDA_G, LAMBDA_T, JITTER = 10.0, 180.0, 1e-6   # as krige_estimate
-NODE_DEG, T_NODES = 0.5, (1 / 6, 1 / 2, 5 / 6)   # map grid: 0.5 deg cells, 3 time nodes per month
+LAMBDA_G, JITTER = 10.0, 1e-6
+LAMBDA_T = DOM.get("lambda_t", 180.0)               # conditioning half-width in time (days)
+NODE_DEG = DOM.get("node_deg", 0.5)                 # map grid cells (deg)
+T_NODES = DOM.get("t_nodes", (1 / 6, 1 / 2, 5 / 6))  # time nodes per month (fractions of the month)
+WINDOW = DOM.get("window", "cell")                  # conditioning window per plug-in cell or per prediction point
 LOFO_TOL = 1e6                                    # J/m2; smaller leave-one-out changes at a node are not stored
 
 
@@ -371,6 +376,8 @@ def krige_month(month, obs=None, params=None, nodes=None, mean=None, group="floa
     obs = pd.read_parquet(os.path.join(OUT, "obs_mean.parquet")) if obs is None else obs
     params = pd.read_csv(PARAMS) if params is None else params
     nodes = map_nodes() if nodes is None else nodes
+    if WINDOW == "point":
+        return krige_month_point(month, obs, params, nodes, mean, group)
     full, lofo, fl = load_mean() if mean is None else mean
     fpos = pd.Index(fl)
     m0 = pd.Timestamp(month)
@@ -434,6 +441,80 @@ def krige_month(month, obs=None, params=None, nodes=None, mean=None, group="floa
     cat = lambda r: pd.concat(r, ignore_index=True) if r else pd.DataFrame()
     nodes_out = cat(node_rows).merge(nodes[["lat", "lon", "area", "box"]], left_on="node", right_index=True)
     return nodes_out.assign(month=m0), cat(lofo_rows).assign(month=m0), cat(prof_rows).assign(month=m0)
+
+
+def krige_month_point(month, obs, params, nodes, mean, group="fold"):
+    """krige_month with a moving window: every prediction (map nodes at T_NODES; each in-domain profile of the month
+    at its own place and time) conditions on the data within +/-LAMBDA_G deg, +/-LAMBDA_T days of itself, with the
+    plug-ins of its nearest parameter cell. Map nodes get the full-data and every leave-one-group-out prediction
+    (block downdate of the window inverse); profiles get their own-group-out prediction."""
+    full, lofo, gl = mean
+    ks = [k for k in gl if k >= 0]
+    m0 = pd.Timestamp(month)
+    d0 = (m0 - EPOCH) / pd.Timedelta(days=1)
+    tn = d0 + m0.days_in_month * np.asarray(T_NODES)
+    S = obs[np.abs(obs.day.to_numpy() - (d0 + m0.days_in_month / 2)) <= LAMBDA_T + m0.days_in_month / 2 + 1]
+    xyz = S[["lon", "lat", "day"]].to_numpy(float)
+    r_full = (S.z - S.mu).to_numpy(float)
+    MU = mu_lofo_at(lofo, pd.Index(gl).get_indexer(ks), S.lat.values, S.lon.values, S.day.values, _s(S))
+    Rm = S.z.to_numpy(float)[:, None] - MU
+    gcol = pd.Index(ks).get_indexer(S[group].to_numpy())
+    own = gcol >= 0
+    Rm[np.flatnonzero(own), gcol[own]] = 0.0
+    th_all = params[["th_lon", "th_lat", "th_t"]].to_numpy(float)
+    nug_all = np.maximum(params.nugget_ratio.to_numpy(float), JITTER)
+
+    def window(x):
+        return np.flatnonzero((np.abs(xyz[:, 0] - x[0]) <= LAMBDA_G) & (np.abs(xyz[:, 1] - x[1]) <= LAMBDA_G)
+                              & (np.abs(xyz[:, 2] - x[2]) <= LAMBDA_T))
+
+    P = np.column_stack([np.repeat(nodes.lon.values, len(tn)), np.repeat(nodes.lat.values, len(tn)),
+                         np.tile(tn, len(nodes))])
+    nid = np.repeat(nodes.index.values, len(tn))
+    cell = param_index(params, P[:, 1], P[:, 0])
+    an = np.full(len(P), np.nan)
+    dif = np.zeros((len(P), len(ks)), np.float32)
+    for q in range(len(P)):
+        sel = window(P[q])
+        if not len(sel):
+            continue
+        th, X = th_all[cell[q]], xyz[sel]
+        R = _corr(X, X, th)
+        R[np.diag_indices_from(R)] += nug_all[cell[q]]
+        B = _inverse(R)
+        c = _corr(P[q:q + 1], X, th)[0]
+        an[q] = c @ (B @ r_full[sel])
+        Y = B @ Rm[sel]
+        g = gcol[sel]
+        for j in range(len(ks)):
+            i = np.flatnonzero(g == j)
+            if len(i):
+                Y[:, j] -= B[:, i] @ np.linalg.solve(B[np.ix_(i, i)], Y[i, j])
+                Y[i, j] = 0.0
+        dif[q] = c @ Y - an[q]
+    ok = np.isfinite(an)
+    nd = pd.DataFrame(dict(node=nid[ok], day=P[ok, 2], anom=an[ok], mu=mean_at(full, P[ok, 1], P[ok, 0], P[ok, 2])))
+    r, j = np.nonzero(ok[:, None] & np.ones((1, len(ks)), bool))
+    lf = pd.DataFrame({"node": nid[r], "day": P[r, 2], group: np.asarray(ks)[j], "d_anom": dif[r, j]})
+    here = obs[(obs.time.dt.to_period("M") == m0.to_period("M")) & (obs.box != "") & (obs[group] >= 0)]
+    hx = here[["lon", "lat", "day"]].to_numpy(float)
+    hcell = param_index(params, here.lat, here.lon)
+    hg = pd.Index(ks).get_indexer(here[group].to_numpy())
+    al, nc = np.full(len(here), np.nan), np.zeros(len(here), int)
+    for q in range(len(here)):
+        sel = window(hx[q])
+        sel = sel[gcol[sel] != hg[q]]
+        if not len(sel):
+            continue
+        th, X = th_all[hcell[q]], xyz[sel]
+        R = _corr(X, X, th)
+        R[np.diag_indices_from(R)] += nug_all[hcell[q]]
+        al[q] = _corr(hx[q:q + 1], X, th)[0] @ np.linalg.solve(R, Rm[sel, hg[q]])
+        nc[q] = len(sel)
+    keep = ["prof_id", "float_id", group, "box", "lat", "lon", "day", "z", "mu", "mu_lofo"]
+    pf = here[keep].assign(anom=np.nan, anom_lofo=al, n_cond=nc)
+    nodes_out = nd.merge(nodes[["lat", "lon", "area", "box"]], left_on="node", right_index=True)
+    return nodes_out.assign(month=m0), lf.assign(month=m0), pf.assign(month=m0)
 
 
 def anomaly_lattice(years=(2015, 2019), pad=55):

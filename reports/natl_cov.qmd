@@ -1,0 +1,77 @@
+---
+title: "North Atlantic Covariance Parameters"
+jupyter: python3
+fig-dpi: 200
+---
+
+```{python}
+#| label: setup
+#| include: false
+
+import os, sys
+sys.path.insert(0, os.path.abspath("../code"))
+
+import matplotlib.pyplot as plt
+from IPython.display import display, Markdown
+from osim import natl_sim as ns
+
+REPS = list(range(5))
+PAR_LAB = {"phi": "Variance", "th_lon": "Zonal range", "th_lat": "Meridional range", "th_t": "Temporal range"}
+LAYER_LAB = {"ohc_15_700": "15-700 m", "ohc_700_2000": "700-2000 m"}
+
+def _emit(s=""):
+    print(s)
+    sys.stdout.flush()
+
+def _show_fig(fig):
+    display(fig)
+    plt.close(fig)
+
+def _tabs(items):
+    _emit("::: {.panel-tabset}")
+    for name, show in items:
+        _emit(f"\n## {name}\n")
+        show()
+    _emit(":::")
+```
+
+Each replicate's float profiles are mapped as in Sukianto, Kuusela et al. (2026): the OHC of each layer
+(15--700 m and 700--2000 m) minus the replicate's own local least-squares mean field is modelled, in each window, as a
+zero-mean Gaussian process with the anisotropic exponential space-time covariance
+$$
+k\big((x,y,t),(x',y',t')\big) = \phi\,\exp\!\Big\{-\Big[\big(\tfrac{x-x'}{\theta_{\mathrm{lon}}}\big)^2
++ \big(\tfrac{y-y'}{\theta_{\mathrm{lat}}}\big)^2 + \big(\tfrac{t-t'}{\theta_t}\big)^2\Big]^{1/2}\Big\}
++ \sigma^2\,\mathbb{1}\{(x,y,t)=(x',y',t')\},
+$$
+with $x, y$ in degrees and $t$ in days. A window is a cell of the $2^\circ$ parameter grid and a season: the profiles
+within $\pm 10^\circ$ of the cell centre and within $\pm 45$ days of the 15th of January, April, July or October, in each
+year 2015--2025, the years being independent replicates with common parameters. Parameters are maximum-likelihood
+estimates under the Vecchia approximation (GpGp, `exponential_scaledim`, 30 neighbours). A replicate's plug-in for a cell
+is the median over its four seasonal fits; the pooled plug-in is the median over all twenty fits of the cell
+(5 replicates $\times$ 4 seasons). The nugget-to-sill ratio $\sigma^2/\phi$ is negligible (median $1.7\times10^{-4}$ and $0.9\times10^{-4}$ over the window fits of the two layers) and is not shown.
+
+A fit has run away when a range parameter leaves the bounds of a physically plausible window fit
+($\theta_{\mathrm{lon}}, \theta_{\mathrm{lat}} \le 40^\circ$, $\theta_t \le 400$ days); such cells are left blank.
+Each parameter has one colour scale across the six maps, spanning all values that did not run away.
+
+```{python}
+#| label: tbl-summary
+#| echo: false
+#| tbl-cap: "Domain median of the plug-ins per replicate and pooled; cv_between is the median over cells of the coefficient of variation of the five replicates' plug-ins; runaway counts replicate-cells left blank (of 5 x 733)."
+
+t = ns.cov_summary(REPS)
+t["layer"] = t.layer.map(LAYER_LAB)
+t["parameter"] = t.parameter.map(PAR_LAB)
+display(Markdown(t.round(3).to_markdown(index=False)))
+```
+
+## Maps
+
+```{python}
+#| label: fig-cov
+#| echo: false
+#| output: asis
+
+_tabs([(LAYER_LAB[l], lambda l=l: _tabs([(PAR_LAB[p], lambda p=p: _show_fig(ns.plot_cov(REPS, l, p)))
+                                           for p in ns.COV_PARAMS])) for l in ns.LAYER_NAMES])
+```

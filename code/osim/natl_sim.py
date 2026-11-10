@@ -456,7 +456,6 @@ def q_points(reps, all_reps):
 # ------------------------------------------- map + cross-fit DR per replicate -------------------------------------------
 
 K = 5
-PARAMS = os.path.join(OUT, "krige_plugin_natl_{layer}.csv")   # NATL_SIM_PARAMS overrides (timing pilots)
 
 
 @functools.lru_cache(1)
@@ -471,11 +470,11 @@ def nodes():
     return pd.DataFrame(dict(lat=d.wlat / d.area, lon=d.wlon / d.area, area=d.area, box="natl")).reset_index(drop=True)
 
 
-def rep_obs(rep, layer):
+def rep_obs(rep, layer, path=None):
     """A replicate's profiles with one layer's OHC as z, in the glorys_dr obs layout. Profiles are those valid in
     every layer, so prof_id is shared across layers."""
     from osim import glorys_dr as gd
-    p = pd.read_parquet(profile_path(rep)).dropna(subset=list(LAYER_NAMES)).rename(columns={layer: "z"})
+    p = pd.read_parquet(path or profile_path(rep)).dropna(subset=list(LAYER_NAMES)).rename(columns={layer: "z"})
     fl = deployments(rep)
     p = p.assign(fold=p.float_id.map(fl.set_index("float_id").fold), box=np.where(p.inside, "natl", ""),
                  day=(p.time - gd.EPOCH) / pd.Timedelta(days=1))
@@ -489,6 +488,188 @@ def deployments(rep):
     return s.assign(fold=ipw.folds(s.float_id.to_numpy(), K, seed=rep, strata=s.cohort.to_numpy()))
 
 
+def cov_points(rep, layer, path=None):
+    """A replicate's residuals about its own full-data local mean (GJ/m2), in the covariance-fit point layout."""
+    from osim import chain as ch
+    obs = ch.fit_map(rep_obs(rep, layer, path))[0]
+    return pd.DataFrame(dict(lon=obs.lon, lat=obs.lat, day=(obs.time - T0) / pd.Timedelta(days=1),
+                             year=obs.time.dt.year, z=(obs.z - obs.mu) * 1e-9))
+
+
+def gpgp_fit(points, centres, out, years=cfg.ANALYSIS_YEARS, m=30):
+    """Per-window covariance MLE with GpGp (krige_local_gpgp.R), as an R subprocess over all `centres`."""
+    import subprocess
+    from osim import continuous_sim as cs
+    d = cs.scratch_dir()
+    pp, cp = os.path.join(d, "cov_points.csv"), os.path.join(d, "cov_centres.csv")
+    points[["lon", "lat", "day", "year", "z"]].to_csv(pp, index=False)
+    centres[["lat", "lon", "month"]].to_csv(cp, index=False)
+    r = os.path.join(os.path.dirname(os.path.abspath(__file__)), "krige_local_gpgp.R")
+    subprocess.run(["Rscript", r, pp, cp, out, ",".join(map(str, years)), str(m)], check=True, cwd=cfg.REPO_ROOT)
+    return pd.read_csv(out)
+
+
+COV_CHUNKS = 10
+
+
+def cov_path(rep, layer, chunk=None):
+    d = os.path.join(OUT, "cov", f"r{rep}")
+    return os.path.join(d, f"{layer}_t{chunk}.csv" if chunk is not None else f"plugin_{layer}.csv")
+
+
+def covfit(reps, task, chunks=COV_CHUNKS):
+    """One array task of the per-replicate covariance fits: task -> (rep, layer, chunk of the parameter-cell x
+    season windows). The windows are the oracle_centres grid (2 deg cells touching the domain, ORACLE_MONTHS)."""
+    rep = reps[task // (len(LAYER_NAMES) * chunks)]
+    layer = LAYER_NAMES[(task // chunks) % len(LAYER_NAMES)]
+    k = task % chunks
+    cen = pd.read_csv(os.path.join(OUT, "oracle_centres.csv"))
+    cen = cen.iloc[len(cen) * k // chunks: len(cen) * (k + 1) // chunks]
+    os.makedirs(os.path.dirname(cov_path(rep, layer)), exist_ok=True)
+    with costlog.step(COSTS, f"covfit_{layer}", rep=rep, n=len(cen)):
+        gpgp_fit(cov_points(rep, layer), cen, cov_path(rep, layer, k))
+
+
+def covgather(rep):
+    """Per layer: the plug-ins of each parameter cell, the median of its seasonal fits (Kuusela's practice)."""
+    P = ["phi", "th_lon", "th_lat", "th_t", "nugget_ratio"]
+    for layer in LAYER_NAMES:
+        d = pd.concat([pd.read_csv(f) for f in sorted(glob.glob(cov_path(rep, layer, "*")))], ignore_index=True)
+        g = d.dropna(subset=P).groupby(["lat", "lon"])
+        g[P].median().join(g.size().rename("n_seasons")).reset_index().to_csv(cov_path(rep, layer), index=False)
+        print(f"rep {rep} {layer}: {len(d)} windows, {d[P].isna().any(axis=1).sum()} failed, "
+              f"{g.ngroups} cells", flush=True)
+
+
+def quadrature():
+    """Q_y(Z) - theta_y per layer: the annual mean of the area-weighted map-node average of the true field at the
+    T_NODES times (the map's quadrature of the estimand) minus the true annual mean."""
+    from osim import glorys_dr as gd
+    from scipy.spatial import cKDTree
+    la, lo, m, _ = domain()
+    nd = nodes()
+    di, dj = np.nonzero(m)
+    k = cKDTree(np.column_stack([la[di], lo[dj]])).query(np.column_stack([nd.lat, nd.lon]))[1]
+    i, j = di[k], dj[k]     # nearest in-domain native cell: a node's centroid can sit in a shallower cell
+    rows = []
+    for y in range(cfg.ANALYSIS_YEARS[0], cfg.ANALYSIS_YEARS[-1] + 1):
+        for m in range(1, 13):
+            m0 = pd.Timestamp(f"{y}-{m:02d}-01")
+            with xr.open_dataset(LAYERS.format(y=y, m=m)) as d:
+                for f in gd.T_NODES:
+                    t = m0 + pd.Timedelta(days=m0.days_in_month * f)
+                    z = d.sel(time=t, method="nearest").load()
+                    rows.append(dict(year=y, wd=m0.days_in_month / len(gd.T_NODES),
+                                     **{k: np.average(sum(z[v].values for v in vs)[i, j], weights=nd.area)
+                                        for k, vs in LAYER_SUMS.items()}))
+    q = pd.DataFrame(rows).assign(total=lambda x: x[list(LAYER_NAMES)].sum(axis=1))
+    q = q.groupby("year").apply(lambda g: pd.Series({c: np.average(g[c], weights=g.wd) for c in [*LAYER_NAMES, "total"]}))
+    q = q.reset_index().melt(id_vars="year", var_name="layer", value_name="Q").merge(truth(), on=["year", "layer"])
+    q["remainder"] = q.Q - q.theta
+    q.to_csv(os.path.join(OUT, "quadrature.csv"), index=False)
+    return q
+
+
+COV_PARAMS = ("phi", "th_lon", "th_lat", "th_t")
+COV_LABELS = {"phi": "variance phi [(GJ/m2)^2]", "th_lon": "zonal range [deg]", "th_lat": "meridional range [deg]",
+              "th_t": "temporal range [days]"}
+RUNAWAY = {"th_lon": 40.0, "th_lat": 40.0, "th_t": 400.0}   # the bounds of krige_local_fit; beyond them a fit ran away
+
+
+def cov_windows(reps, layer):
+    """Every window fit (cell x season) of the given replicates for one layer."""
+    return pd.concat([pd.read_csv(f).assign(rep=r) for r in reps for f in glob.glob(cov_path(r, layer, "*"))],
+                     ignore_index=True)
+
+
+def cov_plugins(reps, layer):
+    """Plug-ins per 2 deg cell: each replicate's median over seasons, and "pooled", the median over all window fits
+    of all `reps` (seasons x replicates); runaway values (beyond RUNAWAY) set to NaN."""
+    w = cov_windows(reps, layer)
+    d = pd.concat([w.groupby(["rep", "lat", "lon"])[list(COV_PARAMS)].median().reset_index(),
+                   w.groupby(["lat", "lon"])[list(COV_PARAMS)].median().reset_index().assign(rep="pooled")])
+    for p, ub in RUNAWAY.items():
+        d[p] = d[p].where(d[p] <= ub)
+    return d
+
+
+def plot_cov(reps, layer, par):
+    """One parameter of one layer on the 2 deg parameter grid: a map per replicate (median over seasons) and the
+    pooled median, on one colour scale spanning all non-runaway values; runaway cells left blank."""
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+    import matplotlib.pyplot as plt
+    la, lo, m, _ = domain()
+    d = cov_plugins(reps, layer)
+    srcs = [*reps, "pooled"]
+    nc = 3
+    fig, ax = plt.subplots(-(-len(srcs) // nc), nc, figsize=(4.4 * nc, 3.5 * -(-len(srcs) // nc)), squeeze=False,
+                           subplot_kw=dict(projection=ccrs.PlateCarree()), layout="constrained")
+    v0, v1 = d[par].min(), d[par].max()
+    for a, src in zip(ax.flat, srcs):
+        g = d[d.rep.astype(str) == str(src)].pivot(index="lat", columns="lon", values=par)
+        lat_e = np.r_[g.index.values - 1, g.index.values[-1] + 1]
+        lon_e = np.r_[g.columns.values - 1, g.columns.values[-1] + 1]
+        pc = a.pcolormesh(lon_e, lat_e, g.values, vmin=v0, vmax=v1, cmap="viridis", transform=ccrs.PlateCarree())
+        a.contour(lo, la, m.astype(float), levels=[0.5], colors="k", linewidths=0.6, transform=ccrs.PlateCarree())
+        a.add_feature(cfeature.LAND, facecolor="0.85", zorder=2)
+        a.coastlines(lw=0.4, zorder=3)
+        a.set_extent([lo.min(), lo.max(), SOUTH, la.max()], crs=ccrs.PlateCarree())
+        nb = int(d.loc[d.rep.astype(str) == str(src), par].isna().sum())
+        a.set_title(("pooled (5 replicates x 4 seasons)" if src == "pooled" else f"replicate {src}")
+                    + (f", {nb} runaway cells blank" if nb else ""), fontsize=9)
+    for a in ax.flat[len(srcs):]:
+        a.set_visible(False)
+    fig.colorbar(pc, ax=ax, shrink=0.6).set_label(COV_LABELS[par])
+    return fig
+
+
+def cov_summary(reps):
+    """Per layer and parameter: the domain median of each replicate's plug-ins and of the pooled ones, the median
+    over cells of the between-replicate coefficient of variation, and the count of runaway cells."""
+    rows = []
+    for layer in LAYER_NAMES:
+        d = cov_plugins(reps, layer)
+        r = d[d.rep != "pooled"]
+        for p in COV_PARAMS:
+            g = r.groupby(["lat", "lon"])[p]
+            rows.append(dict(layer=layer, parameter=p, **{f"r{k}": v for k, v in r.groupby("rep")[p].median().items()},
+                             pooled=d.loc[d.rep == "pooled", p].median(), cv_between=(g.std() / g.mean()).median(),
+                             runaway=int(r[p].isna().sum())))
+    return pd.DataFrame(rows)
+
+
+def gpgp_pilot(n_windows=20):
+    """GpGp on r0's residuals (snapshot) for a sample of cells x the ORACLE_MONTHS seasons per layer, plus the
+    49N 21W January window on the oracle lattice, with the exact likelihood (krige_local_fit) at the GpGp estimate."""
+    from osim import krige_local_fit as kf
+    d = os.path.join(OUT, "pilot_gpgp")
+    allc = pd.read_csv(os.path.join(OUT, "oracle_centres.csv"))
+    cells = allc[["lat", "lon"]].drop_duplicates()
+    cells = pd.concat([cells[(cells.lat == 49) & (cells.lon == -21)],
+                       cells[(cells.lat != 49) | (cells.lon != -21)].sample(n_windows - 1, random_state=0)])
+    cen = allc.merge(cells, on=["lat", "lon"])
+    stuck = cen[(cen.lat == 49) & (cen.lon == -21) & (cen.month == 1)]
+    for layer in LAYER_NAMES:
+        with costlog.step(COSTS, f"gpgp_pilot_rep_{layer}", rep=0, n=len(cen)):
+            pts = cov_points(0, layer, os.path.join(d, "profiles_r0.parquet"))
+            gpgp_fit(pts, cen, os.path.join(d, f"r0_{layer}.csv"))
+    lat_ = pd.read_csv(oracle_path("ohc_700_2000", "lattice"))
+    with costlog.step(COSTS, "gpgp_pilot_oracle", rep="49N21W", n=1):
+        g = gpgp_fit(lat_, stuck, os.path.join(d, "oracle_49N21W.csv")).iloc[0]
+    years = sorted(lat_.year.unique())[1:]
+    sub = lat_[lat_.lat.between(39, 59) & lat_.lon.between(-31, -11)]
+    B = []
+    for y in years:
+        ts = (pd.Timestamp(f"{y}-01-15") - T0).days
+        b = sub[sub.day.between(ts - 45, ts + 45)]
+        B.append((b[["lon", "lat", "day"]].to_numpy(), b.z.to_numpy()))
+    ll = lambda p: -kf._obj(np.log(p), B, grad=False)
+    print(f"oracle 49N21W GpGp: th=({g.th_lon:.2f}, {g.th_lat:.2f}, {g.th_t:.0f}) nugget {g.nugget_ratio:.2e}, "
+          f"{g.secs:.0f} s; exact loglik at GpGp estimate {ll([g.th_lon, g.th_lat, g.th_t, max(g.nugget_ratio, 1e-7)]):.1f} "
+          f"vs exact MLE (scaled L-BFGS) {ll([1.4711, 0.9204, 62.4629, 1e-7]):.1f}", flush=True)
+
+
 def map_path(rep, layer=""):
     return os.path.join(OUT, "maps", f"r{rep}", layer)
 
@@ -500,7 +681,7 @@ def run_map(rep, layer, months=None):
     d = map_path(rep, layer)
     os.makedirs(d, exist_ok=True)
     months = months or pd.date_range(f"{cfg.ANALYSIS_YEARS[0]}-01", f"{cfg.ANALYSIS_YEARS[-1]}-12", freq="MS")
-    params, nd = pd.read_csv(os.environ.get("NATL_SIM_PARAMS", PARAMS.format(layer=layer))), nodes()
+    params, nd = pd.read_csv(os.environ.get("NATL_SIM_PARAMS", cov_path(rep, layer))), nodes()
     with costlog.step(COSTS, f"map_mean_{layer}", rep=rep) as meta:
         obs, mean = ch.fit_map(rep_obs(rep, layer))
         meta["n"] = len(obs)
@@ -586,7 +767,7 @@ def estimate_layer(rep, layer, maps, pf, fl, tr):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["design", "advect", "profiles", "select", "fields", "oracle_prepare", "sample", "qpoints", "map",
+    ap.add_argument("cmd", choices=["design", "advect", "profiles", "select", "gpgp_pilot", "covfit", "covgather", "quadrature", "fields", "oracle_prepare", "sample", "qpoints", "map",
                                     "estimate"])
     ap.add_argument("--rep", type=int, default=int(os.environ.get("SLURM_ARRAY_TASK_ID", 0)))
     ap.add_argument("--reps", help="first,last (inclusive): sample/qpoints chunk; q-hat's evaluation reps")
@@ -598,6 +779,8 @@ if __name__ == "__main__":
     rr = range(*(lambda x: (x[0], x[1] + 1))([int(v) for v in a.reps.split(",")])) if a.reps else [a.rep]
     layers = a.layer or LAYER_NAMES
     {"design": design, "fields": fields, "oracle_prepare": lambda: [oracle_prepare(l) for l in layers], "advect": lambda: advect(a.rep, a.dt_hours, "" if a.dt_hours == 1 else f"_dt{a.dt_hours}"),
-     "profiles": lambda: [profiles(r) for r in rr], "select": lambda: [select(r) for r in rr], "sample": lambda: sample(rr), "qpoints": lambda: q_points(rr, range(a.all_reps)),
+     "profiles": lambda: [profiles(r) for r in rr], "select": lambda: [select(r) for r in rr], "gpgp_pilot": gpgp_pilot,
+     "covfit": lambda: covfit(list(rr), a.rep), "covgather": lambda: [covgather(r) for r in rr],
+     "quadrature": quadrature, "sample": lambda: sample(rr), "qpoints": lambda: q_points(rr, range(a.all_reps)),
      "map": lambda: [run_map(a.rep, l, a.year and list(pd.date_range(f"{a.year}-01", f"{a.year}-12", freq="MS")))
                      for l in layers], "estimate": lambda: estimate(a.rep)}[a.cmd]()
