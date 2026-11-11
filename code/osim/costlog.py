@@ -8,6 +8,7 @@ import socket
 import subprocess
 import time
 
+import numpy as np
 import pandas as pd
 
 CREDIT = 3_100_032   # billing-minutes per credit
@@ -40,6 +41,7 @@ def sacct(jobs):
     rss = d[d.id.str.endswith(".batch")].assign(id=lambda x: x.id.str[:-6]).set_index("id").maxrss
     d = d[~d.id.str.contains(r"\.")].set_index("id")
     d["maxrss_gb"] = rss.reindex(d.index).str.rstrip("G").astype(float)
+    d["cpus"] = d.tres.str.extract(r"cpu=(\d+)", expand=False).astype(float)
     d["billing"] = d.tres.str.extract(r"billing=(\d+)", expand=False).astype(float)
     d["billing_min"] = d.billing * d.elapsed_s / 60
     d["cpu_arch"] = d.node.map({n: node_arch(n) for n in d.node.dropna().unique()})
@@ -64,3 +66,42 @@ def ledger(path, md=None):
         with open(md, "w") as f:
             f.write(t.to_markdown() + "\n")
     return t
+
+
+CREDIT_BILLING_MIN = 3_100_032   # Roar Collab: billing-minutes per credit
+
+
+def _secs(x):
+    """sacct TotalCPU ([D-]HH:MM:SS[.mmm] or MM:SS.mmm) in seconds."""
+    d, _, x = x.rpartition("-") if "-" in x else ("0", "", x)
+    p = [float(v) for v in x.split(":")]
+    return int(d) * 86400 + sum(v * 60 ** i for i, v in enumerate(reversed(p)))
+
+
+def job_ledger(jobs_csv, md=None):
+    """Per-stage compute from Slurm accounting for the jobs registered in jobs_csv (job, stage, purpose, status,
+    account taken from sacct): tasks by state, allocated core-h, CPU-h, peak RSS, billing-minutes and credits (credits
+    only for the `open` account; allocation accounts are not charged); production and pilot/superseded kept apart."""
+    reg = pd.read_csv(jobs_csv, dtype={"job": str})
+    d = sacct(reg.job)
+    acct = subprocess.run(["sacct", "-j", ",".join(reg.job), "-X", "-n", "-P", "-o", "JobID,Account"],
+                          capture_output=True, text=True, check=True).stdout
+    acct = pd.read_csv(io.StringIO(acct), sep="|", header=None, names=["id", "account"]).set_index("id").account
+    d = d.assign(job=d.id.str.split("_").str[0], account=d.id.map(acct), cpu_s=d.cpu.map(_secs),
+                 core_h=d.elapsed_s * d.cpus / 3600, done=d.state.eq("COMPLETED"),
+                 failed=d.state.str.startswith(("FAILED", "TIMEOUT", "OUT_OF")), cancelled=d.state.str.startswith("CANCELLED"))
+    d = d.merge(reg, on="job")
+    d["credits"] = np.where(d.account.eq("open"), d.billing_min / CREDIT_BILLING_MIN, 0.0)
+    agg = dict(jobs=("job", "nunique"), tasks=("id", "size"), done=("done", "sum"), failed=("failed", "sum"),
+               cancelled=("cancelled", "sum"), core_h=("core_h", "sum"), cpu_h=("cpu_s", lambda x: x.sum() / 3600),
+               maxrss_gb=("maxrss_gb", "max"), billing_min=("billing_min", "sum"), credits=("credits", "sum"))
+    t = pd.concat([d.groupby(["status", "stage", "account"]).agg(**agg),
+                   d.assign(stage="all", account="all").groupby(["status", "stage", "account"]).agg(**agg),
+                   d.assign(status="total", stage="", account="").groupby(["status", "stage", "account"]).agg(**agg)]
+                  ).round(3)
+    if md:
+        with open(md, "w") as f:
+            f.write(f"Generated {pd.Timestamp.now():%Y-%m-%d %H:%M} by costlog.job_ledger from {os.path.basename(jobs_csv)}"
+                    " and sacct. core_h = elapsed x allocated CPUs; credits only for `open`.\n\n"
+                    + t.to_markdown() + "\n")
+    return t, d

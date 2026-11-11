@@ -32,9 +32,9 @@ DOMAINS = {"buffer": dict(lat=cfg.BOXES["buffer"]["lat_bounds"], lon=cfg.BOXES["
            # natl_sim.py: simulated floats over the GLORYS download box; the deep-domain mask is applied there.
            # Quadratic trend, as Kuusela et al. eq. (5) (current practice)
            # Kriging as Sukianto, Kuusela et al. (2026): each prediction on the 1 deg x 1 month grid conditions on the data
-           # in its own +/-10 deg x +/-1.5 month window (window="point").
+           # within +/-10 deg of itself in calendar months m-1..m+1 (window="point").
            "natl_sim": dict(lat=cfg.NATL_BOX["lat_bounds"], lon=cfg.NATL_BOX["lon_bounds"], years=(2010, 2025),
-                            knots=None, basin=False, window="point", lambda_t=45.0, node_deg=1.0, t_nodes=(0.5,))}
+                            knots=None, basin=False, window="point", node_deg=1.0, t_nodes=(0.5,))}
 DOMAIN = os.environ.get("GLORYS_DR_DOMAIN", "buffer")
 DOM = DOMAINS[DOMAIN]
 YEARS = DOM["years"]
@@ -445,7 +445,7 @@ def krige_month(month, obs=None, params=None, nodes=None, mean=None, group="floa
 
 def krige_month_point(month, obs, params, nodes, mean, group="fold"):
     """krige_month with a moving window: every prediction (map nodes at T_NODES; each in-domain profile of the month
-    at its own place and time) conditions on the data within +/-LAMBDA_G deg, +/-LAMBDA_T days of itself, with the
+    at its own place) conditions on the data within +/-LAMBDA_G deg of itself in calendar months m-1..m+1, with the
     plug-ins of its nearest parameter cell. Map nodes get the full-data and every leave-one-group-out prediction
     (block downdate of the window inverse); profiles get their own-group-out prediction."""
     full, lofo, gl = mean
@@ -453,7 +453,7 @@ def krige_month_point(month, obs, params, nodes, mean, group="fold"):
     m0 = pd.Timestamp(month)
     d0 = (m0 - EPOCH) / pd.Timedelta(days=1)
     tn = d0 + m0.days_in_month * np.asarray(T_NODES)
-    S = obs[np.abs(obs.day.to_numpy() - (d0 + m0.days_in_month / 2)) <= LAMBDA_T + m0.days_in_month / 2 + 1]
+    S = obs[np.abs(obs.time.dt.year * 12 + obs.time.dt.month - (m0.year * 12 + m0.month)) <= 1]
     xyz = S[["lon", "lat", "day"]].to_numpy(float)
     r_full = (S.z - S.mu).to_numpy(float)
     MU = mu_lofo_at(lofo, pd.Index(gl).get_indexer(ks), S.lat.values, S.lon.values, S.day.values, _s(S))
@@ -465,8 +465,7 @@ def krige_month_point(month, obs, params, nodes, mean, group="fold"):
     nug_all = np.maximum(params.nugget_ratio.to_numpy(float), JITTER)
 
     def window(x):
-        return np.flatnonzero((np.abs(xyz[:, 0] - x[0]) <= LAMBDA_G) & (np.abs(xyz[:, 1] - x[1]) <= LAMBDA_G)
-                              & (np.abs(xyz[:, 2] - x[2]) <= LAMBDA_T))
+        return np.flatnonzero((np.abs(xyz[:, 0] - x[0]) <= LAMBDA_G) & (np.abs(xyz[:, 1] - x[1]) <= LAMBDA_G))
 
     P = np.column_stack([np.repeat(nodes.lon.values, len(tn)), np.repeat(nodes.lat.values, len(tn)),
                          np.tile(tn, len(nodes))])

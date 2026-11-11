@@ -17,6 +17,7 @@ dependencies:
   - parcels
   - copernicusmarine
   - gsw
+  - scikit-learn
   - pip:
     - global_land_mask
     - git+https://github.com/euroargodev/VirtualFleet.git

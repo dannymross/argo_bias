@@ -493,7 +493,7 @@ def cov_points(rep, layer, path=None):
     from osim import chain as ch
     obs = ch.fit_map(rep_obs(rep, layer, path))[0]
     return pd.DataFrame(dict(lon=obs.lon, lat=obs.lat, day=(obs.time - T0) / pd.Timedelta(days=1),
-                             year=obs.time.dt.year, z=(obs.z - obs.mu) * 1e-9))
+                             year=obs.time.dt.year, z=(obs.z - obs.mu) * 1e-9)).dropna(subset=["z"])  # mu undefined off the mean grid
 
 
 def gpgp_fit(points, centres, out, years=cfg.ANALYSIS_YEARS, m=30):
@@ -512,8 +512,11 @@ def gpgp_fit(points, centres, out, years=cfg.ANALYSIS_YEARS, m=30):
 COV_CHUNKS = 10
 
 
-def cov_path(rep, layer, chunk=None):
-    d = os.path.join(OUT, "cov", f"r{rep}")
+COV_DIR = "cov_exact"   # exact calendar-season fits; "cov" holds the earlier GpGp +/-45 d fits
+
+
+def cov_path(rep, layer, chunk=None, kind=COV_DIR):
+    d = os.path.join(OUT, kind, f"r{rep}")
     return os.path.join(d, f"{layer}_t{chunk}.csv" if chunk is not None else f"plugin_{layer}.csv")
 
 
@@ -525,9 +528,28 @@ def covfit(reps, task, chunks=COV_CHUNKS):
     k = task % chunks
     cen = pd.read_csv(os.path.join(OUT, "oracle_centres.csv"))
     cen = cen.iloc[len(cen) * k // chunks: len(cen) * (k + 1) // chunks]
-    os.makedirs(os.path.dirname(cov_path(rep, layer)), exist_ok=True)
-    with costlog.step(COSTS, f"covfit_{layer}", rep=rep, n=len(cen)):
-        gpgp_fit(cov_points(rep, layer), cen, cov_path(rep, layer, k))
+    out = cov_path(rep, layer, k)
+    if os.path.exists(out):
+        return
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    part = out + ".part.jsonl"   # one line per finished window, so a rerun resumes where the last stopped
+    done = pd.read_json(part, lines=True) if os.path.exists(part) else pd.DataFrame(columns=["lat", "lon", "month"])
+    todo = cen.merge(done[["lat", "lon", "month"]], how="left", indicator=True).query("_merge == 'left_only'")
+    with costlog.step(COSTS, f"covfit_{layer}", rep=rep, n=len(todo)):
+        pts = cov_points(rep, layer)
+        with open(part, "a") as f:
+            for i, c in enumerate(todo.itertuples()):
+                w = cov_window(pts, c.lat, c.lon, c.month)
+                r = dict(lat=c.lat, lon=c.lon, month=c.month, n_obs=len(w), n_blocks=w.year.nunique())
+                try:
+                    r.update(exact_fit(w, EXACT_STARTS) if r["n_blocks"] >= 2 else {})
+                except Exception as e:   # record the failure and move on; the window's parameters stay NaN
+                    r["error"] = repr(e)[:200]
+                f.write(pd.Series(r).to_json() + "\n")
+                f.flush()
+                print(f"{len(done) + i + 1}/{len(cen)} windows", flush=True)
+    pd.read_json(part, lines=True).to_csv(out, index=False)
+    os.remove(part)
 
 
 def covgather(rep):
@@ -539,6 +561,152 @@ def covgather(rep):
         g[P].median().join(g.size().rename("n_seasons")).reset_index().to_csv(cov_path(rep, layer), index=False)
         print(f"rep {rep} {layer}: {len(d)} windows, {d[P].isna().any(axis=1).sum()} failed, "
               f"{g.ngroups} cells", flush=True)
+
+
+WIN_DEG, MIN_BLOCK = 10.0, 50
+EXACT_START = (1.0, 1.3, 1.0, 20.0, 0.05)       # phi, th_lon, th_lat, th_t, nugget ratio on sd-scaled z (GpGp's start)
+EXACT_STARTS = (EXACT_START,)   # a second start (2, 1.5, 70) reached the same optimum in 40/40 windows (|dll| < 0.01)
+
+
+def cov_window(pts, lat, lon, month, years=cfg.ANALYSIS_YEARS):
+    """The profiles of one fitting window: +/-WIN_DEG of the cell centre in calendar months month-1..month+1 (DJF,
+    MAM, JJA, SON for 1, 4, 7, 10; December belongs to the following year's block), keeping blocks with more than
+    MIN_BLOCK profiles; `year` becomes the block and dt the days from its centre month's 15th."""
+    s = pts[pts.lat.between(lat - WIN_DEG, lat + WIN_DEG) & pts.lon.between(lon - WIN_DEG, lon + WIN_DEG)]
+    t = T0 + pd.to_timedelta(s.day.to_numpy(), "D")
+    k = t.year * 12 + t.month - month + 1           # 12 * block + 0, 1, 2 inside the window
+    blk = k // 12
+    s = s.assign(year=blk)[(k % 12 <= 2) & np.isin(blk, years)]
+    tc = (pd.to_datetime(dict(year=s.year, month=month, day=15)) - T0).dt.days
+    s = s.assign(dt=s.day - tc.values)
+    n = s.year.value_counts()
+    return s[s.year.isin(n.index[n > MIN_BLOCK])]
+
+
+def exact_nll(s):
+    """Negative exact log-likelihood (and gradient) of the sd-scaled window residuals as a function of the
+    log-parameters theta = log(phi, th_lon, th_lat, th_t, nugget variance) of phi * exp(-|(dlon, dlat, dt) / th|)
+    + nugget, years independent: the sum over years of sklearn's exact per-year log marginal likelihood."""
+    from sklearn.gaussian_process import GaussianProcessRegressor
+    from sklearn.gaussian_process.kernels import ConstantKernel, Matern, WhiteKernel
+    sy = s.z.std()
+    kern = ConstantKernel(1.0, (1e-6, 1e6)) * Matern([1.0, 1.0, 1.0], (1e-3, 1e5), nu=0.5) + WhiteKernel(1e-2, (1e-10, 1e2))
+    gps = [GaussianProcessRegressor(kern, optimizer=None).fit(g[["lon", "lat", "dt"]].values, g.z.values / sy)
+           for _, g in s.groupby("year")]
+
+    def nll(th):
+        v = [gp.log_marginal_likelihood(th, eval_gradient=True) for gp in gps]
+        return -sum(l for l, _ in v), -sum(g for _, g in v)
+    return nll, kern.bounds, sy, len(gps)
+
+
+def to_theta(p):
+    """(phi, th_lon, th_lat, th_t, nugget ratio) on the scaled data -> sklearn's log-parameters."""
+    return np.log([p[0], p[1], p[2], p[3], p[4] * p[0]])
+
+
+def exact_fit(s, starts=(EXACT_START,)):
+    """Exact MLE: L-BFGS-B on exact_nll from each start (scaled-data parameters), keeping the best optimum."""
+    import time
+    from scipy.optimize import minimize
+    t0 = time.time()
+    nll, bounds, sy, nb = exact_nll(s)
+    fits = [minimize(nll, np.clip(to_theta(p), bounds[:, 0], bounds[:, 1]), jac=True, method="L-BFGS-B", bounds=bounds)
+            for p in starts]
+    f = min(fits, key=lambda r: r.fun)
+    e = np.exp(f.x)
+    return dict(phi=e[0] * sy ** 2, th_lon=e[1], th_lat=e[2], th_t=e[3], nugget_ratio=e[4] / e[0],
+                loglik=-f.fun - len(s) * np.log(sy), conv=f.success, best_start=fits.index(f),
+                ll_gap=max(r.fun for r in fits) - f.fun,   # log-lik lost by the worst start
+                n_eval=sum(r.nfev for r in fits), at_bound=bool(np.isclose(f.x, bounds.T).any()),
+                secs=time.time() - t0, n_obs=len(s), n_blocks=nb)
+
+
+def cov_exact_test(n_windows=30, seed=0, out="starts_calendar.csv"):
+    """Start check for the exact calendar-season fit on a random sample of GpGp window fits of reps 0-4 (half per
+    layer): EXACT_STARTS alone vs EXACT_STARTS plus the GpGp estimate as a third start."""
+    out = os.path.join(OUT, "pilot_exact", out)
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    w = pd.concat([cov_windows(range(5), l, kind="cov").dropna(subset=list(COV_PARAMS)).assign(layer=l)
+                   .sample(n_windows // len(LAYER_NAMES), random_state=seed) for l in LAYER_NAMES])
+    rows = []
+    for (rep, layer), ww in w.groupby(["rep", "layer"]):
+        pts = cov_points(rep, layer)
+        for _, g in ww.iterrows():
+            with costlog.step(COSTS, f"cov_exact_test_{layer}", rep=rep, n=1):
+                s = cov_window(pts, g.lat, g.lon, g.month)
+                e = exact_fit(s, EXACT_STARTS)
+                e3 = exact_fit(s, (*EXACT_STARTS, (g.phi / s.z.var(), g.th_lon, g.th_lat, g.th_t, g.nugget_ratio)))
+            rows.append(dict(rep=rep, layer=layer, lat=g.lat, lon=g.lon, month=g.month, n_obs_gpgp_45d=g.n_obs,
+                             **{f"gpgp_{p}": g[p] for p in COV_PARAMS}, **{f"exact_{k}": v for k, v in e.items()},
+                             **{f"exact3_{k}": e3[k] for k in [*COV_PARAMS, "loglik", "best_start"]}))
+            print(pd.Series(rows[-1]).to_string(), flush=True)
+    pd.DataFrame(rows).to_csv(out, index=False)
+
+
+def uniform_sampling(R=200, seed=0, n_from=range(20)):
+    """Comparison design: each replicate-year draws n_y iid points uniform on domain x year (cell with probability
+    proportional to area, uniform day), n_y the mean in-domain profile count per replicate-year of the Lagrangian
+    replicates `n_from`; returns per layer-year the sample means' errors (GJ/m2) and the exact iid SD sigma_y/sqrt(n_y)."""
+    la, lo, m, a = domain()
+    w = a[m] / a[m].sum()
+    n = pd.concat([pd.read_parquet(profile_path(r), columns=["time", "inside", *LAYER_NAMES]) for r in n_from])
+    n = n[n.inside].dropna(subset=list(LAYER_NAMES)).time.dt.year.value_counts() / len(n_from)
+    tr = truth().set_index(["year", "layer"]).theta
+    rng = np.random.default_rng(seed)
+    rows = []
+    for y in cfg.ANALYSIS_YEARS:
+        with costlog.step(COSTS, "uniform_sampling", rep=y, n=R):
+            z = [{k: d[k].values[:, m].astype(np.float32) * 1e-9 for k in LAYER_NAMES}
+                 for d in map(lambda mo: ohc_month(y, mo), range(1, 13))]
+            Z = {k: np.concatenate([d[k] for d in z]) for k in LAYER_NAMES}
+            Z["total"] = sum(Z[k] for k in LAYER_NAMES)
+            ny = int(round(n[y]))
+            c = rng.choice(len(w), size=(R, ny), p=w)
+            t = rng.integers(0, Z["total"].shape[0], size=(R, ny))
+            for k, v in Z.items():
+                mu = (v * w).sum(1).mean()
+                sd = np.sqrt(((v - mu) ** 2 * w).sum(1).mean() / ny)
+                est = v[t, c].mean(1)
+                rows.append(pd.DataFrame(dict(year=y, layer=k, rep=np.arange(R), n=ny, est=est, theta=tr[y, k] * 1e-9,
+                                              theta_grid=mu, sd_iid=sd)))
+    d = pd.concat(rows, ignore_index=True).assign(err=lambda x: x.est - x.theta)
+    d.to_csv(os.path.join(OUT, "uniform_errors.csv"), index=False)
+    return d
+
+
+def stationary_sampling(reps=range(200)):
+    """Comparison design: the deployed fleet of each replicate (same seeds, lifetimes and 10 d cycle) with every float
+    held at its start position (no advection); per replicate, layer and year, the in-domain sample mean (GJ/m2)."""
+    la, lo, m, _ = domain()
+    P = []
+    for r in reps:
+        s = pd.read_parquet(seeds_path(r), columns=["float_id", "release", "start", "lat", "lon"]).merge(
+            fleet(r)[["float_id", "life"]])
+        end = (s.release + pd.to_timedelta(np.minimum(s.life.to_numpy(), 4e4), "D")).clip(upper=T1)
+        nk = ((end - s.release) / pd.Timedelta(days=CYCLE)).astype(int).to_numpy()
+        k = np.concatenate([np.arange(1, n + 1) for n in nk])
+        i = np.repeat(np.arange(len(s)), nk)
+        t = s.release.to_numpy()[i] + (k * CYCLE).astype("timedelta64[D]")
+        ok = (t >= s.start.to_numpy()[i]) & (pd.DatetimeIndex(t).year.isin(cfg.ANALYSIS_YEARS))
+        P.append(pd.DataFrame(dict(rep=r, time=t[ok], lat=s.lat.to_numpy()[i][ok], lon=s.lon.to_numpy()[i][ok])))
+    P = pd.concat(P, ignore_index=True)
+    t = pd.DatetimeIndex(P.time)
+    ii, jj = cfg.containing_index(P.lat.to_numpy(), la), cfg.containing_index(P.lon.to_numpy(), lo)
+    z = np.full((len(P), len(LAYER_NAMES)), np.nan)
+    with costlog.step(COSTS, "stationary_sampling", rep=f"{min(reps)}-{max(reps)}", n=len(P)):
+        for (y, mo), idx in pd.DataFrame(dict(y=t.year, m=t.month)).groupby(["y", "m"]).indices.items():
+            d = ohc_month(y, mo)
+            z[idx] = np.column_stack([d[c].values[t.day.values[idx] - 1, ii[idx], jj[idx]] for c in LAYER_NAMES])
+    P = P.assign(**dict(zip(LAYER_NAMES, z.T * 1e-9)), year=t.year)
+    P = P[m[ii, jj]].dropna(subset=list(LAYER_NAMES))
+    P["total"] = P[list(LAYER_NAMES)].sum(1)
+    e = P.groupby(["rep", "year"])[[*LAYER_NAMES, "total"]].mean().stack().rename("est").reset_index()
+    e.columns = ["rep", "year", "layer", "est"]
+    e = e.merge(P.groupby(["rep", "year"]).size().rename("n").reset_index()).merge(
+        truth().assign(theta=lambda x: x.theta * 1e-9)[["year", "layer", "theta"]]).assign(err=lambda x: x.est - x.theta)
+    e.to_csv(os.path.join(OUT, "stationary_errors.csv"), index=False)
+    return e
 
 
 def quadrature():
@@ -577,9 +745,9 @@ RUNAWAY = {"th_lon": 40.0, "th_lat": 40.0, "th_t": 400.0}   # the bounds of krig
 KM_PER_DEG = 111.195   # mean Earth radius 6371 km
 
 
-def cov_windows(reps, layer):
+def cov_windows(reps, layer, kind=COV_DIR):
     """Every window fit (cell x season) of the given replicates for one layer."""
-    return pd.concat([pd.read_csv(f).assign(rep=r) for r in reps for f in glob.glob(cov_path(r, layer, "*"))],
+    return pd.concat([pd.read_csv(f).assign(rep=r) for r in reps for f in glob.glob(cov_path(r, layer, "*", kind))],
                      ignore_index=True)
 
 
@@ -687,7 +855,7 @@ def cov_summary(reps):
     return pd.DataFrame(rows)
 
 
-def gpgp_pilot(n_windows=20):
+def gpgp_pilot(n_windows=20):  # GpGp +/-45 d windows (superseded by exact fits)
     """GpGp on r0's residuals (snapshot) for a sample of cells x the ORACLE_MONTHS seasons per layer, plus the
     49N 21W January window on the oracle lattice, with the exact likelihood (krige_local_fit) at the GpGp estimate."""
     from osim import krige_local_fit as kf
@@ -815,7 +983,7 @@ def estimate_layer(rep, layer, maps, pf, fl, tr):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["design", "advect", "profiles", "select", "gpgp_pilot", "covfit", "covgather", "quadrature", "fields", "oracle_prepare", "sample", "qpoints", "map",
+    ap.add_argument("cmd", choices=["design", "advect", "profiles", "select", "gpgp_pilot", "cov_exact_test", "uniform", "stationary", "covfit", "covgather", "quadrature", "fields", "oracle_prepare", "sample", "qpoints", "map",
                                     "estimate"])
     ap.add_argument("--rep", type=int, default=int(os.environ.get("SLURM_ARRAY_TASK_ID", 0)))
     ap.add_argument("--reps", help="first,last (inclusive): sample/qpoints chunk; q-hat's evaluation reps")
@@ -827,7 +995,7 @@ if __name__ == "__main__":
     rr = range(*(lambda x: (x[0], x[1] + 1))([int(v) for v in a.reps.split(",")])) if a.reps else [a.rep]
     layers = a.layer or LAYER_NAMES
     {"design": design, "fields": fields, "oracle_prepare": lambda: [oracle_prepare(l) for l in layers], "advect": lambda: advect(a.rep, a.dt_hours, "" if a.dt_hours == 1 else f"_dt{a.dt_hours}"),
-     "profiles": lambda: [profiles(r) for r in rr], "select": lambda: [select(r) for r in rr], "gpgp_pilot": gpgp_pilot,
+     "profiles": lambda: [profiles(r) for r in rr], "select": lambda: [select(r) for r in rr], "gpgp_pilot": gpgp_pilot, "cov_exact_test": cov_exact_test, "uniform": uniform_sampling, "stationary": stationary_sampling,
      "covfit": lambda: covfit(list(rr), a.rep), "covgather": lambda: [covgather(r) for r in rr],
      "quadrature": quadrature, "sample": lambda: sample(rr), "qpoints": lambda: q_points(rr, range(a.all_reps)),
      "map": lambda: [run_map(a.rep, l, a.year and list(pd.date_range(f"{a.year}-01", f"{a.year}-12", freq="MS")))
