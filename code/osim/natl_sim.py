@@ -398,62 +398,52 @@ def support():
     return cfg.cell_edges(la), cfg.cell_edges(lo), np.where(np.nan_to_num(b) >= di.PARK_DEPTH, a, 0.0)
 
 
-SIGMA, TRUNC = (1 / 6, 2.0), 4.0     # kernel sd (deg, days) and per-axis truncation, as the box chain
-SIG = np.array([SIGMA[1], SIGMA[0], SIGMA[0]])
+QSIG, TRUNC = (1.0, 30.0), 4.0   # q-hat kernel sd (deg, days), chosen by the cross-half Hajek test; truncation in sd
 
 
-def _unit(time, lat, lon):
-    from osim import intensity as qi
-    return np.column_stack([qi._days(np.asarray(time, "datetime64[s]")), lat, lon]) / SIG
+def q_dir(sig=QSIG):
+    return os.path.join(OUT, f"q_s{sig[0]:g}_t{sig[1]:g}")
 
 
-def kernel_sums(ev, ev_rep, src, src_rep, src_cohort, cohorts, chunk=200_000):
-    """Per cohort, sum over sources within TRUNC per axis of exp(-|ev - src|^2 / 2) (unit coordinates): over all
-    replicates and over the evaluation point's own replicate only. One KD-tree pair search per chunk of points."""
-    from scipy.spatial import cKDTree
-    tree, ci, nc = cKDTree(src), pd.Index(cohorts).get_indexer(src_cohort), len(cohorts)
-    tot, own = np.zeros((len(ev), nc)), np.zeros((len(ev), nc))
-    for s in range(0, len(ev), chunk):
-        e = ev[s:s + chunk]
-        pr = tree.sparse_distance_matrix(cKDTree(e), TRUNC, p=np.inf, output_type="ndarray")
-        i, j = pr["i"], pr["j"]
-        k = np.exp(-0.5 * ((src[i] - e[j]) ** 2).sum(1))
-        flat = j * nc + ci[i]
-        tot[s:s + len(e)] = np.bincount(flat, k, len(e) * nc).reshape(-1, nc)
-        same = src_rep[i] == ev_rep[s + j]
-        own[s:s + len(e)] = np.bincount(flat[same], k[same], len(e) * nc).reshape(-1, nc)
-    return tot, own
-
-
-def q_points(reps, all_reps):
-    """Per-cohort leave-one-replicate-out q-hat^(1)_c (profiles per m2 per day per deployment) at the in-domain
-    analysis-year profiles of `reps`, from the profiles of `all_reps`; one file per replicate keyed by (float_id,
-    cycle). Edge-corrected: the kernel sum is divided by the kernel mass over the float support."""
-    from osim import intensity as qi
-    os.makedirs(os.path.join(OUT, "qpoints"), exist_ok=True)
+def q_points(reps, all_reps=range(200), sigs=(QSIG,)):
+    """Leave-one-replicate-out q-hat (in-domain profiles per km2 per day per replicate) at the in-domain
+    analysis-year profiles of `reps`, from the in-domain profile positions of `all_reps`: Gaussian kernel on the
+    native grid block-summed as qhat_diag, edge-corrected by the kernel mass over the domain x [T0, T1]."""
+    from scipy import ndimage
+    from osim import qhat_diag as qd
+    lat, lon, _, A = qd.grid()
+    dx = float(np.median(np.diff(lat)))
     yrs = cfg.ANALYSIS_YEARS
-    lo_t = pd.Timestamp(f"{yrs[0]}-01-01") - pd.Timedelta(days=TRUNC * SIGMA[1] + 2)
-    cols = ["rep", "float_id", "cycle", "time", "lat", "lon", "cohort", "inside"]
-    P = pd.concat([pd.read_parquet(profile_path(r), columns=cols) for r in all_reps], ignore_index=True)
-    P = P[P.time >= lo_t]
-    pts = P[P.rep.isin(reps) & P.inside & P.time.dt.year.isin(yrs)].reset_index(drop=True)
-    Nc, R = cohort_sizes(), len(all_reps)
-    with costlog.step(COSTS, "q_points", rep=f"{min(reps)}-{max(reps)}", n=len(pts)):
-        ev = _unit(pts.time.to_numpy(), pts.lat.to_numpy(), pts.lon.to_numpy())
-        tot, own = kernel_sums(ev, pts.rep.to_numpy(), _unit(P.time.to_numpy(), P.lat.to_numpy(), P.lon.to_numpy()),
-                               P.rep.to_numpy(), P.cohort.to_numpy(), Nc.index)
-        den = qi._support_mass(pts.lat.to_numpy(), pts.lon.to_numpy(), qi._days(pts.time.to_numpy()), *SIGMA, TRUNC,
-                               support=support(), t_end=np.datetime64(T1 + pd.Timedelta(days=1)))
-        den = den[:, None] * (2 * np.pi) ** 1.5 * SIG.prod() * Nc.to_numpy(float)[None]
-        q1 = (tot - own) / ((R - 1) * den)
-        pts = pts[["rep", "float_id", "cycle"]].assign(**{f"q1_{c}": q1[:, i].astype(np.float32)
-                                                          for i, c in enumerate(Nc.index)})
-        for r, g in pts.groupby("rep"):
-            g.to_parquet(os.path.join(OUT, "qpoints", f"r{r}.parquet"))
-    return pts
+    d0, d1 = ((pd.Timestamp(f"{y}-01-01") - T0).days for y in (yrs[0], yrs[-1] + 1))
+    cols = ["rep", "float_id", "cycle", "time", "lat", "lon", "inside"]
+    P = pd.concat([pd.read_parquet(profile_path(r), columns=cols).query("inside") for r in all_reps], ignore_index=True)
+    P = P.assign(day=((P.time - T0) / pd.Timedelta(days=1)).to_numpy(),
+                 i=np.floor((P.lat.to_numpy() - lat[0]) / dx + 0.5).astype(np.int64),
+                 j=np.floor((P.lon.to_numpy() - lon[0]) / dx + 0.5).astype(np.int64))
+    ev = P.time.dt.year.isin(yrs).to_numpy() & P.rep.isin(reps).to_numpy()
+    R = len(all_reps)
+    for sig in sigs:
+        out = q_dir(sig)
+        os.makedirs(out, exist_ok=True)
+        with costlog.step(COSTS, "q_points", rep=f"{min(reps)}-{max(reps)} s{sig[0]:g}_t{sig[1]:g}", n=int(ev.sum())):
+            fs, ft = max(1, int(sig[0] / dx / 2)), max(1, int(sig[1] / 2))
+            pad = -(-int(TRUNC * sig[1] + 1) // ft) * ft
+            ta, nt = d0 - pad, -(-(d1 - d0 + 2 * pad) // ft)
+            days = ta + np.arange(nt * ft)
+            tsup = qd.block(((days >= 0) & (days <= (T1 - T0).days)).astype(np.float32), ft, 0)
+            asup = qd.block(qd.block(A.astype(np.float32), fs, 0), fs, 1)
+            sg = (sig[1] / ft, sig[0] / dx / fs, sig[0] / dx / fs)
+            f = lambda c: ndimage.gaussian_filter(c, sg, truncate=TRUNC, mode="constant")
+            den = (ndimage.gaussian_filter1d(tsup, sg[0], truncate=TRUNC, mode="constant")[:, None, None]
+                   * ndimage.gaussian_filter(asup, sg[1:], truncate=TRUNC, mode="constant")[None])
+            shape = (nt, *asup.shape)
+            cnt = lambda g: qd.counts(g.day.to_numpy(), g.i.to_numpy(), g.j.to_numpy(), ta, ft, fs, shape)
+            S = f(cnt(P))
+            for r, g in P[ev].groupby("rep"):
+                k = (np.floor((g.day.to_numpy() - ta) / ft).astype(np.int64), g.i.to_numpy() // fs, g.j.to_numpy() // fs)
+                q = ((S - f(cnt(P[P.rep == r])))[k] / ((R - 1) * den[k])).astype(np.float32)
+                g[["float_id", "cycle"]].assign(q=q).to_parquet(os.path.join(out, f"r{r}.parquet"))
 
-
-# ------------------------------------------- map + cross-fit DR per replicate -------------------------------------------
 
 K = 5
 
@@ -877,6 +867,9 @@ def covpool(reps):
         d.assign(box="natl", nugget=d.nugget_ratio * d.phi).to_csv(cov_pooled_path(layer, reps), index=False)
 
 
+COV_POOL_REPS = range(10)   # kriging plug-ins are fitted on these; map only other replicates
+
+
 def cov_pooled_path(layer, reps):
     return os.path.join(OUT, f"cov_pooled_{layer}_r{min(reps)}-{max(reps)}.csv")
 
@@ -919,11 +912,14 @@ def map_path(rep, layer=""):
 def run_map(rep, layer, months=None):
     """Mean field (full and leave-one-fold-out), kriging, and the domain-mean of every map per month; held-out
     residuals e = z - m_(-k) at the in-domain profiles. Depends on the field and covariance, not on q-hat."""
+    if rep in COV_POOL_REPS and "NATL_SIM_PARAMS" not in os.environ:
+        raise ValueError(f"rep {rep} was used to fit the pooled covariance plug-ins")
     from osim import chain as ch
     d = map_path(rep, layer)
     os.makedirs(d, exist_ok=True)
     months = months or pd.date_range(f"{cfg.ANALYSIS_YEARS[0]}-01", f"{cfg.ANALYSIS_YEARS[-1]}-12", freq="MS")
-    params, nd = pd.read_csv(os.environ.get("NATL_SIM_PARAMS", cov_path(rep, layer))), nodes()
+    params, nd = pd.read_csv(os.environ.get("NATL_SIM_PARAMS", cov_pooled_path(layer, COV_POOL_REPS)).format(
+        layer=layer)), nodes()
     with costlog.step(COSTS, f"map_mean_{layer}", rep=rep) as meta:
         obs, mean = ch.fit_map(rep_obs(rep, layer))
         meta["n"] = len(obs)
@@ -970,27 +966,23 @@ def layer_maps(rep):
     return M | {"total": [tot_m, tot_p]}
 
 
-def estimate(rep):
+def estimate(rep, sig=QSIG):
     """Per layer, per year of one replicate: naive, Hajek, mean field, map and cross-fit DR (jackknife variance).
     The "total" rows are the layer sums: identical to estimating from the summed field, by linearity."""
     fl = pd.read_parquet(os.path.join(map_path(rep), "folds.parquet"))
     tr = truth().set_index(["layer", "year"])
-    out, folds = zip(*[estimate_layer(rep, l, maps, pf, fl, tr.loc[l]) for l, (maps, pf) in layer_maps(rep).items()])
+    out, folds = zip(*[estimate_layer(rep, l, maps, pf, fl, tr.loc[l], sig) for l, (maps, pf) in layer_maps(rep).items()])
     out, folds = pd.concat(out, ignore_index=True), pd.concat(folds, ignore_index=True)
-    out.to_parquet(os.path.join(map_path(rep), "estimates.parquet"))
-    folds.to_parquet(os.path.join(map_path(rep), "fold_stats.parquet"))
+    tag = os.path.basename(q_dir(sig))
+    out.to_parquet(os.path.join(map_path(rep), f"estimates_{tag}.parquet"))
+    folds.to_parquet(os.path.join(map_path(rep), f"fold_stats_{tag}.parquet"))
     return out
 
 
-def estimate_layer(rep, layer, maps, pf, fl, tr):
-    q = pd.read_parquet(os.path.join(OUT, "qpoints", f"r{rep}.parquet"))
-    Nc = cohort_sizes()
-    qc = [f"q1_{c}" for c in Nc.index]
-    n_kc = fl.groupby(["fold", "cohort"]).size().unstack(fill_value=0).reindex(columns=Nc.index, fill_value=0)
-    pf = pf.merge(q.drop(columns="rep"), on=["float_id", "cycle"], how="inner").assign(year=lambda x: x.time.dt.year)
-    Q1 = pf[qc].to_numpy(float)
-    pf["v"] = 1 / np.einsum("ij,ij->i", Q1, n_kc.loc[pf.fold].to_numpy(float))
-    pf["w"] = 1 / (Q1 @ Nc.to_numpy(float))
+def estimate_layer(rep, layer, maps, pf, fl, tr, sig=QSIG):
+    q = pd.read_parquet(os.path.join(q_dir(sig), f"r{rep}.parquet"))
+    pf = pf.merge(q, on=["float_id", "cycle"], how="inner", validate="1:1").assign(year=lambda x: x.time.dt.year)
+    pf["v"] = pf["w"] = 1 / pf.q   # folds are stratified by cohort and C_k, Hajek are ratios: the scale cancels
     m = maps.assign(year=maps.month.dt.year, wd=maps.month.dt.days_in_month)
     cols = ["full", "mu", *[f"fold{k}" for k in range(K)]]
     ann = m.groupby("year").apply(lambda g: pd.Series({c: np.average(g[c], weights=g.wd) for c in cols}))
@@ -1023,6 +1015,6 @@ if __name__ == "__main__":
     {"design": design, "fields": fields, "oracle_prepare": lambda: [oracle_prepare(l) for l in layers], "advect": lambda: advect(a.rep, a.dt_hours, "" if a.dt_hours == 1 else f"_dt{a.dt_hours}"),
      "profiles": lambda: [profiles(r) for r in rr], "select": lambda: [select(r) for r in rr], "gpgp_pilot": gpgp_pilot, "cov_exact_test": cov_exact_test, "uniform": uniform_sampling, "stationary": stationary_sampling,
      "covfit": lambda: covfit(list(rr), a.rep), "covgather": lambda: [covgather(r) for r in rr], "covpool": lambda: covpool(list(rr)),
-     "quadrature": quadrature, "sample": lambda: sample(rr), "qpoints": lambda: q_points(rr, range(a.all_reps)),
+     "quadrature": quadrature, "sample": lambda: sample(rr), "qpoints": lambda: q_points(rr, range(a.all_reps or 200)),
      "map": lambda: [run_map(a.rep, l, a.year and list(pd.date_range(f"{a.year}-01", f"{a.year}-12", freq="MS")))
-                     for l in layers], "estimate": lambda: estimate(a.rep)}[a.cmd]()
+                     for l in layers], "estimate": lambda: [estimate(r) for r in rr]}[a.cmd]()

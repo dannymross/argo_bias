@@ -2,9 +2,11 @@
 split-half noise, two-fold likelihood cross-validation, implied sample-mean bias, positivity.
 
     python code/osim/qhat_diag.py            # all YEARS, writes OUT/metrics.csv, maps_{year}.npz, points_{year}.parquet
+    python code/osim/qhat_diag.py --wide     # sigma_s 2-5 deg, to OUT_wide
+    python code/osim/qhat_diag.py crosshalf  # per-replicate HT/Hajek with the other half's q-hat, to crosshalf.csv
 
-q-hat is the edge-corrected Gaussian kernel intensity on a lat x lon x day grid, per replicate:
-q(x) = sum_cells K(x - c) N_c / sum_cells K(x - c) |W cap c|, W = parkable water x [T0, T1], computed by separable
+q-hat is the edge-corrected Gaussian kernel intensity on a lat x lon x day grid, per replicate, of the in-domain points:
+q(x) = sum_cells K(x - c) N_c / sum_cells K(x - c) |D cap c|, D = domain x [T0, T1], computed by separable
 filtering of block-summed counts. Daily positions of alive floats estimate 10 x the profile intensity (uniform cycle
 phase), so their q-hat is divided by CYCLE.
 """
@@ -181,8 +183,46 @@ def run(years=YEARS):
         ev[["rep", "half", "float_id", "cycle", "day", "i", "j"]].assign(**keep).to_parquet(os.path.join(OUT, f"points_{y}.parquet"))
 
 
+def crosshalf(dirs=(OUT, OUT + "_wide")):
+    """Per replicate, year, layer and (sigma, source): naive mean, HT sum(z/q) / (|D| ny) and Hajek
+    sum(z/q) / sum(1/q), each profile weighted by the other half's q-hat (GJ/m2); profiles with q-hat = 0 are dropped
+    and counted."""
+    L = list(ns.LAYER_NAMES)
+    AD = grid()[3].sum()
+    th = ns.truth().assign(theta=lambda x: x.theta * 1e-9).set_index(["year", "layer"]).theta
+    rows = []
+    for y in YEARS:
+        ny = pd.Timestamp(f"{y}-12-31").dayofyear
+        z = pd.concat([pd.read_parquet(ns.profile_path(r), columns=["rep", "float_id", "cycle", "time", "inside"] + L)
+                       .query("inside").loc[lambda x: x.time.dt.year == y].drop(columns=["inside", "time"])
+                       for r in range(R)])
+        z[L] = z[L] * 1e-9
+        z["total"] = z[L].sum(axis=1)
+        for d in [d for d in dirs if os.path.exists(os.path.join(d, f"points_{y}.parquet"))]:
+            p = pd.read_parquet(os.path.join(d, f"points_{y}.parquet")).merge(z, on=["rep", "float_id", "cycle"])
+            for c in [c for c in p.columns if c.startswith("s") and c.endswith(("_daily", "_profiles"))]:
+                sig, src = c.rsplit("_", 1)
+                ok = p[c] > 0
+                w = 1 / p[c].where(ok)
+                for layer in [*L, "total"]:
+                    g = p.assign(wz=w * p[layer], w=w, ok=ok).groupby("rep")
+                    e = g.agg(sz=("wz", "sum"), sw=("w", "sum"), naive=(layer, "mean"), n=("ok", "size"), n_ok=("ok", "sum"))
+                    rows.append(e.assign(ht=e.sz / (AD * ny), hajek=e.sz / e.sw, year=y, layer=layer, sigma=sig,
+                                         source=src, theta=th[(y, layer)]).drop(columns=["sz", "sw"]).reset_index())
+        print(y, flush=True)
+    out = pd.concat(rows, ignore_index=True)
+    out.to_csv(os.path.join(OUT, "crosshalf.csv"), index=False)
+    return out
+
+
 if __name__ == "__main__":
-    if "--test" in sys.argv:   # 4 replicates, 2 bandwidths, one year
+    if "crosshalf" in sys.argv:
+        with costlog.step(ns.COSTS, "qhat_crosshalf", n=R):
+            crosshalf()
+    elif "--wide" in sys.argv:
+        SIG_S, SIG_T, MAP_SIG, OUT = (2.0, 3.0, 5.0), (10.0, 30.0), ((2.0, 30.0), (5.0, 30.0)), OUT + "_wide"
+        run()
+    elif "--test" in sys.argv:   # 4 replicates, 2 bandwidths, one year
         R, HALF, SIG_S, SIG_T, MAP_SIG, OUT = 4, 2, (1 / 6, 1.0), (2.0, 30.0), ((1.0, 30.0),), OUT + "_test"
         run((2020,))
     else:
