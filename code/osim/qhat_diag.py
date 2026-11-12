@@ -39,9 +39,9 @@ def grid():
     return la[rs], lo[cs], sup[rs, cs], np.where(m, a / 1e6, 0.0)[rs, cs]
 
 
-def points(lat, lon, years):
-    """All replicates' profile and alive-daily positions within the crop and YEARS (+/- PAD days): day (since T0),
-    row, col, half (0 for reps < HALF); plus the in-domain analysis-year profiles as evaluation points."""
+def points(lat, lon, A, years):
+    """All replicates' in-domain profile and alive-daily positions within YEARS (+/- PAD days): day (since T0), row,
+    col, half (0 for reps < HALF); ev marks the evaluation profiles."""
     t0s = {y: (pd.Timestamp(f"{y}-01-01") - ns.T0).days for y in years}
     keep_t = lambda d: np.any([(d >= t0s[y] - PAD) & (d < t0s[y] + 366 + PAD) for y in years], axis=0)
     dlat, dlon = np.median(np.diff(lat)), np.median(np.diff(lon))
@@ -58,6 +58,7 @@ def points(lat, lon, years):
             ii = np.floor((x.lat.to_numpy() - lat[0]) / dlat + 0.5).astype(np.int32)
             jj = np.floor((x.lon.to_numpy() - lon[0]) / dlon + 0.5).astype(np.int32)
             ok = keep_t(d) & (ii >= 0) & (ii < len(lat)) & (jj >= 0) & (jj < len(lon))
+            ok[ok] = x.inside.to_numpy()[ok] if src == "p" else A[ii[ok], jj[ok]] > 0  # q is an intensity on D only
             df = pd.DataFrame(dict(day=d[ok].astype(np.float32), i=ii[ok], j=jj[ok], half=np.int8(r >= HALF),
                                    rep=np.int16(r)))
             if src == "p":
@@ -104,10 +105,10 @@ def counts(day, i, j, t0, ft, fs, shape):
 
 def run(years=YEARS):
     os.makedirs(OUT, exist_ok=True)
-    lat, lon, sup, A = grid()
+    lat, lon, _, A = grid()
     dx = float(np.median(np.diff(lat)))
     with costlog.step(ns.COSTS, "qhat_diag_points", n=R):
-        P, D = points(lat, lon, years)
+        P, D = points(lat, lon, A, years)
     rows = []
     for y in years:
         t0 = (pd.Timestamp(f"{y}-01-01") - ns.T0).days
@@ -126,7 +127,7 @@ def run(years=YEARS):
                     nt = -(-(ny + 2 * pad) // ft)
                     days = ta + np.arange(nt * ft)
                     tsup = block(((days >= 0) & (days <= (ns.T1 - ns.T0).days)).astype(np.float32), ft, 0)
-                    ssup = block(block(sup.astype(np.float32), fs, 0), fs, 1)
+                    ssup = block(block(A.astype(np.float32), fs, 0), fs, 1)
                     shape = (nt, *ssup.shape)
                     sg = (st / ft, ss / dx / fs, ss / dx / fs)
                     den = (ndimage.gaussian_filter1d(tsup, sg[0], truncate=TRUNC, mode="constant")[:, None, None]

@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 from IPython.display import display, Markdown
 from osim import natl_sim as ns
 
-REPS = list(range(5))
+REPS = list(range(10))
 PAR_LAB = {"phi": "Variance", "th_lon": "Zonal range", "th_lat": "Meridional range", "th_t": "Temporal range"}
 LAYER_LAB = {"ohc_15_700": "15-700 m", "ohc_700_2000": "700-2000 m"}
 
@@ -33,6 +33,10 @@ def _tabs(items):
         _emit(f"\n## {name}\n")
         show()
     _emit(":::")
+
+def _layer_par_tabs(fig):
+    _tabs([(LAYER_LAB[l], lambda l=l: _tabs([(PAR_LAB[p], lambda p=p: _show_fig(fig(l, p))) for p in ns.COV_PARAMS]))
+           for l in ns.LAYER_NAMES])
 ```
 
 Each replicate's float profiles are mapped as in Sukianto, Kuusela et al. (2026): the OHC of each layer
@@ -43,21 +47,32 @@ k\big((x,y,t),(x',y',t')\big) = \phi\,\exp\!\Big\{-\Big[\big(\tfrac{x-x'}{\theta
 + \big(\tfrac{y-y'}{\theta_{\mathrm{lat}}}\big)^2 + \big(\tfrac{t-t'}{\theta_t}\big)^2\Big]^{1/2}\Big\}
 + \sigma^2\,\mathbb{1}\{(x,y,t)=(x',y',t')\},
 $$
-with $x, y$ in degrees and $t$ in days. A window is a cell of the $2^\circ$ parameter grid and a season: the profiles
-within $\pm 10^\circ$ of the cell centre and within $\pm 45$ days of the 15th of January, April, July or October, in each
-year 2015--2025, the years being independent replicates with common parameters. Parameters are maximum-likelihood
-estimates under the Vecchia approximation (GpGp, `exponential_scaledim`, 30 neighbours). A replicate's plug-in for a cell
-is the median over its four seasonal fits; the pooled plug-in is the median over all twenty fits of the cell
-(5 replicates $\times$ 4 seasons). The nugget-to-sill ratio $\sigma^2/\phi$ is negligible (median $1.7\times10^{-4}$ and $0.9\times10^{-4}$ over the window fits of the two layers) and is not shown.
+with $x, y$ in degrees and $t$ in days. A window is a cell of the $2^\circ$ parameter grid and a calendar season
+(DJF, MAM, JJA, SON, December counted with the following year): the profiles within $\pm 10^\circ$ of the cell centre
+in the season's three calendar months, in each year 2015--2025. The years are independent blocks with common
+parameters, so the log-likelihood is the sum over years of exact Gaussian log-likelihoods (years with at most 50
+profiles in the window are dropped, and a window needs two years). Parameters are exact maximum-likelihood estimates,
+by L-BFGS-B on the log-parameters from a single start; a second start reached the same optimum in all of 40 test
+windows ($|\Delta\ell| < 0.01$).
 
-A fit has run away when a range parameter leaves the bounds of a physically plausible window fit
-($\theta_{\mathrm{lon}}, \theta_{\mathrm{lat}} \le 40^\circ$, $\theta_t \le 400$ days); such cells are left blank.
-Ranges are fitted in degrees (as in Sukianto, Kuusela et al.) and mapped in km, $\theta_{\mathrm{lon}}\cdot\frac{\pi R}{180}\cos(\mathrm{lat})$ and $\theta_{\mathrm{lat}}\cdot\frac{\pi R}{180}$ with $R = 6371$ km at the cell-centre latitude, so that a correlation isotropic in distance shows equal zonal and meridional ranges. Each parameter has one colour scale across the six maps, spanning all values that did not run away.
+The nugget estimate collapses to its lower bound in nearly every window (median $\sigma^2/\phi$ of
+$1.3\times10^{-8}$ and $0.6\times10^{-8}$ in the two layers), as it should: simulated profiles are noise-free point
+values of the GLORYS field, so there is no measurement error, and the nugget is not shown.
+
+A replicate's plug-in for a cell is the median over its four seasonal fits. The **pooled plug-in** is the median over
+all window fits of the cell across the ten replicates, between 24 and 40 fits (median 40); it is the plug-in used to
+krige. Because it is fitted on replicates 0--9 only, kriging replicates 10--199 with it keeps the covariance parameters
+external to the evaluated replicates. A fit has run away when a range parameter leaves the bounds of a physically
+plausible window fit ($\theta_{\mathrm{lon}}, \theta_{\mathrm{lat}} \le 40^\circ$, $\theta_t \le 400$ days); such
+cells, and cells with no fit, are left blank. No pooled cell is blank. Ranges are fitted in degrees (as in Sukianto,
+Kuusela et al.) and mapped in km, $\theta_{\mathrm{lon}}\cdot\frac{\pi R}{180}\cos(\mathrm{lat})$ and
+$\theta_{\mathrm{lat}}\cdot\frac{\pi R}{180}$ with $R = 6371$ km at the cell-centre latitude, so that a correlation
+isotropic in distance shows equal zonal and meridional ranges.
 
 ```{python}
 #| label: tbl-summary
 #| echo: false
-#| tbl-cap: "Domain median of the plug-ins (ranges in km and days) per replicate and pooled; cv_between is the median over cells of the coefficient of variation of the five replicates' plug-ins; runaway counts replicate-cells left blank (of 5 x 733)."
+#| tbl-cap: "Domain median of the pooled plug-ins (ranges in km and days), the range over replicates of the domain medians of their own plug-ins, the median over cells of the coefficient of variation of the ten replicates' plug-ins, and the number of blank replicate-cells (of 10 x 733)."
 
 t = ns.cov_summary(REPS)
 t["layer"] = t.layer.map(LAYER_LAB)
@@ -65,15 +80,46 @@ t["parameter"] = t.parameter.map(PAR_LAB)
 display(Markdown(t.round(3).to_markdown(index=False)))
 ```
 
-## Maps
+## Pooled plug-ins
+
+```{python}
+#| label: fig-cov-pooled
+#| echo: false
+#| output: asis
+
+_layer_par_tabs(lambda l, p: ns.plot_cov(REPS, l, p, pooled="only", nc=1))
+```
+
+## Replicates
+
+Each replicate's plug-ins beside the pooled ones, on one colour scale per parameter.
 
 ```{python}
 #| label: fig-cov
 #| echo: false
 #| output: asis
 
-_tabs([(LAYER_LAB[l], lambda l=l: _tabs([(PAR_LAB[p], lambda p=p: _show_fig(ns.plot_cov(REPS, l, p)))
-                                           for p in ns.COV_PARAMS])) for l in ns.LAYER_NAMES])
+_layer_par_tabs(lambda l, p: ns.plot_cov(REPS, l, p, nc=4))
+```
+
+## Exact likelihood versus the Vecchia approximation
+
+The earlier fits of replicates 0--4 used the Vecchia approximation (GpGp, `exponential_scaledim`, 30 neighbours) on
+$\pm 45$-day windows centred on the 15th of January, April, July and October. Against the exact fits of the same five
+replicates, the exact temporal range is 0.81 and 0.72 times the approximate one in the two layers and the exact
+spatial ranges 1.09--1.15 times (cell medians). The windows also changed between the two (calendar seasons now), so
+this ratio combines both effects; on 30 identical windows the approximation alone gave exact/approximate ratios of
+0.83 for $\theta_t$ and about 1.05 for the spatial ranges.
+
+```{python}
+#| label: tbl-gpgp
+#| echo: false
+#| tbl-cap: "Domain medians of the pooled plug-ins of replicates 0-4 from the exact and Vecchia (GpGp) fits (ranges in km and days), and the median over cells of their ratio exact/GpGp."
+
+t = ns.cov_vs_gpgp(REPS[:5])
+t["layer"] = t.layer.map(LAYER_LAB)
+t["parameter"] = t.parameter.map(PAR_LAB)
+display(Markdown(t.round(3).to_markdown(index=False)))
 ```
 
 ## Comparison with Sukianto, Kuusela et al.
@@ -92,6 +138,5 @@ construction in level, and only its spatial pattern should be compared. Cells ou
 #| echo: false
 #| output: asis
 
-_tabs([(LAYER_LAB[l], lambda l=l: _tabs([(PAR_LAB[p], lambda p=p: _show_fig(ns.plot_cov_kuusela(REPS, l, p)))
-                                           for p in ns.COV_PARAMS])) for l in ns.LAYER_NAMES])
+_layer_par_tabs(lambda l, p: ns.plot_cov_kuusela(REPS, l, p))
 ```

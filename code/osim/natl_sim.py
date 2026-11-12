@@ -751,13 +751,13 @@ def cov_windows(reps, layer, kind=COV_DIR):
                      ignore_index=True)
 
 
-def cov_plugins(reps, layer, km=False):
+def cov_plugins(reps, layer, km=False, kind=COV_DIR, cols=COV_PARAMS):
     """Plug-ins per 2 deg cell: each replicate's median over seasons, and "pooled", the median over all window fits
     of all `reps` (seasons x replicates); runaway values (beyond RUNAWAY, in deg) set to NaN; `km` converts the ranges
     at the cell-centre latitude."""
-    w = cov_windows(reps, layer)
-    d = pd.concat([w.groupby(["rep", "lat", "lon"])[list(COV_PARAMS)].median().reset_index(),
-                   w.groupby(["lat", "lon"])[list(COV_PARAMS)].median().reset_index().assign(rep="pooled")])
+    w = cov_windows(reps, layer, kind)
+    d = pd.concat([w.groupby(["rep", "lat", "lon"])[list(cols)].median().reset_index(),
+                   w.groupby(["lat", "lon"])[list(cols)].median().reset_index().assign(rep="pooled")])
     for p, ub in RUNAWAY.items():
         d[p] = d[p].where(d[p] <= ub)
     if km:
@@ -819,15 +819,15 @@ def plot_cov_maps(panels, par, nc=3):
     return fig
 
 
-def plot_cov(reps, layer, par):
-    """One map per replicate (median over seasons) and the pooled median; runaway cells blank."""
+def plot_cov(reps, layer, par, pooled=True, nc=3):
+    """One map per replicate (median over seasons) and/or the pooled median; runaway cells blank."""
     d = cov_plugins(reps, layer, km=True)
     def title(src, g):
         nb = int(g[par].isna().sum())
-        return (("pooled (5 replicates x 4 seasons)" if src == "pooled" else f"replicate {src}")
+        return ((f"pooled ({len(reps)} replicates x 4 seasons)" if src == "pooled" else f"replicate {src}")
                 + (f", {nb} runaway cells blank" if nb else ""))
-    return plot_cov_maps([(title(src, g), g) for src in [*reps, "pooled"] for g in [d[d.rep.astype(str) == str(src)]]],
-                         par)
+    srcs = ([*reps] if pooled != "only" else []) + (["pooled"] if pooled else [])
+    return plot_cov_maps([(title(src, g), g) for src in srcs for g in [d[d.rep.astype(str) == str(src)]]], par, nc)
 
 
 def plot_cov_kuusela(reps, layer, par):
@@ -841,18 +841,45 @@ def plot_cov_kuusela(reps, layer, par):
 
 
 def cov_summary(reps):
-    """Per layer and parameter: the domain median of each replicate's plug-ins and of the pooled ones, the median
-    over cells of the between-replicate coefficient of variation, and the count of runaway cells."""
+    """Per layer and parameter: the domain median of the pooled plug-ins, the range over replicates of the domain
+    medians of their own plug-ins, the median over cells of the between-replicate coefficient of variation, and the
+    count of blank (unfitted or runaway) replicate-cells."""
     rows = []
     for layer in LAYER_NAMES:
         d = cov_plugins(reps, layer, km=True)
         r = d[d.rep != "pooled"]
         for p in COV_PARAMS:
             g = r.groupby(["lat", "lon"])[p]
-            rows.append(dict(layer=layer, parameter=p, **{f"r{k}": v for k, v in r.groupby("rep")[p].median().items()},
-                             pooled=d.loc[d.rep == "pooled", p].median(), cv_between=(g.std() / g.mean()).median(),
-                             runaway=int(r[p].isna().sum())))
+            m = r.groupby("rep")[p].median()
+            rows.append(dict(layer=layer, parameter=p, pooled=d.loc[d.rep == "pooled", p].median(), rep_min=m.min(),
+                             rep_max=m.max(), cv_between=(g.std() / g.mean()).median(), blank=int(r[p].isna().sum())))
     return pd.DataFrame(rows)
+
+
+def cov_vs_gpgp(reps):
+    """Exact vs Vecchia (GpGp, +/-45 d windows) pooled plug-ins of the same replicates: domain medians and the median
+    over cells of the ratio exact/GpGp."""
+    rows = []
+    for layer in LAYER_NAMES:
+        e, g = (x[x.rep == "pooled"].set_index(["lat", "lon"])[list(COV_PARAMS)]
+                for x in (cov_plugins(reps, layer, km=True), cov_plugins(reps, layer, km=True, kind="cov")))
+        for p in COV_PARAMS:
+            rows.append(dict(layer=layer, parameter=p, exact=e[p].median(), gpgp=g[p].median(),
+                             ratio=(e[p] / g[p]).median()))
+    return pd.DataFrame(rows)
+
+
+def covpool(reps):
+    """Pooled plug-ins for kriging (median over the window fits of `reps`), in the krige_plugin column layout."""
+    for layer in LAYER_NAMES:
+        w = cov_windows(reps, layer)
+        g = w.dropna(subset=[*COV_PARAMS, "nugget_ratio"]).groupby(["lat", "lon"])
+        d = g[[*COV_PARAMS, "nugget_ratio"]].median().join(g.size().rename("n_fits")).reset_index()
+        d.assign(box="natl", nugget=d.nugget_ratio * d.phi).to_csv(cov_pooled_path(layer, reps), index=False)
+
+
+def cov_pooled_path(layer, reps):
+    return os.path.join(OUT, f"cov_pooled_{layer}_r{min(reps)}-{max(reps)}.csv")
 
 
 def gpgp_pilot(n_windows=20):  # GpGp +/-45 d windows (superseded by exact fits)
@@ -983,7 +1010,7 @@ def estimate_layer(rep, layer, maps, pf, fl, tr):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["design", "advect", "profiles", "select", "gpgp_pilot", "cov_exact_test", "uniform", "stationary", "covfit", "covgather", "quadrature", "fields", "oracle_prepare", "sample", "qpoints", "map",
+    ap.add_argument("cmd", choices=["design", "advect", "profiles", "select", "gpgp_pilot", "cov_exact_test", "uniform", "stationary", "covfit", "covgather", "covpool", "quadrature", "fields", "oracle_prepare", "sample", "qpoints", "map",
                                     "estimate"])
     ap.add_argument("--rep", type=int, default=int(os.environ.get("SLURM_ARRAY_TASK_ID", 0)))
     ap.add_argument("--reps", help="first,last (inclusive): sample/qpoints chunk; q-hat's evaluation reps")
@@ -996,7 +1023,7 @@ if __name__ == "__main__":
     layers = a.layer or LAYER_NAMES
     {"design": design, "fields": fields, "oracle_prepare": lambda: [oracle_prepare(l) for l in layers], "advect": lambda: advect(a.rep, a.dt_hours, "" if a.dt_hours == 1 else f"_dt{a.dt_hours}"),
      "profiles": lambda: [profiles(r) for r in rr], "select": lambda: [select(r) for r in rr], "gpgp_pilot": gpgp_pilot, "cov_exact_test": cov_exact_test, "uniform": uniform_sampling, "stationary": stationary_sampling,
-     "covfit": lambda: covfit(list(rr), a.rep), "covgather": lambda: [covgather(r) for r in rr],
+     "covfit": lambda: covfit(list(rr), a.rep), "covgather": lambda: [covgather(r) for r in rr], "covpool": lambda: covpool(list(rr)),
      "quadrature": quadrature, "sample": lambda: sample(rr), "qpoints": lambda: q_points(rr, range(a.all_reps)),
      "map": lambda: [run_map(a.rep, l, a.year and list(pd.date_range(f"{a.year}-01", f"{a.year}-12", freq="MS")))
                      for l in layers], "estimate": lambda: estimate(a.rep)}[a.cmd]()
