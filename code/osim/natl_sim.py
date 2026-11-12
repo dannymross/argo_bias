@@ -791,23 +791,22 @@ def kuusela_plugins(layer, km=False):
 
 
 def plot_cov_maps(panels, par, nc=3):
-    """Maps of one parameter on the 2 deg grid, one per (title, frame) in `panels`, on one blue-green-red colour
-    scale spanning all non-NaN values; NaN (runaway or missing) cells left blank."""
+    """Maps of one parameter on the 2 deg grid, one per (title, frame) in `panels`, drawn on the native grid and
+    clipped to the domain, on one viridis colour scale spanning all non-NaN values; NaN (runaway or missing) cells
+    left blank."""
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
     import matplotlib.pyplot as plt
-    from matplotlib.colors import LinearSegmentedColormap
     la, lo, m, _ = domain()
-    cmap = LinearSegmentedColormap.from_list("bgr", ["#2b5fd9", "#2ca25f", "#d7301f"])
     nr = -(-len(panels) // nc)
     fig, ax = plt.subplots(nr, nc, figsize=(4.4 * nc, 3.5 * nr), squeeze=False,
                            subplot_kw=dict(projection=ccrs.PlateCarree()), layout="constrained")
     v = pd.concat([d[par] for _, d in panels])
     for a, (title, d) in zip(ax.flat, panels):
-        g = d.pivot(index="lat", columns="lon", values=par)
-        lat_e = np.r_[g.index.values - 1, g.index.values[-1] + 1]
-        lon_e = np.r_[g.columns.values - 1, g.columns.values[-1] + 1]
-        pc = a.pcolormesh(lon_e, lat_e, g.values, vmin=v.min(), vmax=v.max(), cmap=cmap, transform=ccrs.PlateCarree())
+        g = d.pivot(index="lat", columns="lon", values=par).reindex(index=2 * np.floor(la / 2) + 1,
+                                                                    columns=2 * np.floor(lo / 2) + 1)
+        pc = a.pcolormesh(lo, la, np.where(m, g.values, np.nan), shading="nearest", vmin=v.min(), vmax=v.max(),
+                          cmap="viridis", rasterized=True, transform=ccrs.PlateCarree())
         a.contour(lo, la, m.astype(float), levels=[0.5], colors="k", linewidths=0.6, transform=ccrs.PlateCarree())
         a.add_feature(cfeature.LAND, facecolor="0.85", zorder=2)
         a.coastlines(lw=0.4, zorder=3)
