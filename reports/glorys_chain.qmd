@@ -55,10 +55,6 @@ SPS = nr.spatial_summary(SPD)
 COV = nr.coverage(E)
 REM = nr.quadrature_remainder()
 NR, REPS = E.rep.nunique(), sorted(E.rep.unique())
-C = nr.crosshalf()
-CH = nr.rep_summary(C[(C.source == "profiles") & (C.sig_days == 30)], ["group", "layer", "sig_deg"])
-B_REAL, B_SE = nr.realized_naive([2016, 2020, 2024])
-IMP = nr.qhat_metrics("").query("source == 'daily'")
 ```
 
 GLORYS12 is the true ocean: its velocity field moves the virtual floats and its daily OHC is the field they
@@ -192,84 +188,31 @@ correction. Two choices matter:
   half a kernel sd per axis; the resulting discretization error is a heuristic not bounded here, and is absorbed in
   the bandwidth diagnostics below, which use the same implementation.
 
-The bandwidth diagnostics below use 2016, 2020 and 2024. The implied bias uses $\hat q$ from all 200 replicates;
-the precision, positivity and Hájek diagnostics use a cross-half split instead of leave-one-replicate-out
-(replicates 0--99 weighted by $\hat q$ from 100--199 and vice versa).
+## Bandwidth
 
-## Bandwidth: what smoothing keeps
-
-Replacing $q$ by its smoothed estimate in the bias identity gives the **implied bias**
-$B_y(\sigma)=\int Z\hat q_\sigma\,d\nu_y/\int\hat q_\sigma\,d\nu_y-\theta_y$. Since the kernel is symmetric,
-$\int Z\,(K_\sigma * q)\,d\nu=\int (K_\sigma*Z)\,q\,d\nu$ away from the boundary, so $B_y(\sigma)$ also measures how
-much of the bias survives smoothing $Z$ at scale $\sigma$.
-
-```{python}
-#| label: fig-implied-bias
-#| echo: false
-#| fig-cap: "Implied bias of the total (mean over 2016, 2020, 2024) against the spatial kernel sd, temporal sd 30 days, from the alive daily float positions. Grey: realized sample-mean bias of the same years +/- 2 Monte Carlo se."
-
-_show_fig(nr.plot_implied_bias())
-```
-
-The domain-restricted $B(\sigma)$ equals the realized bias
-(`{python} f3(B_REAL)` $\pm$ `{python} f3(B_SE)`) from $1/12^\circ$ to $1^\circ$ (as it does at $\sigma_t$ of 2, 5 and 10 d), and decays
-beyond: about $0.25$ at $2^\circ$ and $0.15$ at $5^\circ$. The covariance that creates the bias therefore lives at
-scales of roughly $1^\circ$--$5^\circ$: smoothing $q$ below $1^\circ$ loses none of it. Floats do not preferentially
-sample OHC's mesoscale anomalies; their net effect is a smooth tilt toward warm water. The mesoscale is the same in
-every replicate (one flow), so if floats systematically collected in particular eddies, $q$ would carry that
-structure and the narrow kernels would show it.
-
-## Bandwidth: what smoothing costs
-
-The maps are on the scale of the domain-mean intensity
+The maps below are for 2020, with $\hat q$ from the profile positions of all 200 replicates. The maps are on the scale of the domain-mean intensity
 $\bar q_y=\int q\,d\mathbb P_y=\Lambda(D\times T_y)/\nu_y(D\times T_y)$, estimated by the mean in-domain profile
 count per replicate divided by $\nu_y(D\times T_y)$, the domain area times the days in the year. $\bar q_y$ is about
-$1.3\times10^{-6}$ profiles km$^{-2}$ day$^{-1}$ per replicate in the diagnostic years, about $4.6$ profiles per
+$1.3\times10^{-6}$ profiles km$^{-2}$ day$^{-1}$ per replicate in 2020, about $4.6$ profiles per
 year in a $1^\circ$ cell of $10^4$ km$^2$. Each panel shows the annual mean
 $|T_y|^{-1}\int_{T_y}\hat q(s,t)\,dt\,/\,\bar q_y$ of the estimated weight $\hat w=\hat q/\bar q_y$: at $1$ a
 location is sampled at the domain-average rate, at $2$ it receives twice as many profiles per km$^2$ per day, and
-the sample mean over-weights it relative to $\mathbb P_y$ by that factor. The ratio is unit-free, so daily positions,
-which count each float every day ($10\times$ the profile intensity), give the same scale as profiles.
+the sample mean over-weights it relative to $\mathbb P_y$ by that factor.
 
 ```{python}
 #| label: fig-qhat-maps
 #| echo: false
-#| fig-cap: "Annual-mean q-hat / q-bar in 2020 from alive daily positions at six kernel sds (log scale, red above and blue below the domain mean)."
+#| fig-cap: "Annual-mean q-hat / q-bar in 2020 from the profile positions of all 200 replicates at six kernel sds (log scale, red above and blue below the domain mean). Bold: the kernels used by DR, 1 deg and 30 days for 15-700 m and 1/3 deg and 5 days for 700-2000 m."
 
 _show_fig(nr.plot_qhat_maps())
 ```
 
-Narrow kernels give noisy $\hat q$, with held-out zeros and heavy weights; from about $1/3^\circ$ the weights are
-mild (no zeros, ESS above $0.9$). Daily positions estimate $10\times$ the profile intensity (uniform cycle phase), and
-they reduce noise only for $\sigma_t$ under about $5$ d. At $\sigma_t\ge5$ d the two sources agree, so profile
-positions suffice.
-
-## Bandwidth: Hájek bias and RMSE
-
-The Hájek estimator $\hat\theta^{\mathrm H}_y=\sum_i Z(x_i)/\hat q(x_i)\,\big/\sum_i 1/\hat q(x_i)$ [@hajek1971] uses
-the cross-half $\hat q$ from profile positions. The unnormalized Horvitz--Thompson estimator is not shown: its SD is
-about $1.5$ GJ m$^{-2}$, the 3% replicate-to-replicate variation in profile count times the OHC level, which the
-Hájek normalization cancels.
-
-```{python}
-#| label: fig-hajek
-#| echo: false
-#| output: asis
-
-_tabs([(nr.LAYER_LAB[l], lambda l=l: _show_fig(nr.plot_hajek_bandwidth(C, l))) for l in nr.LAYERS])
-```
-
-Narrow kernels under-correct, with heavy weights pushing the bias negative and the SD up; wide kernels lose the
-bias-relevant structure. At $\sigma=(1^\circ, 30\text{ d})$ Hájek's bias is
-`{python} f3(CH.loc[('hajek', 'total', 1.0), 'bias'])` $\pm$ `{python} f3(CH.loc[('hajek', 'total', 1.0), 'mc_se'])`
-against the sample mean's `{python} f3(CH.loc[('naive', 'total', 1.0), 'bias'])`. But its SD rises, so RMSE falls
-only from `{python} f3(CH.loc[('naive', 'total', 1.0), 'rmse'])` to `{python} f3(CH.loc[('hajek', 'total', 1.0), 'rmse'])`:
-reweighting cannot remove fleet-clustering variance. In 700--2000 m, where the bias is small, Hájek's RMSE is
-slightly worse than the sample mean's.
-
-**Choice for Hájek.** $\sigma=(1^\circ, 30\text{ d})$ from in-domain profile positions, leave-one-replicate-out.
-It uses only float positions and the sample-mean and Hájek errors. DR weights a different quantity, the map's
-residuals, and its kernels are chosen separately below.
+Narrow kernels resolve the intensity's structure along the boundary currents and the $2000$ m edge, at the cost of
+noisier weights; wide ones keep only the basin-scale tilt toward the subtropical gyre. The kernel is chosen on the
+errors of the estimator that uses it. The Hájek estimator
+$\hat\theta^{\mathrm H}_y=\sum_i Z(x_i)/\hat q(x_i)\,\big/\sum_i 1/\hat q(x_i)$ [@hajek1971], shown in the
+results, uses the same kernels as DR (Kernel for DR, below): $(1^\circ,30\text{ d})$ in 15--700 m and
+$(1/3^\circ,5\text{ d})$ in 700--2000 m.
 
 # Mapping and cross-fit DR
 
@@ -479,8 +422,12 @@ $2000$ m edge, `{python} f"{SPS.loc['edge_area', 'ohc_700_2000']:.0%}"` of the a
 half from the narrower spatial one. The weights differ little between the two kernels at the $1^\circ$ scale, so
 what the narrower kernel corrects is sampling structure within cells and within the month.
 
-By year, the same two quantities at the production kernels, on one colour scale per layer and quantity: the mean
-residual at the profiles (where the map errs, descriptive as above) and DR's correction per unit area.
+By year, at the production kernels and on one colour scale per layer and quantity: the mean residual at the
+profiles (where the map errs, descriptive as above), DR's correction per unit area, and the reweighting effect, the
+correction minus the residual. The correction is $r_j$ times the $1/\hat q$-weighted mean residual of the cell, and
+$r_j$ stays within about 10% of 1, so the correction maps look like the residual maps. What DR adds is the
+reweighting effect: small per cell, but its area-weighted sum is exactly the difference between DR's correction and
+the plain area-weighted average of the residuals.
 
 ```{python}
 #| label: fig-year-maps
@@ -489,7 +436,8 @@ residual at the profiles (where the map errs, descriptive as above) and DR's cor
 
 SPY = nr.spatial_diag_year()
 _tabs([(nr.LAYER_LAB[l], lambda l=l: _tabs([(t, lambda k=k: _show_fig(nr.plot_spatial_years(SPY, l, k)))
-                                            for k, t in (("residual", "Residual"), ("dr", "DR correction"))]))
+                                            for k, t in (("residual", "Residual"), ("dr", "DR correction"),
+                                                         ("reweight", "Reweighting effect"))]))
        for l in ns.LAYER_NAMES])
 ```
 
@@ -499,8 +447,10 @@ _tabs([(nr.LAYER_LAB[l], lambda l=l: _tabs([(t, lambda k=k: _show_fig(nr.plot_sp
   in 15--700 m. The same floats held at their deployment positions are unbiased, so the bias is created by advection.
 * The sample mean's error is dominated by fleet-clustering variance, about six times the i.i.d. SD, which
   reweighting cannot remove.
-* The bias lives in the large-scale ($\ge1^\circ$) component of the sampling intensity. A smooth, simulation-estimated
-  $\hat q$ at $1^\circ$ removes it in a Hájek estimator; finer kernels add noise, coarser ones lose bias.
+* Weighting the sample mean by a simulation-estimated $1/\hat q$ (Hájek) moves its 2015--2025 bias in 15--2000 m
+  from `{python} f3(SE.loc[('naive', 'total'), 'bias'])` to `{python} f3(SE.loc[('hajek', 'total'), 'bias'])`
+  $\pm$ `{python} f3(SE.loc[('hajek', 'total'), 'mc_se'])` GJ m$^{-2}$ but leaves the clustering variance: its RMSE is
+  `{python} f3(SE.loc[('hajek', 'total'), 'rmse'])` against `{python} f3(SE.loc[('naive', 'total'), 'rmse'])`.
 * The mapped estimators reduce RMSE by an order of magnitude. The map keeps a bias of a few hundredths of a
   GJ m$^{-2}$, larger than the quadrature remainder; in 15--700 m it comes from the kriged anomalies, mostly in the
   Gulf Stream region.

@@ -405,10 +405,11 @@ def q_dir(sig=QSIG):
     return os.path.join(OUT, f"q_s{sig[0]:g}_t{sig[1]:g}")
 
 
-def q_points(reps, all_reps=range(200), sigs=(QSIG,)):
+def q_points(reps, all_reps=range(200), sigs=(QSIG,), map_year=None):
     """Leave-one-replicate-out q-hat (in-domain profiles per km2 per day per replicate) at the in-domain
     analysis-year profiles of `reps`, from the in-domain profile positions of `all_reps`: Gaussian kernel on the
-    native grid block-summed as qhat_diag, edge-corrected by the kernel mass over the domain x [T0, T1]."""
+    native grid block-summed as qhat_diag, edge-corrected by the kernel mass over the domain x [T0, T1].
+    map_year: also save the annual mean of the all-replicate q-hat / q-bar in that year per sd (OUT/qhat_maps)."""
     from scipy import ndimage
     from osim import qhat_diag as qd
     lat, lon, _, A = qd.grid()
@@ -425,7 +426,8 @@ def q_points(reps, all_reps=range(200), sigs=(QSIG,)):
     for sig in sigs:
         out = q_dir(sig)
         os.makedirs(out, exist_ok=True)
-        with costlog.step(COSTS, "q_points", rep=f"{min(reps)}-{max(reps)} s{sig[0]:g}_t{sig[1]:g}", n=int(ev.sum())):
+        with costlog.step(COSTS, "q_points", rep=f"{min(reps, default='')}-{max(reps, default='')} s{sig[0]:g}_t{sig[1]:g}",
+                          n=int(ev.sum())):
             fs, ft = max(1, round(sig[0] / dx / 2)), max(1, int(sig[1] / 2 + 1e-6))
             pad = -(-int(TRUNC * sig[1] + 1) // ft) * ft
             ta, nt = d0 - pad, -(-(d1 - d0 + 2 * pad) // ft)
@@ -439,6 +441,20 @@ def q_points(reps, all_reps=range(200), sigs=(QSIG,)):
             shape = (nt, *asup.shape)
             cnt = lambda g: qd.counts(g.day.to_numpy(), g.i.to_numpy(), g.j.to_numpy(), ta, ft, fs, shape)
             S = f(cnt(P))
+            if map_year:
+                ya = (pd.Timestamp(f"{map_year}-01-01") - T0).days
+                ny_ = pd.Timestamp(f"{map_year}-12-31").dayofyear
+                kb = np.flatnonzero((ta + np.arange(nt) * ft >= ya) & (ta + np.arange(nt) * ft < ya + ny_))
+                ok = (asup > 0) & (aden > 0)
+                qa = np.where(ok, (S[kb] / tden[kb, None, None]).mean(0) / (R * np.where(ok, aden, 1)), np.nan)
+                qa /= np.nansum(qa * asup) / asup[ok].sum()
+                c = lambda x, n: x[: n * fs].reshape(n, fs).mean(1) if len(x) >= n * fs else np.r_[x, x[-1] + dx * np.arange(1, n * fs - len(x) + 1)].reshape(n, fs).mean(1)
+                tag = f"s{sig[0]:g}_t{sig[1]:g}"
+                mp = os.path.join(OUT, "qhat_maps", f"maps_{map_year}.npz")
+                os.makedirs(os.path.dirname(mp), exist_ok=True)
+                old = dict(np.load(mp)) if os.path.exists(mp) else {}
+                np.savez_compressed(mp, **old, **{tag: qa.astype(np.float32), f"lat_{tag}": c(lat, qa.shape[0]),
+                                                  f"lon_{tag}": c(lon, qa.shape[1])})
             for r, g in P[ev].groupby("rep"):
                 k = (np.floor((g.day.to_numpy() - ta) / ft).astype(np.int64), g.i.to_numpy() // fs, g.j.to_numpy() // fs)
                 q = ((S - f(cnt(P[P.rep == r])))[k] / ((R - 1) * tden[k[0]] * aden[k[1], k[2]])).astype(np.float32)
@@ -1104,7 +1120,7 @@ def estimate_layer(rep, layer, maps, pf, fl, tr, sig=QSIG, jk=None):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["design", "advect", "profiles", "select", "gpgp_pilot", "cov_exact_test", "uniform", "stationary", "covfit", "covgather", "covpool", "estimate_layers", "spatial_diag", "quadrature", "fields", "oracle_prepare", "sample", "qpoints", "map",
-                                    "estimate", "estimate_layers", "spatial_diag"])
+                                    "estimate", "estimate_layers", "spatial_diag", "qmaps"])
     ap.add_argument("--rep", type=int, default=int(os.environ.get("SLURM_ARRAY_TASK_ID", 0)))
     ap.add_argument("--reps", help="first,last (inclusive): sample/qpoints chunk; q-hat's evaluation reps")
     ap.add_argument("--all-reps", type=int, help="qpoints: q-hat from replicates 0..N-1")
@@ -1120,6 +1136,7 @@ if __name__ == "__main__":
      "profiles": lambda: [profiles(r) for r in rr], "select": lambda: [select(r) for r in rr], "gpgp_pilot": gpgp_pilot, "cov_exact_test": cov_exact_test, "uniform": uniform_sampling, "stationary": stationary_sampling,
      "covfit": lambda: covfit(list(rr), a.rep), "covgather": lambda: [covgather(r) for r in rr], "covpool": lambda: covpool(list(rr)),
      "quadrature": quadrature, "sample": lambda: sample(rr), "qpoints": lambda: q_points(rr, range(a.all_reps or 200), sigs),
+     "qmaps": lambda: q_points([], range(a.all_reps or 200), sigs, map_year=a.year or 2020),
      "map": lambda: [run_map(a.rep, l, a.year and list(pd.date_range(f"{a.year}-01", f"{a.year}-12", freq="MS")))
                      for l in layers], "estimate_layers": lambda: [estimate_layers(r) for r in rr if os.path.exists(os.path.join(map_path(r), "folds.parquet"))],
      "spatial_diag": lambda: (spatial_diag(list(rr)), spatial_diag(list(rr), out=os.path.join(OUT, "spatial_diag_year.csv"), by_year=True)), "estimate": lambda: [estimate(r, g) for g in sigs for r in rr if os.path.exists(os.path.join(map_path(r), "folds.parquet"))]}[a.cmd]()

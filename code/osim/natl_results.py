@@ -150,15 +150,17 @@ def spatial_diag_year():
 
 
 def plot_spatial_years(dy, layer, kind):
-    """One map per year, common scale: kind "residual" the mean held-out residual at the profiles, "dr" DR's
-    correction per unit area, both at the production kernels."""
+    """One map per year, common scale, at the production kernels: kind "residual" the mean held-out residual at the
+    profiles, "dr" DR's correction per unit area, "reweight" their difference (its area-weighted sum is how far the
+    1/q-hat weighting moves the correction from the plain residual average)."""
     prod = ",".join(f"{ns.QSIG_LAYER[l][0]:g}/{ns.QSIG_LAYER[l][1]:g}" for l in ns.LAYER_NAMES)
     g = dy[(dy.layer == layer) & (dy.kernel == prod)]
-    v = g.e_mean if kind == "residual" else g.c_share / g.area_share
+    v = {"residual": g.e_mean, "dr": g.c_share / g.area_share, "reweight": g.c_share / g.area_share - g.e_mean}[kind]
     w = g.assign(v=v).pivot_table(index=["lat", "lon"], columns="year", values="v")
     vmax = np.nanquantile(np.abs(w.to_numpy()), 0.98)
     w.columns = [f"y{c}" for c in w.columns]
-    lab = "residual Z - map (GJ/m2)" if kind == "residual" else "DR correction (GJ/m2)"
+    lab = {"residual": "residual Z - map (GJ/m2)", "dr": "DR correction (GJ/m2)",
+           "reweight": "correction - residual (GJ/m2)"}[kind]
     return plot_cell_maps(w.reset_index(), [(c, c[1:], vmax, lab) for c in w.columns], ncol=4, one_cbar=True)
 
 
@@ -369,31 +371,32 @@ def plot_hajek_bandwidth(C, layer, source="profiles"):
     return fig
 
 
-def plot_qhat_maps(year=2020):
-    """Annual-mean q-hat / q-bar (daily positions) at several kernel sds, on one log colour scale."""
+QMAP_SIGS = [(0.3333, 5.0), (0.5, 5.0), (1.0, 5.0), (1.0, 30.0), (2.0, 30.0), (5.0, 30.0)]
+
+
+def plot_qhat_maps(year=2020, sigs=QMAP_SIGS):
+    """Annual-mean all-replicate q-hat / q-bar from profile positions (natl_sim qmaps) at several kernel sds, on the
+    native grid masked to the domain, one log colour scale; the production DR kernels are labelled."""
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
     from matplotlib.colors import LogNorm
     la, lo, m, _ = ns.domain()
-    panels = []
-    for kind in ("", "wide"):
-        z = np.load(os.path.join(ns.OUT, DIAG[kind], f"maps_{year}.npz"))
-        for k in [k for k in z.files if not k.startswith(("lat", "lon"))]:
-            s = k.split("_")[0][1:]
-            panels.append((k, z[f"lon_s{s}"], z[f"lat_s{s}"], z[k]))
+    z = np.load(os.path.join(ns.OUT, "qhat_maps", f"maps_{year}.npz"))
+    used = {v: k for k, v in ns.QSIG_LAYER.items()}
     fig, ax = plt.subplots(2, 3, figsize=(13.2, 7), squeeze=False, subplot_kw=dict(projection=ccrs.PlateCarree()),
                            layout="constrained")
-    for a, (k, x, y, q) in zip(ax.flat, panels):
-        s, t = k[1:].split("_t")
+    for a, sg in zip(ax.flat, sigs):
+        t = f"s{sg[0]:g}_t{sg[1]:g}"
+        q, y, x = z[t], z[f"lat_{t}"], z[f"lon_{t}"]
         q = q[np.abs(la[:, None] - y).argmin(1)][:, np.abs(lo[:, None] - x).argmin(1)]
         pc = a.pcolormesh(lo, la, np.where(m & (q > 0), q, np.nan), shading="nearest", norm=LogNorm(0.5, 2),
                           cmap="RdBu_r", rasterized=True, transform=ccrs.PlateCarree())
         a.add_feature(cfeature.LAND, facecolor="0.85", zorder=2)
         a.coastlines(lw=0.4, zorder=3)
         a.set_extent([lo.min(), lo.max(), ns.SOUTH, la.max()], crs=ccrs.PlateCarree())
-        a.set_title(f"sd {float(s):.3g} deg, {t} d", fontsize=9)
-    for a in ax.flat[len(panels):]:
-        a.set_visible(False)
+        lab = f" (DR, {LAYER_LAB[used[sg]]})" if sg in used else ""
+        a.set_title(f"sd {'1/3' if sg[0] < 0.34 else f'{sg[0]:g}'} deg, {sg[1]:g} d{lab}", fontsize=9,
+                    fontweight="bold" if lab else "normal")
     fig.colorbar(pc, ax=ax, shrink=0.6).set_label(f"q-hat / q-bar, {year} mean")
     return fig
 
