@@ -179,9 +179,10 @@ correction. Two choices matter:
 * **Domain restriction.** Only in-domain profiles enter, and the edge correction integrates over $D$ only. Profile
   density drops by a factor of 2--5 across the $2000$ m boundary, because floats parked at $1000$ m rarely reach
   shallower water. An estimator using all ocean profiles and ocean area smooths that drop into $D$, under-weights
-  its cold boundary strip, and is biased even at a $1/12^\circ$ kernel (@fig-implied-bias, dotted).
+  its cold boundary strip, and is biased even at a $1/12^\circ$ kernel (an implied bias of 0.38--0.47 against the
+  realized 0.29 GJ m$^{-2}$).
 * **Grid implementation.** Counts and the edge-correction mass are block-summed from the native $1/12^\circ$ daily
-  grid into blocks of $\lfloor\sigma_s/(2\cdot\tfrac1{12})\rfloor$ cells and $\lfloor\sigma_t/2\rfloor$ days, filtered
+  grid into blocks of $\sigma_s/(2\cdot\tfrac1{12})$ cells (rounded) and $\lfloor\sigma_t/2\rfloor$ days, filtered
   by separable Gaussian filters, and $\hat q$ is read at the block containing each profile. The block size is at most
   half a kernel sd per axis; the resulting discretization error is a heuristic not bounded here, and is absorbed in
   the bandwidth diagnostics below, which use the same implementation.
@@ -214,6 +215,16 @@ every replicate (one flow), so if floats systematically collected in particular 
 structure and the narrow kernels would show it.
 
 ## Bandwidth: what smoothing costs
+
+The maps are on the scale of the domain-mean intensity
+$\bar q_y=\int q\,d\mathbb P_y=\Lambda(D\times T_y)/\nu_y(D\times T_y)$, estimated by the mean in-domain profile
+count per replicate divided by $\nu_y(D\times T_y)$, the domain area times the days in the year. $\bar q_y$ is about
+$1.3\times10^{-6}$ profiles km$^{-2}$ day$^{-1}$ per replicate in the diagnostic years, about $4.6$ profiles per
+year in a $1^\circ$ cell of $10^4$ km$^2$. Each panel shows the annual mean
+$|T_y|^{-1}\int_{T_y}\hat q(s,t)\,dt\,/\,\bar q_y$ of the estimated weight $\hat w=\hat q/\bar q_y$: at $1$ a
+location is sampled at the domain-average rate, at $2$ it receives twice as many profiles per km$^2$ per day, and
+the sample mean over-weights it relative to $\mathbb P_y$ by that factor. The ratio is unit-free, so daily positions,
+which count each float every day ($10\times$ the profile intensity), give the same scale as profiles.
 
 ```{python}
 #| label: fig-qhat-maps
@@ -288,9 +299,17 @@ Q_y(g)=\sum_{m\in y}\frac{d_m}{D_y}\sum_j\frac{a_j}{\sum_{j'}a_{j'}}\,g\bigl(c_j
 $$
 
 with $j$ over the $1^\circ$ cells, $a_j$ the deep area of cell $j$ and $c_j$ its area centroid, and $m$ over months
-with $d_m$ days from $t_m$, $D_y=\sum_m d_m$. The estimand is $\theta_y$, not $Q_y(Z)$, so every map error contains
-the quadrature remainder $Q_y(Z)-\theta_y$, computed exactly from the true field, with $Z$ evaluated off the native
-grid by bilinear interpolation between cell centres and linear interpolation between daily means:
+with $d_m$ days from $t_m$, $D_y=\sum_m d_m$. A map's error splits exactly as
+
+$$
+Q_y(\hat m)-\theta_y=\underbrace{Q_y(\hat m-Z)}_{\text{prediction error at the nodes}}
++\underbrace{Q_y(Z)-\theta_y}_{\text{quadrature remainder}},
+$$
+
+by linearity of $Q_y$. The remainder is what a perfect map, $\hat m=Z$ at every node, would still miss: $Q_y(Z)$
+reads $Z$ at one point per cell-month, while $\theta_y$ averages it over every point and day. It is computed exactly
+from the true field, with $Z$ evaluated off the native grid by bilinear interpolation between cell centres and
+linear interpolation between daily means:
 `{python} f3(REM.loc['total'].min())` to `{python} f3(REM.loc['total'].max())` GJ m$^{-2}$ for the total (mean
 `{python} f3(REM.loc['total'].mean())`). It is the error of the centroid rule on $1^\circ$ cells, whose first-order
 term vanishes at the area centroid; the second-order term follows the curvature of $Z$, which changes sign across
@@ -329,8 +348,17 @@ _tabs([(nr.LAYER_LAB[l], lambda l=l: _show_fig(nr.plot_errors(E, nr.EST_LAB, l, 
 #| echo: false
 #| output: asis
 
-MAPS = {k: nr.EST_LAB[k] for k in ("mean_field", "krige", "dr")}
-_tabs([(nr.LAYER_LAB[l], lambda l=l: _show_fig(nr.plot_by_year(E, MAPS, l, REM))) for l in nr.LAYERS])
+_tabs([(nr.LAYER_LAB[l], lambda l=l: _show_fig(nr.plot_by_year(E, nr.EST_LAB, l, REM, ("naive", "hajek"), (11, 6.5))))
+       for l in nr.LAYERS])
+```
+
+```{python}
+#| label: fig-estimators-rmse
+#| echo: false
+#| output: asis
+
+_tabs([(nr.LAYER_LAB[l], lambda l=l: _show_fig(nr.plot_by_year(E, nr.EST_LAB, l, None, ("naive", "hajek"), (7, 6.5),
+                                                                 ("rmse",)))) for l in nr.LAYERS])
 ```
 
 Mapping changes the picture. The sample mean's 2015--2025 RMSE of
@@ -342,7 +370,11 @@ What is left is small but exceeds the quadrature remainder (mean
 `{python} f3(SE.loc[('krige', 'ohc_15_700'), 'bias'])`, against `{python} f3(SE.loc[('mean_field', 'ohc_15_700'), 'bias'])`
 for the mean field alone, so the kriged anomalies carry a positive bias of their own. DR's correction removes it
 (`{python} f3(SE.loc[('dr', 'ohc_15_700'), 'bias'])`), while in 700--2000 m all three mapped estimators are slightly
-negative (DR `{python} f3(SE.loc[('dr', 'ohc_700_2000'), 'bias'])`). DR's jackknife se is somewhat too small (coverage
+negative (DR `{python} f3(SE.loc[('dr', 'ohc_700_2000'), 'bias'])`). The remainder is the same in every replicate, so it enters bias, not variance, and
+it vanishes as the nodes are refined, leaving the map with the bias of its node predictions. DR is different: $\hat C_k$
+targets $\int(Z-\hat m_{-k})\,d\mathbb P_y$, so its quadrature error is that of the map,
+$Q_y(\hat m_{-k})-\int\hat m_{-k}\,d\mathbb P_y$, not of $Z$. Its 15--700 m bias is of the size of the remainder and
+follows it across years (correlation 0.6), consistent with the map reproducing the large-scale curvature of $Z$. DR's jackknife se is somewhat too small (coverage
 `{python} f2(COV.loc['total', 'coverage'])` of 0.95).
 
 # Summary

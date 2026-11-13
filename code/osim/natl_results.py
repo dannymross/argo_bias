@@ -79,21 +79,41 @@ def year_corr(E, lags=(1, 5)):
     return E.groupby(["group", "layer"])[["rep", "year", "err"]].apply(f)
 
 
-def plot_by_year(E, labels, layer, rem=None):
-    """Bias (+/- 2 Monte Carlo se) and SD over replicates by year, one line per group; `rem` adds Q_y(Z) - theta_y."""
-    fig, ax = plt.subplots(1, 2, figsize=(10, 3.6), layout="constrained")
-    for k, lab in labels.items():
-        g = E[(E.group == k) & (E.layer == layer)].groupby("year").err
-        b, s, n = g.mean(), g.std(), g.size()
-        ax[0].errorbar(b.index, b, 2 * s / np.sqrt(n), marker="o", ms=3, capsize=2, label=lab)
-        ax[1].plot(s.index, s, marker="o", ms=3, label=lab)
-    if rem is not None:
+def plot_by_year(E, labels, layer, rem=None, split=(), figsize=(11, 5), stats=("bias", "sd")):
+    """Per year over replicates: bias (+/- 2 Monte Carlo se), SD and/or RMSE, one column each; the split groups get
+    their own top row, colours as in plot_errors; `rem` adds Q_y(Z) - theta_y to the bottom bias panel."""
+    lab = {"bias": ("bias (GJ/m2)", "bias +/- 2 MC se"), "sd": ("SD (GJ/m2)", "SD over replicates"),
+           "rmse": ("RMSE (GJ/m2)", "RMSE over replicates")}
+    groups = [g for g in ({k: v for k, v in labels.items() if k in split},
+                          {k: v for k, v in labels.items() if k not in split}) if g]
+    fig, ax = plt.subplots(len(groups), len(stats), figsize=figsize, sharex=True, squeeze=False, layout="constrained",
+                           height_ratios=(1, 1.6)[-len(groups):])
+    j = 0
+    for row, grp in zip(ax, groups):
+        for k, name in grp.items():
+            g = E[(E.group == k) & (E.layer == layer)].groupby("year").err
+            v = dict(bias=g.mean(), sd=g.std(), rmse=np.sqrt(g.apply(lambda x: (x ** 2).mean())))
+            for a, st in zip(row, stats):
+                if st == "bias":
+                    a.errorbar(v["bias"].index, v["bias"], 2 * v["sd"] / np.sqrt(g.size()), marker="o", ms=3, capsize=2,
+                               color=f"C{j}", label=name)
+                else:
+                    a.plot(v[st].index, v[st], marker="o", ms=3, color=f"C{j}", label=name)
+            j += 1
+        for a, st in zip(row, stats):
+            a.set(ylabel=lab[st][0])
+            if st == "bias":
+                a.axhline(0, color="#c0392b", lw=0.8)
+            else:
+                a.set_ylim(0, None)
+    if rem is not None and "bias" in stats:
         r = rem.loc[layer]
-        ax[0].plot(r.index, r, "k--", lw=1, label="quadrature remainder")
-    ax[0].axhline(0, color="k", lw=0.6)
-    ax[0].set(ylabel="bias (GJ/m2)", title="bias +/- 2 MC se")
-    ax[1].set(ylabel="SD (GJ/m2)", title="SD over replicates", ylim=(0, None))
-    ax[0].legend(fontsize=8)
+        ax[-1, stats.index("bias")].plot(r.index, r, "k--", lw=1, label="quadrature remainder")
+    for a, st in zip(ax[0], stats):
+        a.set_title(lab[st][1])
+    fig.legend(*zip(*[(h, l) for a in ax[:, 0] for h, l in zip(*a.get_legend_handles_labels())]),
+               loc="outside upper center", ncol=len(labels) + (rem is not None and "bias" in stats), frameon=False,
+               fontsize=9)
     return fig
 
 
