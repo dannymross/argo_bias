@@ -24,9 +24,8 @@ def design_errors():
 
 
 def quadrature_remainder():
-    """Q_y(Z) - theta_y (GJ/m2) per layer and year, with the layer sum as "total"."""
+    """Q_y(Z) - theta_y (GJ/m2) per layer (and "total") and year."""
     q = pd.read_csv(os.path.join(ns.OUT, "quadrature.csv")).assign(rem=lambda x: x.remainder * 1e-9)
-    q = pd.concat([q, q.groupby("year", as_index=False).rem.sum().assign(layer="total")])
     return q.set_index(["layer", "year"]).rem
 
 
@@ -37,6 +36,19 @@ def estimates(sig=ns.QSIG):
     x = e.melt(id_vars=["rep", "layer", "year", "theta", "dr_V", "dr_df", "n"], value_vars=list(EST_LAB),
                var_name="group", value_name="est")
     return x.assign(err=(x.est - x.theta) * 1e-9, se=np.sqrt(x.dr_V) * 1e-9)
+
+
+def dr_bandwidth(sigs, ref=ns.QSIG, group="dr"):
+    """Per kernel sd and layer: bias and mean over years of the MSE over replicates, and the paired difference in
+    yearly MSE from `ref` with its Monte Carlo se (replicates common to all sds)."""
+    E = pd.concat([estimates(g).query("group == @group").assign(sig_deg=g[0], sig_days=g[1]) for g in sigs])
+    E = E[E.groupby("rep").sig_deg.transform("size") == E.groupby("rep").size().max()]
+    se2 = E.assign(se2=E.err ** 2).groupby(["sig_deg", "sig_days", "layer", "rep"])[["err", "se2"]].mean()
+    d = se2.se2 - se2.se2.xs((*ref,), level=["sig_deg", "sig_days"])
+    g = se2.groupby(["sig_deg", "sig_days", "layer"])
+    dg = d.groupby(["sig_deg", "sig_days", "layer"])
+    return pd.DataFrame(dict(R=g.size(), bias=g.err.mean(), mse_year=g.se2.mean(), d_mse=dg.mean(),
+                             d_mse_se=dg.std() / np.sqrt(dg.size())))
 
 
 def rep_summary(E, by=("group", "layer")):
@@ -85,6 +97,17 @@ def plot_by_year(E, labels, layer, rem=None):
     return fig
 
 
+def plot_errors(E, labels, layer, split=(), figsize=(11, 5)):
+    """Box plots over jittered replicate errors per year and for the 2015-2025 mean (chain.plot_errors)."""
+    from osim import chain as ch
+    x = E[(E.layer == layer) & E.group.isin(list(labels))]
+    x = pd.concat([x.assign(year=x.year.astype(str)),
+                   x.groupby(["group", "rep"], as_index=False).err.mean().assign(year="2015-25")])
+    w = x.pivot_table(index=["rep", "year"], columns="group", values="err").mul(1e9).reset_index()
+    years = sorted(w.year.unique(), key=lambda y: (len(y) > 4, y))
+    return ch.plot_errors(w.assign(theta=0.0, box=layer), labels, layer, split, figsize, years)
+
+
 def qhat_metrics(kind=""):
     """qhat_diag metrics averaged over the diagnostic years."""
     m = pd.read_csv(os.path.join(ns.OUT, DIAG[kind], "metrics.csv"))
@@ -98,23 +121,19 @@ def realized_naive(years):
     return m.mean(), m.std() / np.sqrt(len(m))
 
 
-def plot_implied_bias():
-    """Implied naive bias int Z q-hat / int q-hat - theta against the spatial kernel sd, per temporal sd (daily
-    positions), for the domain-restricted estimator and the first (ocean-support) version, with the realized bias."""
-    m = pd.concat([qhat_metrics(""), qhat_metrics("wide")])
-    lk = qhat_metrics("leaky")
+def plot_implied_bias(sig_days=30.0):
+    """Implied naive bias int Z q-hat / int q-hat - theta of the total against the spatial kernel sd (daily
+    positions, domain-restricted), with the realized bias."""
+    m = pd.concat([qhat_metrics(""), qhat_metrics("wide")]).query("source == 'daily' and sig_days == @sig_days")
     years = pd.read_csv(os.path.join(ns.OUT, DIAG[""], "metrics.csv")).year.unique()
     b, se = realized_naive(years)
-    fig, ax = plt.subplots(figsize=(6.4, 3.8), layout="constrained")
+    fig, ax = plt.subplots(figsize=(5.6, 3.4), layout="constrained")
     ax.axhspan(b - 2 * se, b + 2 * se, color="0.85", label="realized bias +/- 2 MC se")
-    for i, st in enumerate(sorted(m.sig_days.unique())):
-        for d, ls, lab in ((m, "-", "domain-restricted"), (lk, ":", "ocean support")):
-            g = d[(d.source == "daily") & (d.sig_days == st)]
-            if len(g):
-                ax.plot(g.sig_deg, g.bias_naive, ls, color=f"C{i}", marker="o", ms=3, label=f"{lab}, {st:g} d")
-    ax.set(xscale="log", xlabel="spatial kernel sd (deg)", ylabel="implied bias (GJ/m2)")
+    ax.plot(m.sig_deg, m.bias_naive, "o-", ms=4, label="implied bias")
+    ax.set(xscale="log", xlabel="spatial kernel sd (deg)", ylabel="bias (GJ/m2)", ylim=(0, None))
     ax.set_xticks([1 / 12, 1 / 6, 1 / 3, 1 / 2, 1, 2, 3, 5], ["1/12", "1/6", "1/3", "1/2", "1", "2", "3", "5"])
-    ax.legend(fontsize=7, ncol=2)
+    ax.minorticks_off()
+    ax.legend(fontsize=8)
     return fig
 
 
@@ -173,9 +192,9 @@ def plot_qhat_maps(year=2020):
                            layout="constrained")
     for a, (k, x, y, q) in zip(ax.flat, panels):
         s, t = k[1:].split("_t")
-        pc = a.pcolormesh(x, y, np.where(q > 0, q, np.nan), shading="nearest", norm=LogNorm(0.5, 2), cmap="RdBu_r",
-                          rasterized=True, transform=ccrs.PlateCarree())
-        a.contour(lo, la, m.astype(float), levels=[0.5], colors="k", linewidths=0.5, transform=ccrs.PlateCarree())
+        q = q[np.abs(la[:, None] - y).argmin(1)][:, np.abs(lo[:, None] - x).argmin(1)]
+        pc = a.pcolormesh(lo, la, np.where(m & (q > 0), q, np.nan), shading="nearest", norm=LogNorm(0.5, 2),
+                          cmap="RdBu_r", rasterized=True, transform=ccrs.PlateCarree())
         a.add_feature(cfeature.LAND, facecolor="0.85", zorder=2)
         a.coastlines(lw=0.4, zorder=3)
         a.set_extent([lo.min(), lo.max(), ns.SOUTH, la.max()], crs=ccrs.PlateCarree())

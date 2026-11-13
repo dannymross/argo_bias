@@ -426,7 +426,7 @@ def q_points(reps, all_reps=range(200), sigs=(QSIG,)):
         out = q_dir(sig)
         os.makedirs(out, exist_ok=True)
         with costlog.step(COSTS, "q_points", rep=f"{min(reps)}-{max(reps)} s{sig[0]:g}_t{sig[1]:g}", n=int(ev.sum())):
-            fs, ft = max(1, int(sig[0] / dx / 2)), max(1, int(sig[1] / 2))
+            fs, ft = max(1, round(sig[0] / dx / 2)), max(1, int(sig[1] / 2 + 1e-6))
             pad = -(-int(TRUNC * sig[1] + 1) // ft) * ft
             ta, nt = d0 - pad, -(-(d1 - d0 + 2 * pad) // ft)
             days = ta + np.arange(nt * ft)
@@ -434,14 +434,14 @@ def q_points(reps, all_reps=range(200), sigs=(QSIG,)):
             asup = qd.block(qd.block(A.astype(np.float32), fs, 0), fs, 1)
             sg = (sig[1] / ft, sig[0] / dx / fs, sig[0] / dx / fs)
             f = lambda c: ndimage.gaussian_filter(c, sg, truncate=TRUNC, mode="constant")
-            den = (ndimage.gaussian_filter1d(tsup, sg[0], truncate=TRUNC, mode="constant")[:, None, None]
-                   * ndimage.gaussian_filter(asup, sg[1:], truncate=TRUNC, mode="constant")[None])
+            tden = ndimage.gaussian_filter1d(tsup, sg[0], truncate=TRUNC, mode="constant")
+            aden = ndimage.gaussian_filter(asup, sg[1:], truncate=TRUNC, mode="constant")
             shape = (nt, *asup.shape)
             cnt = lambda g: qd.counts(g.day.to_numpy(), g.i.to_numpy(), g.j.to_numpy(), ta, ft, fs, shape)
             S = f(cnt(P))
             for r, g in P[ev].groupby("rep"):
                 k = (np.floor((g.day.to_numpy() - ta) / ft).astype(np.int64), g.i.to_numpy() // fs, g.j.to_numpy() // fs)
-                q = ((S - f(cnt(P[P.rep == r])))[k] / ((R - 1) * den[k])).astype(np.float32)
+                q = ((S - f(cnt(P[P.rep == r])))[k] / ((R - 1) * tden[k[0]] * aden[k[1], k[2]])).astype(np.float32)
                 g[["float_id", "cycle"]].assign(q=q).to_parquet(os.path.join(out, f"r{r}.parquet"))
 
 
@@ -699,27 +699,45 @@ def stationary_sampling(reps=range(200)):
     return e
 
 
-def quadrature():
-    """Q_y(Z) - theta_y per layer: the annual mean of the area-weighted map-node average of the true field at the
-    T_NODES times (the map's quadrature of the estimand) minus the true annual mean."""
-    from osim import glorys_dr as gd
+def node_cells(nd):
+    """Bilinear weights of the native cell centres around each node, renormalized over in-domain corners (nearest
+    in-domain cell if none). Returns node, i, j, w."""
     from scipy.spatial import cKDTree
     la, lo, m, _ = domain()
-    nd = nodes()
+    dx = float(np.median(np.diff(la)))
+    u, v = (nd.lat.to_numpy() - la[0]) / dx, (nd.lon.to_numpy() - lo[0]) / dx
+    i0, j0 = np.floor(u).astype(int), np.floor(v).astype(int)
+    fu, fv = u - i0, v - j0
+    n = np.arange(len(nd))
+    c = pd.concat([pd.DataFrame(dict(node=n, i=i0 + a, j=j0 + b, w=(fu if a else 1 - fu) * (fv if b else 1 - fv)))
+                   for a in (0, 1) for b in (0, 1)], ignore_index=True)
+    c = c[(c.w > 0) & m[c.i, c.j]]
+    miss = np.setdiff1d(n, c.node)
     di, dj = np.nonzero(m)
-    k = cKDTree(np.column_stack([la[di], lo[dj]])).query(np.column_stack([nd.lat, nd.lon]))[1]
-    i, j = di[k], dj[k]     # nearest in-domain native cell: a node's centroid can sit in a shallower cell
+    k = cKDTree(np.column_stack([la[di], lo[dj]])).query(np.column_stack([u[miss] * dx + la[0], v[miss] * dx + lo[0]]))[1]
+    c = pd.concat([c, pd.DataFrame(dict(node=miss, i=di[k], j=dj[k], w=1.0))], ignore_index=True)
+    return c.assign(w=c.w / c.groupby("node").w.transform("sum"))
+
+
+def quadrature():
+    """Q_y(Z) - theta_y per layer: the day-weighted annual mean of the area-weighted map-node average of the true
+    field at the T_NODES times minus the true annual mean. Z at a node interpolates the native field: bilinear in
+    space (node_cells), linear in time between daily means centred at noon."""
+    from osim import glorys_dr as gd
+    nd = nodes()
+    c = node_cells(nd)
     rows = []
     for y in range(cfg.ANALYSIS_YEARS[0], cfg.ANALYSIS_YEARS[-1] + 1):
-        for m in range(1, 13):
-            m0 = pd.Timestamp(f"{y}-{m:02d}-01")
-            with xr.open_dataset(LAYERS.format(y=y, m=m)) as d:
+        for mo in range(1, 13):
+            m0 = pd.Timestamp(f"{y}-{mo:02d}-01")
+            with xr.open_dataset(LAYERS.format(y=y, m=mo)) as d:
                 for f in gd.T_NODES:
-                    t = m0 + pd.Timedelta(days=m0.days_in_month * f)
-                    z = d.sel(time=t, method="nearest").load()
-                    rows.append(dict(year=y, wd=m0.days_in_month / len(gd.T_NODES),
-                                     **{k: np.average(sum(z[v].values for v in vs)[i, j], weights=nd.area)
-                                        for k, vs in LAYER_SUMS.items()}))
+                    t = np.clip(m0.days_in_month * f - 0.5, 0, m0.days_in_month - 1)
+                    d0, a = int(np.floor(t)), t - np.floor(t)
+                    z = d.isel(time=d0).load() * (1 - a) + (d.isel(time=min(d0 + 1, m0.days_in_month - 1)).load() * a)
+                    rows.append(dict(year=y, wd=m0.days_in_month / len(gd.T_NODES), **{
+                        k: np.average(np.bincount(c.node, c.w * sum(z[v].values for v in vs)[c.i, c.j], len(nd)),
+                                      weights=nd.area) for k, vs in LAYER_SUMS.items()}))
     q = pd.DataFrame(rows).assign(total=lambda x: x[list(LAYER_NAMES)].sum(axis=1))
     q = q.groupby("year").apply(lambda g: pd.Series({c: np.average(g[c], weights=g.wd) for c in [*LAYER_NAMES, "total"]}))
     q = q.reset_index().melt(id_vars="year", var_name="layer", value_name="Q").merge(truth(), on=["year", "layer"])
@@ -1008,13 +1026,15 @@ if __name__ == "__main__":
     ap.add_argument("--all-reps", type=int, help="qpoints: q-hat from replicates 0..N-1")
     ap.add_argument("--year", type=int, help="map: only this year's months (timing pilot)")
     ap.add_argument("--layer", choices=LAYER_NAMES, action="append", help="oracle_prepare/map (repeatable; default all)")
+    ap.add_argument("--sig", action="append", help="qpoints/estimate: kernel sd 'deg,days' (repeatable; default QSIG)")
     ap.add_argument("--dt-hours", type=int, default=1, help="advect: RK4 step; a non-default step writes profiles_dt{h}")
     a = ap.parse_args()
     rr = range(*(lambda x: (x[0], x[1] + 1))([int(v) for v in a.reps.split(",")])) if a.reps else [a.rep]
     layers = a.layer or LAYER_NAMES
+    sigs = [tuple(float(v) for v in x.split(",")) for x in a.sig] if a.sig else [QSIG]
     {"design": design, "fields": fields, "oracle_prepare": lambda: [oracle_prepare(l) for l in layers], "advect": lambda: advect(a.rep, a.dt_hours, "" if a.dt_hours == 1 else f"_dt{a.dt_hours}"),
      "profiles": lambda: [profiles(r) for r in rr], "select": lambda: [select(r) for r in rr], "gpgp_pilot": gpgp_pilot, "cov_exact_test": cov_exact_test, "uniform": uniform_sampling, "stationary": stationary_sampling,
      "covfit": lambda: covfit(list(rr), a.rep), "covgather": lambda: [covgather(r) for r in rr], "covpool": lambda: covpool(list(rr)),
-     "quadrature": quadrature, "sample": lambda: sample(rr), "qpoints": lambda: q_points(rr, range(a.all_reps or 200)),
+     "quadrature": quadrature, "sample": lambda: sample(rr), "qpoints": lambda: q_points(rr, range(a.all_reps or 200), sigs),
      "map": lambda: [run_map(a.rep, l, a.year and list(pd.date_range(f"{a.year}-01", f"{a.year}-12", freq="MS")))
-                     for l in layers], "estimate": lambda: [estimate(r) for r in rr]}[a.cmd]()
+                     for l in layers], "estimate": lambda: [estimate(r, g) for g in sigs for r in rr if os.path.exists(os.path.join(map_path(r), "folds.parquet"))]}[a.cmd]()

@@ -35,9 +35,6 @@ def _tabs(items):
         show()
     _emit(":::")
 
-def _table(t, digits=3):
-    display(Markdown(t.round(digits).to_markdown()))
-
 f2, f3 = (lambda x: f"{x:.2f}"), (lambda x: f"{x:.3f}")
 
 la, lo, dm, da = ns.domain()
@@ -113,16 +110,15 @@ with matched sample sizes:
   the advected design.
 
 ```{python}
-#| label: tbl-designs
+#| label: fig-designs
 #| echo: false
-#| tbl-cap: "Sample-mean error over 200 replicates (GJ per m2): bias of the 2015-2025 mean with its Monte Carlo se, SD and RMSE of the 2015-2025 mean, and the mean over years of the single-year RMSE."
+#| output: asis
 
-t = SD.rename(index=nr.DESIGN_LAB | nr.LAYER_LAB)
-_table(t.drop(columns="R"))
+_tabs([(nr.LAYER_LAB[l], lambda l=l: _show_fig(nr.plot_errors(D, nr.DESIGN_LAB, l))) for l in nr.LAYERS])
 ```
 
 ```{python}
-#| label: fig-designs
+#| label: fig-designs-year
 #| echo: false
 #| output: asis
 
@@ -204,13 +200,13 @@ much of the bias survives smoothing $Z$ at scale $\sigma$.
 ```{python}
 #| label: fig-implied-bias
 #| echo: false
-#| fig-cap: "Implied bias of the total (mean over 2016, 2020, 2024) against the spatial kernel sd, per temporal sd, from the alive daily float positions: domain-restricted estimator (solid) and the all-ocean version (dotted). Grey: realized sample-mean bias of the same years +/- 2 Monte Carlo se."
+#| fig-cap: "Implied bias of the total (mean over 2016, 2020, 2024) against the spatial kernel sd, temporal sd 30 days, from the alive daily float positions. Grey: realized sample-mean bias of the same years +/- 2 Monte Carlo se."
 
 _show_fig(nr.plot_implied_bias())
 ```
 
 The domain-restricted $B(\sigma)$ equals the realized bias
-(`{python} f3(B_REAL)` $\pm$ `{python} f3(B_SE)`) from $1/12^\circ$ to $1^\circ$ for every $\sigma_t$, and decays
+(`{python} f3(B_REAL)` $\pm$ `{python} f3(B_SE)`) from $1/12^\circ$ to $1^\circ$ (as it does at $\sigma_t$ of 2, 5 and 10 d), and decays
 beyond: about $0.25$ at $2^\circ$ and $0.15$ at $5^\circ$. The covariance that creates the bias therefore lives at
 scales of roughly $1^\circ$--$5^\circ$: smoothing $q$ below $1^\circ$ loses none of it. Floats do not preferentially
 sample OHC's mesoscale anomalies; their net effect is a smooth tilt toward warm water. The mesoscale is the same in
@@ -218,14 +214,6 @@ every replicate (one flow), so if floats systematically collected in particular 
 structure and the narrow kernels would show it.
 
 ## Bandwidth: what smoothing costs
-
-```{python}
-#| label: tbl-qhat
-#| echo: false
-#| tbl-cap: "Held-out q-hat at a 30-day temporal sd, from alive daily positions (divided by the 10-day cycle) and from profiles: split-half relative se (grid, weighted by q-hat x area), held-out zeros at evaluation profiles, 1% and 99% quantiles of q-hat / q-bar, and the Kish effective-sample-size fraction of the weights 1/q-hat (means over 2016, 2020, 2024)."
-
-_table(nr.qhat_table().set_index("sig_deg"))
-```
 
 ```{python}
 #| label: fig-qhat-maps
@@ -253,16 +241,6 @@ Hájek normalization cancels.
 #| output: asis
 
 _tabs([(nr.LAYER_LAB[l], lambda l=l: _show_fig(nr.plot_hajek_bandwidth(C, l))) for l in nr.LAYERS])
-```
-
-```{python}
-#| label: tbl-hajek
-#| echo: false
-#| tbl-cap: "Cross-half Hajek (profiles, 30-day temporal sd) and the sample mean, total layer: bias of the 3-year (2016, 2020, 2024) mean with its Monte Carlo se, SD and RMSE over 200 replicates (GJ per m2)."
-
-t = CH.xs("total", level="layer")
-_table(pd.concat([t.loc["naive"].iloc[[0]].rename(index=lambda _: "sample mean"),
-                  t.loc["hajek"].rename(index=lambda s: f"Hajek, {s:.3g} deg")]).drop(columns=["R", "rmse_year"]))
 ```
 
 Narrow kernels under-correct, with heavy weights pushing the bias negative and the SD up; wide kernels lose the
@@ -311,9 +289,12 @@ $$
 
 with $j$ over the $1^\circ$ cells, $a_j$ the deep area of cell $j$ and $c_j$ its area centroid, and $m$ over months
 with $d_m$ days from $t_m$, $D_y=\sum_m d_m$. The estimand is $\theta_y$, not $Q_y(Z)$, so every map error contains
-the quadrature remainder $Q_y(Z)-\theta_y$, computed exactly from the true field: `{python} f3(REM.loc['total'].min())`
-to `{python} f3(REM.loc['total'].max())` GJ m$^{-2}$ for the total, mostly from the mid-month time node. It is shown
-with the map errors below.
+the quadrature remainder $Q_y(Z)-\theta_y$, computed exactly from the true field, with $Z$ evaluated off the native
+grid by bilinear interpolation between cell centres and linear interpolation between daily means:
+`{python} f3(REM.loc['total'].min())` to `{python} f3(REM.loc['total'].max())` GJ m$^{-2}$ for the total (mean
+`{python} f3(REM.loc['total'].mean())`). It is the error of the centroid rule on $1^\circ$ cells, whose first-order
+term vanishes at the area centroid; the second-order term follows the curvature of $Z$, which changes sign across
+the domain (concave in the subtropical gyre, convex in the tropics and subpolar gyre), so it largely cancels. It is shown with the map errors below.
 
 ## Cross-fit DR
 
@@ -332,19 +313,19 @@ uses the evaluated replicate, and $e_k$ comes from a map that never saw fold $k$
 
 ## Results
 
-```{python}
-#| label: tbl-estimators
-#| echo: false
-#| tbl-cap: "Estimator error over the kriged replicates (GJ per m2): bias of the 2015-2025 mean with its Monte Carlo se, SD and RMSE of the 2015-2025 mean, and the mean over years of the single-year RMSE. The sample mean here is over the same replicates, so it differs from the 200-replicate value above."
-
-t = SE.reindex(list(nr.EST_LAB), level="group").rename(index=nr.EST_LAB | nr.LAYER_LAB)
-_table(t.drop(columns="R"))
-```
-
-**Kriging is in progress**: this render uses `{python} f"{NR}"` of the 100 replicates r10--r109.
+Errors are over the `{python} f"{NR}"` mapped replicates r10--r109.
 
 ```{python}
 #| label: fig-estimators
+#| echo: false
+#| output: asis
+
+_tabs([(nr.LAYER_LAB[l], lambda l=l: _show_fig(nr.plot_errors(E, nr.EST_LAB, l, ("naive", "hajek"), (11, 6.5))))
+       for l in nr.LAYERS])
+```
+
+```{python}
+#| label: fig-estimators-year
 #| echo: false
 #| output: asis
 
@@ -352,21 +333,16 @@ MAPS = {k: nr.EST_LAB[k] for k in ("mean_field", "krige", "dr")}
 _tabs([(nr.LAYER_LAB[l], lambda l=l: _show_fig(nr.plot_by_year(E, MAPS, l, REM))) for l in nr.LAYERS])
 ```
 
-```{python}
-#| label: tbl-coverage
-#| echo: false
-#| tbl-cap: "DR's nominal 95% t interval over replicate-years: coverage, median jackknife se, and the median over years of the SD of DR's error across replicates (GJ per m2)."
-
-_table(COV.rename(index=nr.LAYER_LAB))
-```
-
 Mapping changes the picture. The sample mean's 2015--2025 RMSE of
 `{python} f3(SE.loc[('naive', 'total'), 'rmse'])` GJ m$^{-2}$ falls to
 `{python} f3(SE.loc[('krige', 'total'), 'rmse'])` for the map and `{python} f3(SE.loc[('dr', 'total'), 'rmse'])` for DR:
 most of both the clustering variance and the bias is absorbed by the mean field, fitted to sixteen years of profiles.
-What is left is small and of the order of the quadrature remainder: the map's bias is
-`{python} f3(SE.loc[('krige', 'ohc_15_700'), 'bias'])` in 15--700 m and DR's is
-`{python} f3(SE.loc[('dr', 'ohc_15_700'), 'bias'])`. DR's jackknife se is somewhat too small (coverage
+What is left is small but exceeds the quadrature remainder (mean
+`{python} f3(REM.loc['ohc_15_700'].mean())` in 15--700 m): the map's bias there is
+`{python} f3(SE.loc[('krige', 'ohc_15_700'), 'bias'])`, against `{python} f3(SE.loc[('mean_field', 'ohc_15_700'), 'bias'])`
+for the mean field alone, so the kriged anomalies carry a positive bias of their own. DR's correction removes it
+(`{python} f3(SE.loc[('dr', 'ohc_15_700'), 'bias'])`), while in 700--2000 m all three mapped estimators are slightly
+negative (DR `{python} f3(SE.loc[('dr', 'ohc_700_2000'), 'bias'])`). DR's jackknife se is somewhat too small (coverage
 `{python} f2(COV.loc['total', 'coverage'])` of 0.95).
 
 # Summary
@@ -378,4 +354,4 @@ What is left is small and of the order of the quadrature remainder: the map's bi
 * The bias lives in the large-scale ($\ge1^\circ$) component of the sampling intensity. A smooth, simulation-estimated
   $\hat q$ at $1^\circ$ removes it in a Hájek estimator; finer kernels add noise, coarser ones lose bias.
 * The mapped estimators reduce RMSE by an order of magnitude. Their remaining bias is a few hundredths of a
-  GJ m$^{-2}$, comparable to the quadrature remainder.
+  GJ m$^{-2}$, larger than the quadrature remainder; in 15--700 m it comes from the kriged anomalies, and DR removes it.

@@ -567,20 +567,23 @@ def bandwidth_sensitivity(maxrep=200):
     return pd.DataFrame(rows).sort_values(["box", "sigma_deg", "sigma_days"]).reset_index(drop=True)
 
 
-def plot_errors(e, est_lab, box, split=("naive",), figsize=(11, 6.5)):
+def plot_errors(e, est_lab, box, split=("naive",), figsize=(11, 6.5), years=None):
     """Replicate errors (GJ/m2) of one box per estimator, grouped by year, box plots over jittered replicate
-    points; the split estimators get their own top panel and scale."""
+    points; the split estimators (if any) get their own top panel and scale."""
     import matplotlib.pyplot as plt
-    groups = [{k: v for k, v in est_lab.items() if k in split}, {k: v for k, v in est_lab.items() if k not in split}]
-    fig, ax = plt.subplots(2, 1, figsize=figsize, sharex=True, height_ratios=(1, 1.6))
-    x, years = e[e.box == box], sorted(e.year.unique())
+    groups = [g for g in ({k: v for k, v in est_lab.items() if k in split},
+                          {k: v for k, v in est_lab.items() if k not in split}) if g]
+    fig, ax = plt.subplots(len(groups), 1, figsize=figsize, sharex=True, squeeze=False,
+                           height_ratios=(1, 1.6)[-len(groups):])
+    ax = ax[:, 0]
+    x, years = e[e.box == box], years or sorted(e.year.unique())
     cols = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     n, j0 = len(est_lab), 0
     rng = np.random.default_rng(0)
     for a, grp in zip(ax, groups):
         for j, (c, lab) in enumerate(grp.items(), start=j0):
             pos = np.arange(len(years)) * (n + 1) + j
-            d = [((x[x.year == y][c] - x[x.year == y].theta) * 1e-9).to_numpy() for y in years]
+            d = [((x[x.year == y][c] - x[x.year == y].theta) * 1e-9).dropna().to_numpy() for y in years]
             bp = a.boxplot(d, positions=pos, widths=0.8, patch_artist=True, showfliers=False)
             for patch in bp["boxes"]:
                 patch.set(facecolor=cols[j], alpha=0.35)
