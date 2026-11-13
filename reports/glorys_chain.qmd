@@ -361,6 +361,20 @@ _tabs([(nr.LAYER_LAB[l], lambda l=l: _show_fig(nr.plot_by_year(E, nr.EST_LAB, l,
                                                                  ("rmse",)))) for l in nr.LAYERS])
 ```
 
+Per year and for the 2015--2025 mean, the figures' values: bias $\pm2$ Monte Carlo se, SD and RMSE over replicates
+(GJ m$^{-2}$). In each row the mapped estimator (mean field, map or DR) with the smallest $|\text{bias}|$, SD or RMSE is
+in bold.
+
+```{python}
+#| label: tbl-estimators-year
+#| echo: false
+#| output: asis
+
+_STAT = {"bias": "Bias +/- 2 MC se", "sd": "SD", "rmse": "RMSE"}
+_tabs([(nr.LAYER_LAB[l], lambda l=l: [(_emit(f"\n**{_STAT[k]}**\n"), _emit(t.to_markdown(disable_numparse=True)), _emit())
+                                       for k, t in nr.year_tables(E, nr.EST_LAB, l).items()]) for l in nr.LAYERS])
+```
+
 Mapping changes the picture. The sample mean's 2015--2025 RMSE of
 `{python} f3(SE.loc[('naive', 'total'), 'rmse'])` GJ m$^{-2}$ falls to
 `{python} f3(SE.loc[('krige', 'total'), 'rmse'])` for the map and `{python} f3(SE.loc[('dr', 'total'), 'rmse'])` for DR:

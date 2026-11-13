@@ -117,6 +117,33 @@ def plot_by_year(E, labels, layer, rem=None, split=(), figsize=(11, 5), stats=("
     return fig
 
 
+def year_stats(E, labels, layer):
+    """Per year and for the 2015-2025 mean (of each replicate's errors): bias, its Monte Carlo se, SD and RMSE over
+    replicates, per group."""
+    x = E[(E.layer == layer) & E.group.isin(list(labels))]
+    x = pd.concat([x.assign(year=x.year.astype(str)), x.groupby(["group", "rep"], as_index=False).err.mean().assign(year="2015-25")])
+    g = x.groupby(["year", "group"]).err
+    return pd.DataFrame(dict(bias=g.mean(), mc_se=g.sem(), sd=g.std(), rmse=np.sqrt(g.apply(lambda e: (e ** 2).mean()))))
+
+
+def year_tables(E, labels, layer, bold=("mean_field", "krige", "dr")):
+    """Markdown-ready bias (+/- 2 MC se), SD and RMSE tables (years x groups); per row, the `bold` group with the
+    smallest |bias| (or SD, RMSE) is bolded."""
+    t = year_stats(E, labels, layer)
+    out = {}
+    for st in ("bias", "sd", "rmse"):
+        v = t[st].unstack("group")[list(labels)]
+        f = v.map(lambda a: f"{a:+.3f}" if st == "bias" else f"{a:.3f}")
+        if st == "bias":
+            f = f + " +/- " + (2 * t.mc_se.unstack("group")[list(labels)]).map("{:.3f}".format)
+        best = v[list(bold)].abs().idxmin(axis=1)
+        for y, k in best.items():
+            f.loc[y, k] = f"**{f.loc[y, k]}**"
+        f = f.loc[sorted(f.index, key=lambda y: (len(y) > 4, y))]
+        out[st] = f.rename(columns=labels).rename_axis(index="year", columns=None)
+    return out
+
+
 def plot_errors(E, labels, layer, split=(), figsize=(11, 5)):
     """Box plots over jittered replicate errors per year and for the 2015-2025 mean (chain.plot_errors)."""
     from osim import chain as ch
