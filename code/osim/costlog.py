@@ -105,3 +105,31 @@ def job_ledger(jobs_csv, md=None):
                     " and sacct. core_h = elapsed x allocated CPUs; credits only for `open`.\n\n"
                     + t.to_markdown() + "\n")
     return t, d
+
+
+BASIC_RATE = dict(cpu=71.76, mem_gb=17.94)   # billing weights per minute on the basic partition
+
+
+def task_costs(jobs_csv, status=("production",)):
+    """One row per COMPLETED task of the registered jobs with the given status: account, wall, allocated CPUs and
+    memory, CPU time, peak RSS, and credits: billed for `open`, and for other accounts the `open`/basic equivalent
+    max(CPU x 71.76, GB x 17.94) billing-min per minute (Roar Collab billing is the max of the two)."""
+    reg = pd.read_csv(jobs_csv, dtype={"job": str})
+    reg = reg[reg.status.isin(status)]
+    out = subprocess.run(["sacct", "-j", ",".join(reg.job), "-n", "-P", "--units=G", "-o",
+                          "JobID,Account,Partition,State,ElapsedRaw,TotalCPU,MaxRSS,AllocTRES"],
+                         capture_output=True, text=True, check=True).stdout
+    d = pd.read_csv(io.StringIO(out), sep="|", header=None,
+                    names=["id", "account", "partition", "state", "elapsed_s", "cpu", "maxrss", "tres"], dtype=str)
+    rss = d[d.id.str.endswith(".batch")].assign(id=lambda x: x.id.str[:-6]).set_index("id").maxrss
+    d = d[~d.id.str.contains(r"\.")].query("state == 'COMPLETED'").copy()
+    mem = d.tres.str.extract(r"mem=([\d.]+)([MGT])")
+    d = d.assign(job=d.id.str.split("_").str[0], elapsed_s=d.elapsed_s.astype(float),
+                 cpus=d.tres.str.extract(r"cpu=(\d+)", expand=False).astype(float),
+                 mem_gb=mem[0].astype(float) * mem[1].map(dict(M=1 / 1024, G=1, T=1024)),
+                 billing=d.tres.str.extract(r"billing=(\d+)", expand=False).astype(float),
+                 cpu_h=d.cpu.map(_secs) / 3600, maxrss_gb=rss.reindex(d.id).str.rstrip("G").astype(float).values)
+    d["core_h"] = d.elapsed_s * d.cpus / 3600
+    rate = np.maximum(d.cpus * BASIC_RATE["cpu"], d.mem_gb * BASIC_RATE["mem_gb"])
+    d["credits"] = np.where(d.account.eq("open"), d.billing * d.elapsed_s / 60, rate * d.elapsed_s / 60) / CREDIT_BILLING_MIN
+    return d.merge(reg, on="job").drop(columns=["tres", "cpu", "maxrss"])

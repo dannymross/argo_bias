@@ -47,6 +47,11 @@ YC = nr.year_corr(D)
 NPROF = D[(D.group == "lagrangian") & (D.layer == "total")].n.mean()
 E = nr.estimates()
 SE = nr.rep_summary(E)
+E1 = nr.estimates(ns.QSIG)
+SE1 = nr.rep_summary(E1)
+BW = nr.bandwidth_table(nr.SWEEP)
+SPD = nr.spatial_diag()
+SPS = nr.spatial_summary(SPD)
 COV = nr.coverage(E)
 REM = nr.quadrature_remainder()
 NR, REPS = E.rep.nunique(), sorted(E.rep.unique())
@@ -262,9 +267,9 @@ only from `{python} f3(CH.loc[('naive', 'total', 1.0), 'rmse'])` to `{python} f3
 reweighting cannot remove fleet-clustering variance. In 700--2000 m, where the bias is small, Hájek's RMSE is
 slightly worse than the sample mean's.
 
-**Production choice.** $\sigma=(1^\circ, 30\text{ d})$ from in-domain profile positions, leave-one-replicate-out.
-The choice uses only float positions and the sample-mean and Hájek errors, never the map or DR results below, so it
-is not tuned to the estimators it is used to evaluate.
+**Choice for Hájek.** $\sigma=(1^\circ, 30\text{ d})$ from in-domain profile positions, leave-one-replicate-out.
+It uses only float positions and the sample-mean and Hájek errors. DR weights a different quantity, the map's
+residuals, and its kernels are chosen separately below.
 
 # Mapping and cross-fit DR
 
@@ -330,6 +335,41 @@ constant cancels in the ratio $\hat C_k$. The variance is a delete-one-float jac
 folds, with Satterthwaite degrees of freedom for a $t$ interval. DR is cross-fitted at two levels: $\hat q$ never
 uses the evaluated replicate, and $e_k$ comes from a map that never saw fold $k$ [@chernozhukov2018].
 
+## Kernel for DR
+
+With $\hat q$ in place of $q$, Campbell's theorem gives $\mathbb E\,\hat C_k\approx\int e_k\,r\,d\mathbb P_y$ with
+$r=(q/\hat q)/\int(q/\hat q)\,d\mathbb P_y$ (a ratio approximation, as for the sample mean), so, apart from the
+map's quadrature error,
+
+$$
+\mathbb E\,\hat\theta^{\mathrm{DR}}_y-\theta_y\approx\operatorname{Cov}_{\mathbb P_y}(r,\,e_k),
+$$
+
+which vanishes when $\hat q\propto q$ and is otherwise a product of the intensity error and the residual. It
+depends on how the map's residuals, not $Z$, line up with the smoothing error of $\hat q$, so DR's kernel is chosen
+on DR. DR is re-estimated from the cached maps for 30 kernels, spatial sd $\{1/3,1/2,1,2,3,5\}^\circ$ times temporal
+sd $\{2,5,10,30,90\}$ d, each with its own leave-one-replicate-out $\hat q$. For each layer the kernel is the one with
+the smallest mean over years of $|\text{yearly bias}|$ among those whose yearly MSE is within 2% of the layer's
+minimum. The rule is applied to replicates 10--59 and its choice evaluated on 60--109, and vice versa: in 15--700 m
+it picks $(1^\circ,30\text{ d})$ and the neighbouring $(1^\circ,90\text{ d})$, in 700--2000 m $(1/3^\circ,5\text{ d})$
+on both halves. The production kernels are $(1^\circ,30\text{ d})$ for 15--700 m and $(1/3^\circ,5\text{ d})$ for
+700--2000 m. The 15--2000 m DR is the sum of the two layers' estimates; its variance is the jackknife of the summed
+delete-one-float values, which keeps the covariance between layers. The narrowest kernel tried, $1/3^\circ$, is best
+in 700--2000 m, so a narrower one is not ruled out.
+
+```{python}
+#| label: fig-dr-bandwidth
+#| echo: false
+#| output: asis
+
+_tabs([(nr.LAYER_LAB[l], lambda l=l: _show_fig(nr.plot_dr_bandwidth(BW, l))) for l in ns.LAYER_NAMES])
+```
+
+In 15--700 m the coarse kernels are best on both criteria: DR's bias there does not depend on the kernel (it is the
+map's quadrature error, below), and narrowing $\hat q$ only adds noise to the weights. In 700--2000 m narrowing
+reduces DR's bias from `{python} f3(SE1.loc[('dr', 'ohc_700_2000'), 'bias'])` at $(1^\circ,30\text{ d})$ to
+`{python} f3(SE.loc[('dr', 'ohc_700_2000'), 'bias'])` GJ m$^{-2}$, and lowers its MSE as well.
+
 ## Results
 
 Errors are over the `{python} f"{NR}"` mapped replicates r10--r109.
@@ -391,6 +431,68 @@ $Q_y(\hat m_{-k})-\int\hat m_{-k}\,d\mathbb P_y$, not of $Z$. Its 15--700 m bias
 follows it across years (correlation 0.6), consistent with the map reproducing the large-scale curvature of $Z$. DR's jackknife se is somewhat too small (coverage
 `{python} f2(COV.loc['total', 'coverage'])` of 0.95).
 
+## Where the map errs and DR corrects
+
+The maps store only domain integrals, so these diagnostics use the held-out residuals at the profiles, pooled over
+the replicates and years in $1^\circ$ cells $j$ with area share $a_j/A$:
+
+* the mean residual $\bar e_j$ at the profiles, split as $e_k=(Z-\hat\mu_{-k})-\hat\eta_{-k}$;
+* the weight ratio $r_j$, the cell's share of the fold-year weights $1/\hat q$ over $a_j/A$, whose expectation is the
+  cell mean of $r$;
+* the cell's share of DR's correction, $\frac1K\sum_k\sum_{i\in I_k,\,x_i\in j}v_ie_k(x_i)/\sum_{i\in I_k}v_i$
+  averaged over replicate-years and shown per unit area. The shares sum exactly to the mean of $\hat C$.
+
+$\bar e_j$ is a profile-weighted cell mean, not an area mean, and within a cell profiles are themselves preferentially
+placed in space and time. In 700--2000 m this matters: $-\sum_j(a_j/A)\bar e_j$ is
+`{python} f3(SPS.loc['proxy', 'ohc_700_2000'])` against the map's bias of
+`{python} f3(SE.loc[('krige', 'ohc_700_2000'), 'bias'])`, so the residual maps are descriptive only.
+
+```{python}
+#| label: fig-residual-maps
+#| echo: false
+#| output: asis
+
+_tabs([(nr.LAYER_LAB[l], lambda l=l: _show_fig(nr.plot_spatial(SPD, l, "residual"))) for l in ns.LAYER_NAMES])
+```
+
+In 15--700 m the map's error is the kriged anomaly: area-weighted over the cells, $Z-\hat\mu_{-k}$ averages
+`{python} f3(SPS.loc['emf', 'ohc_15_700'])` GJ m$^{-2}$ at the profiles while the kriged anomaly averages
+`{python} f3(SPS.loc['anom', 'ohc_15_700'])`. Most of it is in the Gulf Stream region west of $45^\circ$W between
+$30^\circ$ and $40^\circ$N, partly offset by negative values to the north-east of it.
+
+```{python}
+#| label: fig-dr-maps
+#| echo: false
+#| output: asis
+
+_tabs([(nr.LAYER_LAB[l], lambda l=l: _show_fig(nr.plot_spatial(SPD, l, "dr"))) for l in ns.LAYER_NAMES])
+```
+
+DR's correction in 15--700 m totals `{python} f3(SPS.loc['corr', 'ohc_15_700'])` GJ m$^{-2}$, the map's bias less
+the quadrature remainder, and is concentrated: the 20% of cells with the largest contributions carry
+`{python} f"{SPS.loc['top20', 'ohc_15_700']:.0%}"` of it, mostly in the western basin between $40^\circ$ and
+$50^\circ$N. In 700--2000 m the correction largely cancels across cells. The change in it from
+$(1^\circ,30\text{ d})$ to $(1/3^\circ,5\text{ d})$, `{python} f3(SPS.loc['dc', 'ohc_700_2000'])` GJ m$^{-2}$, is
+diffuse: it is positive in `{python} f"{SPS.loc['dc_pos', 'ohc_700_2000']:.0%}"` of the cells, and the cells cut by the
+$2000$ m edge, `{python} f"{SPS.loc['edge_area', 'ohc_700_2000']:.0%}"` of the area, carry
+`{python} f"{SPS.loc['edge_dc', 'ohc_700_2000']:.0%}"` of it. About half of it comes from the shorter temporal sd and
+half from the narrower spatial one. The weights differ little between the two kernels at the $1^\circ$ scale, so
+what the narrower kernel corrects is sampling structure within cells and within the month.
+
+By year, the same two quantities at the production kernels, on one colour scale per layer and quantity: the mean
+residual at the profiles (where the map errs, descriptive as above) and DR's correction per unit area.
+
+```{python}
+#| label: fig-year-maps
+#| echo: false
+#| output: asis
+
+SPY = nr.spatial_diag_year()
+_tabs([(nr.LAYER_LAB[l], lambda l=l: _tabs([(t, lambda k=k: _show_fig(nr.plot_spatial_years(SPY, l, k)))
+                                            for k, t in (("residual", "Residual"), ("dr", "DR correction"))]))
+       for l in ns.LAYER_NAMES])
+```
+
 # Summary
 
 * Lagrangian sampling biases the sample mean of annual North Atlantic OHC by about $+0.27$ GJ m$^{-2}$, almost all
@@ -399,5 +501,43 @@ follows it across years (correlation 0.6), consistent with the map reproducing t
   reweighting cannot remove.
 * The bias lives in the large-scale ($\ge1^\circ$) component of the sampling intensity. A smooth, simulation-estimated
   $\hat q$ at $1^\circ$ removes it in a Hájek estimator; finer kernels add noise, coarser ones lose bias.
-* The mapped estimators reduce RMSE by an order of magnitude. Their remaining bias is a few hundredths of a
-  GJ m$^{-2}$, larger than the quadrature remainder; in 15--700 m it comes from the kriged anomalies, and DR removes it.
+* The mapped estimators reduce RMSE by an order of magnitude. The map keeps a bias of a few hundredths of a
+  GJ m$^{-2}$, larger than the quadrature remainder; in 15--700 m it comes from the kriged anomalies, mostly in the
+  Gulf Stream region.
+* DR's bias is the covariance of the intensity error with the map's residuals, so its kernel is chosen on DR, per
+  layer: $(1^\circ,30\text{ d})$ in 15--700 m, where the residual structure the floats track is large-scale, and
+  $(1/3^\circ,5\text{ d})$ in 700--2000 m, where it is finer in space and time. DR then has a smaller $|\text{bias}|$
+  than the map in every year in 15--700 m and its 2015--2025 bias in 15--2000 m is
+  `{python} f3(SE.loc[('dr', 'total'), 'bias'])` against the map's `{python} f3(SE.loc[('krige', 'total'), 'bias'])`
+  GJ m$^{-2}$. The correction adds variance: DR's single-year RMSE in 15--2000 m is
+  `{python} f3(SE.loc[('dr', 'total'), 'rmse_year'])` against the map's `{python} f3(SE.loc[('krige', 'total'), 'rmse_year'])`,
+  while for the 2015--2025 mean, where the map's bias does not average out, it is
+  `{python} f3(SE.loc[('dr', 'total'), 'rmse'])` against `{python} f3(SE.loc[('krige', 'total'), 'rmse'])`.
+
+# Compute
+
+Compute for the operational pipeline on Roar Collab (Penn State), from Slurm accounting of the completed tasks of
+each step; pilots, superseded designs, failed runs and report rendering are excluded. All tasks ran on 1 CPU except
+the 2-CPU download pilot (excluded). Core-hours are wall time times allocated CPUs; credits are Roar Collab credits
+(1 credit $=3{,}100{,}032$ billing-minutes, billing per minute the larger of $71.76\times$CPUs and $17.94\times$GB
+on the basic partition). Steps run on the `open` account show the credits billed; steps run on the department's
+`statsresearch_sc_default` allocation, which is not charged in credits, show the credits they would have cost on
+`open`. Steps on the login node (design tables, covariance pooling, estimate tables) took minutes and are omitted.
+
+```{python}
+#| label: tbl-compute
+#| echo: false
+#| tbl-cap: "Compute per pipeline step: tasks, median and maximum wall time per task (h), core-hours, CPU-hours, allocated and peak memory per task (GB), credits billed on open, open-equivalent credits of the sc_default steps, and their sum."
+
+CT = nr.cost_table()
+display(Markdown(CT.round({"wall_median_h": 2, "wall_max_h": 2, "core_h": 1, "cpu_h": 1, "mem_alloc_gb": 0,
+                           "peak_rss_gb": 1, "credits_open": 3, "credits_sc_equiv": 3, "credits_total": 3})
+                 .to_markdown()))
+```
+
+The pipeline used `{python} f"{CT.loc['total', 'core_h']:.0f}"` core-hours and
+`{python} f"{CT.loc['total', 'credits_total']:.2f}"` credits-equivalent. Three steps account for nearly all of it,
+each an array of 100--200 single-CPU tasks of a few hours: advection, the exact covariance fits and kriging. The
+GLORYS download is long in wall time but mostly waiting on the Copernicus server (CPU-hours a tenth of core-hours).
+Everything downstream of the maps, the 30-kernel DR sweep included, is under 3 core-hours, because DR reuses the
+cached maps.

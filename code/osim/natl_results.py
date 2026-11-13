@@ -29,9 +29,10 @@ def quadrature_remainder():
     return q.set_index(["layer", "year"]).rem
 
 
-def estimates(sig=ns.QSIG):
-    """Per replicate, year, layer and estimator: error (GJ/m2), and DR's jackknife variance and df."""
-    tag = os.path.basename(ns.q_dir(sig))
+def estimates(sig=None):
+    """Per replicate, year, layer and estimator: error (GJ/m2), and DR's jackknife variance and df; `sig` a kernel
+    (deg, days) or None for the per-layer production kernels."""
+    tag = ns.QTAG if sig is None else os.path.basename(ns.q_dir(sig))
     e = pd.concat([pd.read_parquet(f) for f in glob.glob(os.path.join(ns.OUT, "maps", "r*", f"estimates_{tag}.parquet"))])
     x = e.melt(id_vars=["rep", "layer", "year", "theta", "dr_V", "dr_df", "n"], value_vars=list(EST_LAB),
                var_name="group", value_name="est")
@@ -41,7 +42,7 @@ def estimates(sig=ns.QSIG):
 def dr_bandwidth(sigs, ref=ns.QSIG, group="dr"):
     """Per kernel sd and layer: bias and mean over years of the MSE over replicates, and the paired difference in
     yearly MSE from `ref` with its Monte Carlo se (replicates common to all sds)."""
-    E = pd.concat([estimates(g).query("group == @group").assign(sig_deg=g[0], sig_days=g[1]) for g in sigs])
+    E = pd.concat([(lambda e: e[e.group == group])(estimates(g)).assign(sig_deg=g[0], sig_days=g[1]) for g in sigs])
     E = E[E.groupby("rep").sig_deg.transform("size") == E.groupby("rep").size().max()]
     se2 = E.assign(se2=E.err ** 2).groupby(["sig_deg", "sig_days", "layer", "rep"])[["err", "se2"]].mean()
     d = se2.se2 - se2.se2.xs((*ref,), level=["sig_deg", "sig_days"])
@@ -49,6 +50,151 @@ def dr_bandwidth(sigs, ref=ns.QSIG, group="dr"):
     dg = d.groupby(["sig_deg", "sig_days", "layer"])
     return pd.DataFrame(dict(R=g.size(), bias=g.err.mean(), mse_year=g.se2.mean(), d_mse=dg.mean(),
                              d_mse_se=dg.std() / np.sqrt(dg.size())))
+
+
+def bandwidth_table(sigs, group="dr"):
+    """Per kernel sd and layer: bias of the 2015-2025 mean (+ MC se), mean over years of |yearly bias|, max over
+    years of |yearly bias|, and yearly MSE."""
+    E = pd.concat([(lambda e: e[e.group == group])(estimates(g)).assign(sig_deg=g[0], sig_days=g[1]) for g in sigs])
+    k = ["sig_deg", "sig_days", "layer"]
+    yb = E.groupby([*k, "year"]).err.mean().abs().groupby(k)
+    m = E.groupby([*k, "rep"]).err.mean().groupby(k)
+    return pd.DataFrame(dict(bias=m.mean(), mc_se=m.sem(), mean_abs_year_bias=yb.mean(), max_abs_year_bias=yb.max(),
+                             mse_year=E.assign(e2=E.err ** 2).groupby(k).e2.mean()))
+
+
+SWEEP = [(s, t) for s in (0.3333, 0.5, 1.0, 2.0, 3.0, 5.0) for t in (2.0, 5.0, 10.0, 30.0, 90.0)]
+
+
+def plot_dr_bandwidth(T, layer):
+    """DR's mean |yearly bias| and yearly MSE against the spatial kernel sd, per temporal sd (bandwidth_table);
+    the production kernel of the layer circled."""
+    t = T.xs(layer, level="layer").reset_index()
+    fig, ax = plt.subplots(1, 2, figsize=(10, 3.6), layout="constrained")
+    for i, (st, g) in enumerate(t.groupby("sig_days")):
+        ax[0].plot(g.sig_deg, g.mean_abs_year_bias, "o-", ms=3, color=f"C{i}", label=f"{st:g} d")
+        ax[1].plot(g.sig_deg, g.mse_year * 1e3, "o-", ms=3, color=f"C{i}")
+    if layer in ns.QSIG_LAYER:
+        c = t[(t.sig_deg == ns.QSIG_LAYER[layer][0]) & (t.sig_days == ns.QSIG_LAYER[layer][1])]
+        for a, v in zip(ax, (c.mean_abs_year_bias, c.mse_year * 1e3)):
+            a.plot(c.sig_deg, v, "o", ms=11, mfc="none", mec="k", label="chosen")
+    for a in ax:
+        a.set(xscale="log", xlabel="spatial kernel sd (deg)")
+        a.set_xticks([1 / 3, 1 / 2, 1, 2, 3, 5], ["1/3", "1/2", "1", "2", "3", "5"])
+        a.minorticks_off()
+    ax[0].set(ylabel="mean |yearly bias| (GJ/m2)", ylim=(0, None), title="DR bias")
+    ax[1].set(ylabel="yearly MSE (1e-3 (GJ/m2)^2)", title="DR MSE")
+    ax[0].legend(fontsize=8, title="temporal sd", title_fontsize=8)
+    return fig
+
+
+def spatial_diag():
+    """Per-cell diagnostics written by natl_sim.spatial_diag."""
+    return pd.read_csv(os.path.join(ns.OUT, "spatial_diag.csv"))
+
+
+def plot_cell_maps(d, panels, ncol=2, one_cbar=False):
+    """1 deg cell values on the native grid, masked to the domain. panels: (column, title, vmax or None for a
+    symmetric limit at the 98th percentile of |value|, colour-bar label); d holds lat, lon cell centres."""
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+    la, lo, m, _ = ns.domain()
+    ci, cj = np.floor(la) + 0.5, np.floor(lo) + 0.5
+    nr_ = -(-len(panels) // ncol)
+    fig, ax = plt.subplots(nr_, ncol, figsize=(6.6 * ncol, 3.6 * nr_), squeeze=False, layout="constrained",
+                           subplot_kw=dict(projection=ccrs.PlateCarree()))
+    for a, (col, title, vmax, lab) in zip(ax.flat, panels):
+        g = d.pivot_table(index="lat", columns="lon", values=col).reindex(index=ci, columns=cj)
+        v = np.where(m, g.values, np.nan)
+        vmax = vmax or np.nanquantile(np.abs(v), 0.98)
+        pc = a.pcolormesh(lo, la, v, shading="nearest", cmap="RdBu_r", vmin=-vmax, vmax=vmax, rasterized=True,
+                          transform=ccrs.PlateCarree())
+        a.add_feature(cfeature.LAND, facecolor="0.85", zorder=2)
+        a.coastlines(lw=0.4, zorder=3)
+        a.set_extent([lo.min(), lo.max(), ns.SOUTH, la.max()], crs=ccrs.PlateCarree())
+        a.set_title(title, fontsize=9)
+        if not one_cbar:
+            fig.colorbar(pc, ax=a, shrink=0.8).set_label(lab, fontsize=8)
+    for a in ax.flat[len(panels):]:
+        a.set_visible(False)
+    if one_cbar:
+        fig.colorbar(pc, ax=ax, shrink=0.5).set_label(lab)
+    return fig
+
+
+def plot_spatial(d, layer, kind):
+    """Per-cell diagnostic maps of one layer. kind "residual": mean held-out residual at the profiles and its parts
+    (common scale); "dr": r_j - 1 and DR's correction per unit area at the production kernels and, if the layer's
+    kernel differs from QSIG, the change in the correction from QSIG."""
+    prod = ",".join(f"{ns.QSIG_LAYER[l][0]:g}/{ns.QSIG_LAYER[l][1]:g}" for l in ns.LAYER_NAMES)
+    base = ",".join(f"{ns.QSIG[0]:g}/{ns.QSIG[1]:g}" for _ in ns.LAYER_NAMES)
+    g = d[d.layer == layer]
+    w = g[g.kernel == prod].set_index(["lat", "lon"])
+    if kind == "residual":
+        cols = [("e_mean", "residual Z - map"), ("emf_mean", "Z - mean field"), ("anom_mean", "kriged anomaly")]
+        vmax = np.nanquantile(np.abs(w[[c for c, _ in cols]].to_numpy()), 0.98)
+        return plot_cell_maps(w.reset_index(), [(c, t, vmax, "GJ/m2") for c, t in cols], ncol=3)
+    w = w.assign(r1=w.r - 1, cdens=w.c_share / w.area_share)
+    panels = [("r1", "r_j - 1 (weight share / area share - 1)", 0.5, ""),
+              ("cdens", "DR correction per unit area", None, "GJ/m2")]
+    if ns.QSIG_LAYER[layer] != ns.QSIG:
+        b = g[g.kernel == base].set_index(["lat", "lon"])
+        w["dc"] = (w.c_share - b.c_share.reindex(w.index)) / w.area_share
+        panels.append(("dc", f"change in correction from {ns.QSIG[0]:g} deg, {ns.QSIG[1]:g} d", None, "GJ/m2"))
+    return plot_cell_maps(w.reset_index(), panels, ncol=len(panels))
+
+
+def spatial_diag_year():
+    """Per-cell diagnostics by year (natl_sim.spatial_diag, by_year=True)."""
+    return pd.read_csv(os.path.join(ns.OUT, "spatial_diag_year.csv"))
+
+
+def plot_spatial_years(dy, layer, kind):
+    """One map per year, common scale: kind "residual" the mean held-out residual at the profiles, "dr" DR's
+    correction per unit area, both at the production kernels."""
+    prod = ",".join(f"{ns.QSIG_LAYER[l][0]:g}/{ns.QSIG_LAYER[l][1]:g}" for l in ns.LAYER_NAMES)
+    g = dy[(dy.layer == layer) & (dy.kernel == prod)]
+    v = g.e_mean if kind == "residual" else g.c_share / g.area_share
+    w = g.assign(v=v).pivot_table(index=["lat", "lon"], columns="year", values="v")
+    vmax = np.nanquantile(np.abs(w.to_numpy()), 0.98)
+    w.columns = [f"y{c}" for c in w.columns]
+    lab = "residual Z - map (GJ/m2)" if kind == "residual" else "DR correction (GJ/m2)"
+    return plot_cell_maps(w.reset_index(), [(c, c[1:], vmax, lab) for c in w.columns], ncol=4, one_cbar=True)
+
+
+def spatial_summary(d):
+    """Key sums of the per-cell diagnostics at the production kernels: area-weighted residual parts, the correction
+    total and the share of it in the top 20% of cells, the profile-mean map-bias proxy, and for 700-2000 m the change
+    in the correction from QSIG, its positive-cell fraction and the share in cells straddling the domain edge."""
+    prod = ",".join(f"{ns.QSIG_LAYER[l][0]:g}/{ns.QSIG_LAYER[l][1]:g}" for l in ns.LAYER_NAMES)
+    base = ",".join(f"{ns.QSIG[0]:g}/{ns.QSIG[1]:g}" for _ in ns.LAYER_NAMES)
+    out = {}
+    for l, g in d.groupby("layer"):
+        w = g[g.kernel == prod]
+        top = w.c_share.abs().sort_values(ascending=False).index[: len(w) // 5]
+        out[l] = dict(emf=(w.area_share * w.emf_mean).sum(), anom=(w.area_share * w.anom_mean).sum(),
+                      proxy=w.map_contrib.sum(), corr=w.c_share.sum(), top20=w.c_share[top].sum() / w.c_share.sum())
+        b = g[g.kernel == base].set_index(["lat", "lon"]).c_share
+        dc = w.set_index(["lat", "lon"]).c_share - b
+        edge = w.set_index(["lat", "lon"]).area_share < 0.8 * w.area_share.quantile(0.9)
+        out[l] |= dict(dc=dc.sum(), dc_pos=(dc > 0).mean(), edge_area=w.set_index(["lat", "lon"]).area_share[edge].sum(),
+                       edge_dc=dc[edge].sum() / dc.sum() if dc.abs().sum() > 0 else np.nan)
+    return pd.DataFrame(out)
+
+
+def select_bandwidth(sigs, layer="total", ref=ns.QSIG, split=60):
+    """Choose the kernel sd on each half of the replicates (rep < split vs rep >= split) by DR's yearly MSE or by its
+    mean over years of |yearly bias|, and evaluate the choice and `ref` on the other half."""
+    E = pd.concat([(lambda e: e[(e.group == "dr") & (e.layer == layer)])(estimates(g)).assign(sig=str(g)) for g in sigs])
+    crit = {"mse": lambda x: (x.err ** 2).groupby(x.sig).mean(),
+            "abs_year_bias": lambda x: x.groupby(["sig", "year"]).err.mean().abs().groupby("sig").mean()}
+    rows = []
+    for c, f in crit.items():
+        for name, h in {"first": E.rep < split, "second": E.rep >= split}.items():
+            pick, ho = f(E[h]).idxmin(), f(E[~h])
+            rows.append(dict(criterion=c, chosen_on=name, choice=pick, heldout=ho[pick], heldout_ref=ho[str(ref)],
+                             heldout_best=ho.min(), heldout_best_sig=ho.idxmin()))
+    return pd.DataFrame(rows)
 
 
 def rep_summary(E, by=("group", "layer")):
@@ -259,3 +405,28 @@ def coverage(E, level=0.95):
     hit = np.abs(d.err) <= stats.t.ppf(0.5 + level / 2, d.dr_df) * d.se
     return pd.DataFrame(dict(coverage=hit.groupby(d.layer).mean(), median_se=d.se.groupby(d.layer).median(),
                              sd_err=d.groupby(["layer", "year"]).err.std().groupby("layer").median()))
+
+
+COST_STEPS = {"data_download": "GLORYS download (layers, 1000 m velocity)", "domain": "domain mask",
+              "truth": "truth theta_y", "advection": "advection (200 replicates)", "ohc_sampling": "OHC at profiles",
+              "uniform_comparison": "stationary and iid designs", "cov_exact": "covariance fits (r0-9)",
+              "qhat_diag": "q-hat diagnostics", "qhat_crosshalf": "cross-half Hajek", "q_points": "q-hat at profiles",
+              "kriging": "kriging + fold maps (r10-109)", "quadrature": "quadrature remainder",
+              "dr_bandwidth": "DR kernel sweep (30 kernels)", "dr_layers": "production DR", "spatial_diag": "spatial diagnostics"}
+
+
+def cost_table(path=None):
+    """Per pipeline step (operational jobs, completed tasks): tasks, median and max wall per task, core-h, CPU-h,
+    allocated and peak memory, credits billed on open and open-equivalent credits of sc_default work; plus a total."""
+    d = pd.read_csv(path or os.path.join(ns.OUT, "compute_costs.csv"))
+    d = d.assign(step=d.stage.map(COST_STEPS), wall_h=d.elapsed_s / 3600,
+                 credits_open=np.where(d.account.eq("open"), d.credits, 0.0),
+                 credits_sc_equiv=np.where(d.account.eq("open"), 0.0, d.credits))
+    agg = dict(tasks=("id", "size"), wall_median_h=("wall_h", "median"), wall_max_h=("wall_h", "max"),
+               core_h=("core_h", "sum"), cpu_h=("cpu_h", "sum"), mem_alloc_gb=("mem_gb", "max"),
+               peak_rss_gb=("maxrss_gb", "max"), credits_open=("credits_open", "sum"),
+               credits_sc_equiv=("credits_sc_equiv", "sum"))
+    t = d.groupby("step", sort=False).agg(**agg).reindex([v for v in COST_STEPS.values() if v in set(d.step)])
+    t = pd.concat([t, d.assign(step="total").groupby("step").agg(**agg)])
+    t["credits_total"] = t.credits_open + t.credits_sc_equiv
+    return t

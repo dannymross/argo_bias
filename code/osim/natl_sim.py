@@ -954,9 +954,9 @@ def run_map(rep, layer, months=None):
     deployments(rep).to_parquet(os.path.join(map_path(rep), "folds.parquet"))
 
 
-def fold_stats(h, fl):
-    """Hajek correction C of one fold-year and its delete-one-float jackknife within cohort: Vjk and the
-    jackknife terms c_j (their sums give the Satterthwaite df). h: held-out profiles with v, e; fl: the fold's floats."""
+def jk_terms(h, fl):
+    """Hajek correction C of one fold-year and its delete-one-float values C_j (floats in cohorts of >1).
+    h: held-out profiles with v, e; fl: the fold's floats."""
     t = pd.DataFrame(dict(float_id=h.float_id.values, a=h.v.values * h.e.values, d=h.v.values)).groupby("float_id").sum()
     t = t.reindex(fl.float_id, fill_value=0.0).assign(cohort=fl.cohort.values)
     A, D = t.a.sum(), t.d.sum()
@@ -964,9 +964,21 @@ def fold_stats(h, fl):
     n = t.groupby("cohort").a.transform("size")
     t = t[n > 1].assign(n=n[n > 1])
     rest = D - t.d
-    Cj = ((A - t.a) / rest.where(rest > 0)).fillna(C)
-    cj = (t.n - 1) / t.n * (Cj - Cj.groupby(t.cohort).transform("mean")) ** 2
-    return dict(C=C, Vjk=cj.sum(), c_sum=cj.sum(), c2_sum=(cj ** 2).sum(), n=len(h), n_floats=int((t.d > 0).sum()))
+    return C, t.assign(Cj=((A - t.a) / rest.where(rest > 0)).fillna(C))
+
+
+def jk_summary(C, t):
+    """Delete-one-float jackknife within cohort: Vjk and the terms c_j (their sums give the Satterthwaite df)."""
+    cj = (t.n - 1) / t.n * (t.Cj - t.Cj.groupby(t.cohort).transform("mean")) ** 2
+    return dict(C=C, Vjk=cj.sum(), c_sum=cj.sum(), c2_sum=(cj ** 2).sum())
+
+
+def fold_stats(h, fl, keep=None):
+    """jk_terms + jk_summary, with profile and float counts; `keep` (list) receives (C, t) for combining layers."""
+    C, t = jk_terms(h, fl)
+    if keep is not None:
+        keep.append((C, t))
+    return jk_summary(C, t) | dict(n=len(h), n_floats=int((t.d > 0).sum()))
 
 
 def layer_maps(rep):
@@ -997,7 +1009,78 @@ def estimate(rep, sig=QSIG):
     return out
 
 
-def estimate_layer(rep, layer, maps, pf, fl, tr, sig=QSIG):
+QSIG_LAYER = {"ohc_15_700": (1.0, 30.0), "ohc_700_2000": (0.3333, 5.0)}   # per-layer DR kernels (dr_bandwidth sweep)
+QTAG = "q_layer"
+
+
+def estimate_layers(rep, sigs=QSIG_LAYER, tag=QTAG):
+    """estimate() with a q-hat kernel per layer. The "total" rows are the layer sums; DR's total variance is the
+    jackknife of the summed per-float delete-one values, so it keeps the covariance between layers."""
+    fl = pd.read_parquet(os.path.join(map_path(rep), "folds.parquet"))
+    tr = truth().set_index(["layer", "year"])
+    M, jk, out, folds = layer_maps(rep), {}, [], []
+    for l in LAYER_NAMES:
+        o, f = estimate_layer(rep, l, *M[l], fl, tr.loc[l], sigs[l], jk)
+        out.append(o), folds.append(f)
+    num = ["naive", "hajek", "mean_field", "krige", "dr"]
+    tot = sum(o.set_index("year")[num] for o in out)
+    fs = []
+    for (y, k), parts in jk.items():
+        C = sum(c for c, _ in parts)
+        t = parts[0][1][["cohort", "n"]].assign(Cj=sum(t.Cj for _, t in parts))
+        fs.append(dict(year=y, fold=k, **jk_summary(C, t)))
+    fs = pd.DataFrame(fs).groupby("year")
+    tot = tot.assign(rep=rep, layer="total", theta=tr.loc["total"].theta.reindex(tot.index),
+                     dr_V=fs.Vjk.sum() / K ** 2, dr_df=fs.c_sum.sum() ** 2 / fs.c2_sum.sum(),
+                     n=out[0].set_index("year").n, n_floats=out[0].set_index("year").n_floats).reset_index()
+    out = pd.concat([*out, tot[out[0].columns]], ignore_index=True)
+    out.to_parquet(os.path.join(map_path(rep), f"estimates_{tag}.parquet"))
+    pd.concat(folds, ignore_index=True).to_parquet(os.path.join(map_path(rep), f"fold_stats_{tag}.parquet"))
+    return out
+
+
+def spatial_diag(reps, sigs=(QSIG_LAYER, {l: QSIG for l in LAYER_NAMES}), out=None, by_year=False):
+    """Per layer, kernel set and 1 deg cell, pooled over `reps` x analysis years: the cell's area share a_j/A; the
+    mean held-out residual e = z - mu_lofo - anom_lofo and its two parts; and, per fold-year averaged over folds,
+    the cell's share of the 1/q-hat weight (r_j = share / area share) and of DR's correction C. Then
+    dr_contrib = c_share - area_share * e_mean approximates the cell's contribution to DR's bias (exact up to the
+    within-cell variation of e and the quadrature remainder) and map_contrib = -area_share * e_mean the map's.
+    by_year: per year as well (shares then per replicate of that year)."""
+    la, lo, m, a = domain()
+    I, J = np.nonzero(m)
+    cell = lambda lat, lon: (np.floor(lat) + 0.5, np.floor(lon) + 0.5)
+    ar = pd.DataFrame(dict(zip(("lat", "lon"), cell(la[I], lo[J])), area=a[I, J])).groupby(["lat", "lon"]).area.sum()
+    ar = (ar / ar.sum()).rename("area_share")
+    E, W = [], []
+    for r in reps:
+        for l in LAYER_NAMES:
+            p = pd.read_parquet(os.path.join(map_path(r, l), "prof.parquet"),
+                                columns=["float_id", "cycle", "fold", "lat", "lon", "time", "z", "mu_lofo", "anom_lofo", "e"])
+            p = p.assign(year=p.time.dt.year, emf=p.z - p.mu_lofo, lat=cell(p.lat, p.lon)[0], lon=cell(p.lat, p.lon)[1])
+            gk = ["year", "lat", "lon"] if by_year else ["lat", "lon"]
+            E.append(p.groupby(gk).agg(n=("e", "size"), e=("e", "sum"), emf=("emf", "sum"),
+                                                   anom=("anom_lofo", "sum")).assign(layer=l))
+            for i, sg in enumerate(sigs):
+                q = pd.read_parquet(os.path.join(q_dir(sg[l]), f"r{r}.parquet"))
+                x = p.merge(q, on=["float_id", "cycle"], validate="1:1").assign(v=lambda d: 1 / d.q)
+                x["v"] /= x.groupby(["year", "fold"]).v.transform("sum") * K
+                x["ve"] = x.v * x.e
+                W.append(x.groupby(gk)[["v", "ve"]].sum().assign(layer=l, kernel=i))
+    ny = len(reps) * (1 if by_year else len(cfg.ANALYSIS_YEARS))
+    key = ["year", "lat", "lon"] if by_year else ["lat", "lon"]
+    E = pd.concat(E).groupby(["layer", *key]).sum()
+    E = E.assign(e_mean=E.e / E.n, emf_mean=E.emf / E.n, anom_mean=E.anom / E.n)[["n", "e_mean", "emf_mean", "anom_mean"]]
+    W = (pd.concat(W).groupby(["layer", "kernel", *key]).sum() / ny).rename(columns=dict(v="w_share", ve="c_share"))
+    d = W.reset_index().merge(E.reset_index(), on=["layer", *key], how="left").join(ar, on=["lat", "lon"])
+    d["kernel"] = d.kernel.map(lambda i: ",".join(f"{sigs[i][l][0]:g}/{sigs[i][l][1]:g}" for l in LAYER_NAMES))
+    d = d.assign(r=d.w_share / d.area_share, map_contrib=-d.area_share * d.e_mean * 1e-9,
+                 dr_contrib=(d.c_share - d.area_share * d.e_mean) * 1e-9, e_mean=d.e_mean * 1e-9,
+                 emf_mean=d.emf_mean * 1e-9, anom_mean=d.anom_mean * 1e-9, c_share=d.c_share * 1e-9)
+    d.to_csv(out or os.path.join(OUT, "spatial_diag.csv"), index=False)
+    return d
+
+
+def estimate_layer(rep, layer, maps, pf, fl, tr, sig=QSIG, jk=None):
     q = pd.read_parquet(os.path.join(q_dir(sig), f"r{rep}.parquet"))
     pf = pf.merge(q, on=["float_id", "cycle"], how="inner", validate="1:1").assign(year=lambda x: x.time.dt.year)
     pf["v"] = pf["w"] = 1 / pf.q   # folds are stratified by cohort and C_k, Hajek are ratios: the scale cancels
@@ -1006,7 +1089,8 @@ def estimate_layer(rep, layer, maps, pf, fl, tr, sig=QSIG):
     ann = m.groupby("year").apply(lambda g: pd.Series({c: np.average(g[c], weights=g.wd) for c in cols}))
     rows, folds = [], []
     for y, g in pf.groupby("year"):
-        fk = [dict(layer=layer, year=y, fold=k, Q=ann.loc[y, f"fold{k}"], **fold_stats(g[g.fold == k], fl[fl.fold == k]))
+        fk = [dict(layer=layer, year=y, fold=k, Q=ann.loc[y, f"fold{k}"],
+                   **fold_stats(g[g.fold == k], fl[fl.fold == k], None if jk is None else jk.setdefault((y, k), [])))
               for k in range(K)]
         folds += fk
         fk = pd.DataFrame(fk)
@@ -1019,8 +1103,8 @@ def estimate_layer(rep, layer, maps, pf, fl, tr, sig=QSIG):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["design", "advect", "profiles", "select", "gpgp_pilot", "cov_exact_test", "uniform", "stationary", "covfit", "covgather", "covpool", "quadrature", "fields", "oracle_prepare", "sample", "qpoints", "map",
-                                    "estimate"])
+    ap.add_argument("cmd", choices=["design", "advect", "profiles", "select", "gpgp_pilot", "cov_exact_test", "uniform", "stationary", "covfit", "covgather", "covpool", "estimate_layers", "spatial_diag", "quadrature", "fields", "oracle_prepare", "sample", "qpoints", "map",
+                                    "estimate", "estimate_layers", "spatial_diag"])
     ap.add_argument("--rep", type=int, default=int(os.environ.get("SLURM_ARRAY_TASK_ID", 0)))
     ap.add_argument("--reps", help="first,last (inclusive): sample/qpoints chunk; q-hat's evaluation reps")
     ap.add_argument("--all-reps", type=int, help="qpoints: q-hat from replicates 0..N-1")
@@ -1037,4 +1121,5 @@ if __name__ == "__main__":
      "covfit": lambda: covfit(list(rr), a.rep), "covgather": lambda: [covgather(r) for r in rr], "covpool": lambda: covpool(list(rr)),
      "quadrature": quadrature, "sample": lambda: sample(rr), "qpoints": lambda: q_points(rr, range(a.all_reps or 200), sigs),
      "map": lambda: [run_map(a.rep, l, a.year and list(pd.date_range(f"{a.year}-01", f"{a.year}-12", freq="MS")))
-                     for l in layers], "estimate": lambda: [estimate(r, g) for g in sigs for r in rr if os.path.exists(os.path.join(map_path(r), "folds.parquet"))]}[a.cmd]()
+                     for l in layers], "estimate_layers": lambda: [estimate_layers(r) for r in rr if os.path.exists(os.path.join(map_path(r), "folds.parquet"))],
+     "spatial_diag": lambda: (spatial_diag(list(rr)), spatial_diag(list(rr), out=os.path.join(OUT, "spatial_diag_year.csv"), by_year=True)), "estimate": lambda: [estimate(r, g) for g in sigs for r in rr if os.path.exists(os.path.join(map_path(r), "folds.parquet"))]}[a.cmd]()
