@@ -6,6 +6,7 @@ project:
     - "reports/gyre_masks.qmd"
     - "reports/domain.qmd"
     - "reports/natl_cov.qmd"
+    - "reports/kriging_dr.qmd"
 
 execute:
   freeze: auto
@@ -27,6 +28,9 @@ website:
           - reports/gyre_masks.qmd
           - reports/domain.qmd
           - reports/natl_cov.qmd
+      - section: "Methods"
+        contents:
+          - reports/kriging_dr.qmd
 
 format:
   html:
