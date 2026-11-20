@@ -6,10 +6,10 @@ bibliography: ../paper/references.bib
 
 ## Summary
 
-The target is a domain mean $\theta_y=\int Z\,d\mathbb P_y$. The estimator has two parts: a map $\hat m$ built by
-kriging, and a correction for the map's error built from the floats.
+The target is a domain mean $\theta_y=\int Z\,d\mathbb P_y$. The estimator has two parts: a map $\hat Z=\hat\mu+\bar a$ (mean
+field plus GP-predicted anomaly), and a correction for the map's error built from the floats.
 
-1. **Block kriging is not a new predictor.** It is the *exact integral* of the ordinary point-kriging predictor. Summing
+1. **Block kriging is not a new predictor.** It is the *exact integral* of the ordinary GP predictive mean. Summing
    point predictions at nodes approximates that integral and adds a quadrature error of the map. No sampling
    correction can remove that error, because it is not a sampling error.
 2. **The difference estimator** writes $\theta_y=\int m\,d\mathbb P_y+\int(Z-m)\,d\mathbb P_y$ for any map $m$. The first term is
@@ -22,18 +22,19 @@ kriging, and a correction for the map's error built from the floats.
 
 ## 1. Setting and estimand
 
-- $\mathcal X_y$ is the domain-year: the connected $\ge 2000$ m North Atlantic domain $A$ times year $y$.
-- $\mu$ is area $\times$ time (surface measure on $A$ times Lebesgue measure in days), and
-  $\mathbb P_y=\mu(\cdot\cap\mathcal X_y)/\mu(\mathcal X_y)$ is the normalized area-time *probability* measure.
-- $Z$ is the true layer OHC (J m$^{-2}$), bounded and measurable on $\mathcal X_y$.
+- $x=(s,t)$ is a space-time coordinate: $s$ in the connected $\ge 2000$ m North Atlantic domain $A$, $t$ in days.
+  $\mathcal X_y=A\times y$ is the domain-year.
+- $\nu$ is area $\times$ time (surface measure on $A$ times Lebesgue measure in days), and
+  $\mathbb P_y=\nu(\cdot\cap\mathcal X_y)/\nu(\mathcal X_y)$ is the normalized area-time *probability* measure.
+- $Z(x)$ is the true layer OHC (J m$^{-2}$), bounded and measurable on $\mathcal X_y$.
 
 $$
 \theta_y=\int_{\mathcal X_y} Z\,d\mathbb P_y \qquad\text{(the area-time mean: the estimand).}
 $$
 
 Profiles form a point process $N$ on $\mathcal X_y$ with intensity measure $\Lambda(E)=\mathbb E\,N(E)$. We assume
-$\Lambda\ll\mu$ and write its density as $q=d\Lambda/d\mu$ (expected profiles per km$^2$ per day). We observe $Z(x_i)$ at the
-points $x_i$ of $N$.
+$\Lambda\ll\nu$ and write its density as $q=d\Lambda/d\nu$ (expected profiles per km$^2$ per day). We observe $Z(x_i)$ at the
+points $x_1,\dots,x_n$ of $N$.
 
 ::: {.callout-note}
 ## Intuition
@@ -41,40 +42,63 @@ $\theta_y$ is a fixed number, the mean of one ocean. The randomness is *where th
 about bias below is an expectation over $N$ with $Z$ held fixed. That is the design-based view.
 :::
 
-## 2. Point kriging
+## 2. Point kriging (GP regression of the anomaly)
 
-**Working model.** Write $Z=m+W$, where $m$ is a mean field and $W$ is a zero-mean process with covariance $C(x,x')$ (in
-our code, an anisotropic exponential $\phi\,\exp\{-\lVert(x-x')/\vartheta\rVert\}$ with plug-in parameters per region). Given a
-fitted mean $\hat\mu$, the data residuals are
+**Working model.** The standard decomposition for mapping OHC [@kuusela2018] is
 
 $$
-r_i=Z(x_i)-\hat\mu(x_i)=W(x_i)+\varepsilon_i,\qquad \operatorname{Var}\varepsilon_i=\tau^2 \ \text{(nugget)}.
+Z(x)=\mu(x)+a(x)+\varepsilon(x),
 $$
 
-Collect $\Sigma=[C(x_i,x_j)]+\tau^2 I$ (data-data covariance) and $c(x_0)=[C(x_0,x_i)]_i$ (target-data covariance).
-
-**Derivation.** Predict $W(x_0)$ by a linear combination $a^\top r$ minimizing the mean squared error
-
-$$
-\mathbb E\big(W(x_0)-a^\top r\big)^2=C(x_0,x_0)-2a^\top c(x_0)+a^\top\Sigma a .
-$$
-
-Setting the gradient to zero gives $\Sigma a=c(x_0)$, so
+where $\mu$ is the climatological mean field (seasonal harmonics and a trend, fitted by local polynomial regression),
+$a$ is a zero-mean anomaly field with covariance kernel $k(x,x')$, and $\varepsilon$ is a zero-mean nugget, uncorrelated in
+space and time, with variance $\sigma_\varepsilon^2$. Given a fitted mean $\hat\mu$, the residual field and its observations are
 
 $$
-\boxed{\;\hat W(x_0)=c(x_0)^\top\Sigma^{-1}r,\qquad \hat m(x_0)=\hat\mu(x_0)+\hat W(x_0)\;}
-\qquad \text{MSE}=C(x_0,x_0)-c(x_0)^\top\Sigma^{-1}c(x_0).
+r(x):=Z(x)-\hat\mu(x)\approx a(x)+\varepsilon(x),\qquad \mathbf r=\big(r(x_1),\dots,r(x_n)\big)^\top .
+$$
+
+Our kernel is the anisotropic exponential $k(x,x')=\sigma_a^2\exp\{-\lVert D^{-1}(x-x')\rVert\}$, with
+$D=\operatorname{diag}(\ell_{\mathrm{lon}},\ell_{\mathrm{lat}},\ell_t)$ and hyperparameters $(\sigma_a^2,D,\sigma_\varepsilon^2)$ fitted per region
+(locally stationary).
+
+**Notation** [@rasmussen2006, Sec. 2.2]. $K=[k(x_i,x_j)]_{i,j=1}^n$ is the training-training covariance, and for a test point
+$x_*$, $\mathbf k_*=[k(x_i,x_*)]_{i=1}^n$ is the training-test covariance.
+
+**Predictive mean and variance.** Conditioning the Gaussian vector $(a(x_*),\mathbf r)$ gives
+
+$$
+\boxed{\;\bar a(x_*)=\mathbf k_*^\top(K+\sigma_\varepsilon^2I)^{-1}\mathbf r,\qquad
+\mathbb V[a(x_*)\mid\mathbf r]=k(x_*,x_*)-\mathbf k_*^\top(K+\sigma_\varepsilon^2I)^{-1}\mathbf k_*\;}
+$$
+
+and the map is $\hat Z(x_*)=\hat\mu(x_*)+\bar a(x_*)$. Without Gaussianity, $\bar a(x_*)$ is still the best *linear* predictor
+(simple kriging): minimizing $\mathbb E\{a(x_*)-\mathbf w^\top\mathbf r\}^2=k(x_*,x_*)-2\mathbf w^\top\mathbf k_*+\mathbf w^\top(K+\sigma_\varepsilon^2I)\mathbf w$
+gives $\mathbf w=(K+\sigma_\varepsilon^2I)^{-1}\mathbf k_*$, and the variance above is then its MSE.
+
+Two equivalent readings of the predictive mean:
+
+$$
+\bar a(x_*)=\underbrace{\mathbf w^\top\mathbf r}_{\text{weights on the data}}
+=\underbrace{\sum_{i=1}^n\alpha_i\,k(x_i,x_*)}_{\text{kernel bumps at the data}},\qquad
+\mathbf w=(K+\sigma_\varepsilon^2I)^{-1}\mathbf k_*,\quad
+\boldsymbol\alpha=(K+\sigma_\varepsilon^2I)^{-1}\mathbf r .
 $$
 
 ::: {.callout-note}
 ## Intuition
-The weights $a=\Sigma^{-1}c$ are "how correlated each profile is with the target" ($c$), corrected for "how much the profiles
-repeat each other" ($\Sigma^{-1}$). Ten profiles from one float, close in space and time, count as little more than one.
+**Weights:** $\mathbf w$ is "how correlated each profile is with the target" ($\mathbf k_*$), corrected for "how much the
+profiles repeat each other" ($(K+\sigma_\varepsilon^2I)^{-1}$). Ten profiles from one float, close in space and time, count as
+little more than one. **Bumps:** the map is a sum of $n$ kernel functions centred on the profiles, with heights
+$\alpha_i$ fixed by the data. The test point enters *only* through $k(x_i,x_*)$. That is what makes Section 4 work.
 :::
 
+The nugget does not change the predictor. At any $x_*$ off the data, $\operatorname{Cov}\{\varepsilon(x_*),\mathbf r\}=0$, so the best linear
+predictor of $Z(x_*)-\hat\mu(x_*)$ is also $\bar a(x_*)$.
+
 In practice each prediction uses only the data in a window around it ($\pm10^\circ$, adjacent months) and the
-covariance parameters of its region. This is local kriging in the sense of @kuusela2018. The model is a *working*
-model: it is used to build $\hat m$, and nothing in Section 5 assumes it is correct.
+hyperparameters of its region. This is local GP regression in the sense of @kuusela2018. The model is a *working*
+model: it is used to build $\hat Z$, and nothing in Section 5 assumes it is correct.
 
 ## 3. From point predictions to the domain mean
 
@@ -82,22 +106,22 @@ Partition $\mathcal X_y$ into blocks $B_j$ (1$^\circ$ cells $\times$ months) wit
 $x_j$ in each block (its area centroid at mid-month). The current map estimate is the quadrature
 
 $$
-Q_y(\hat m)=\sum_j w_j\,\hat m(x_j).
+Q_y(\hat Z)=\sum_j w_j\,\hat Z(x_j).
 $$
 
-Write $\hat m(B_j)=\mathbb P_y(B_j)^{-1}\int_{B_j}\hat m\,d\mathbb P_y$ for the map's block mean. Then, exactly,
+For any integrable $f$, write $f(B)=\mathbb P_y(B)^{-1}\int_B f\,d\mathbb P_y$ for its block mean. Then, exactly,
 
 $$
-Q_y(\hat m)-\theta_y=\underbrace{\int(\hat m-Z)\,d\mathbb P_y}_{\text{map error}}
-+\underbrace{\sum_j w_j\big[\hat m(x_j)-\hat m(B_j)\big]}_{\text{quadrature error of the map}} .
+Q_y(\hat Z)-\theta_y=\underbrace{\int(\hat Z-Z)\,d\mathbb P_y}_{\text{map error}}
++\underbrace{\sum_j w_j\big[\hat Z(x_j)-\hat Z(B_j)\big]}_{\text{quadrature error of the map}} .
 $$
 
 The second term is the gap between the map at the node and the map averaged over its block. A heuristic for its size
-(it assumes the map is twice differentiable on the block, which the exponential-kernel anomaly is not at data
-points): with the node at the block's centroid, the first-order terms cancel and
+(it assumes the map is twice differentiable on the block, which a predictive mean built from exponential kernels is not
+at data points): with the node at the block's centroid, the first-order terms cancel and
 
 $$
-\hat m(x_j)-\hat m(B_j)\approx-\tfrac12\operatorname{tr}\!\big(H_j\,S_j\big),
+\hat Z(x_j)-\hat Z(B_j)\approx-\tfrac12\operatorname{tr}\!\big(H_j\,S_j\big),
 $$
 
 where $H_j$ is the map's Hessian (curvature) and $S_j$ is the block's second-moment matrix about the node. In space,
@@ -112,61 +136,90 @@ remove it (Section 6).
 
 ::: {.callout-note}
 ## Two exact splits, two different remainders
-The report on the GLORYS chain splits $Q_y(\hat m)-\theta_y=[Q_y(\hat m)-Q_y(Z)]+[Q_y(Z)-\theta_y]$, where the second term is
+The report on the GLORYS chain splits $Q_y(\hat Z)-\theta_y=[Q_y(\hat Z)-Q_y(Z)]+[Q_y(Z)-\theta_y]$, where the second term is
 the quadrature error of the *truth*. Both splits are exact. The one above isolates what block kriging removes: the
 quadrature error of the *map*.
 :::
 
 ## 4. Block kriging
 
-**Target.** Predict the block mean of the anomaly, $\bar W(B)=\mathbb P_y(B)^{-1}\int_B W\,d\mathbb P_y$, by $a^\top r$.
+**Target.** Predict the block mean of the anomaly, $a(B)=\mathbb P_y(B)^{-1}\int_B a\,d\mathbb P_y$.
 
-**Derivation.** It is the same calculation as in Section 2, with $W(x_0)$ replaced by $\bar W(B)$. The only new
-ingredient is the block-to-data covariance. By Fubini (the covariance is bounded),
-
-$$
-\bar c_i(B)=\operatorname{Cov}\big(\bar W(B),r_i\big)=\frac1{\mathbb P_y(B)}\int_B C(x,x_i)\,d\mathbb P_y(x).
-$$
-
-The normal equations become $\Sigma a=\bar c(B)$, so
+**Derivation.** It is the same conditioning as in Section 2, with $a(x_*)$ replaced by $a(B)$. The only new ingredient
+is the covariance between the target and the data. Extend the kernel to blocks by averaging over the test argument;
+by Fubini (the kernel is bounded),
 
 $$
-\boxed{\;\hat W(B)=\bar c(B)^\top\Sigma^{-1}r\;}\qquad
-\text{MSE}=\bar C(B,B)-\bar c(B)^\top\Sigma^{-1}\bar c(B),\quad \bar C(B,B)=\tfrac{1}{\mathbb P_y(B)^2}\!\iint_{B\times B}\!C\,d\mathbb P_y\,d\mathbb P_y .
+k(B,x')=\operatorname{Cov}\big(a(B),a(x')\big)=\frac1{\mathbb P_y(B)}\int_B k(x,x')\,d\mathbb P_y(x),\qquad
+k(B,B)=\frac1{\mathbb P_y(B)^2}\iint_{B\times B}k\,d(\mathbb P_y\otimes\mathbb P_y).
 $$
 
-**The key identity.** Because the predictor is linear in $c$,
+With $\mathbf k_B=[k(B,x_i)]_{i=1}^n$ in place of $\mathbf k_*$,
 
 $$
-\bar c(B)^\top\Sigma^{-1}r=\frac1{\mathbb P_y(B)}\int_B c(x)^\top\Sigma^{-1}r\;d\mathbb P_y(x)
-=\frac1{\mathbb P_y(B)}\int_B\hat W\,d\mathbb P_y .
+\boxed{\;\bar a(B)=\mathbf k_B^\top(K+\sigma_\varepsilon^2I)^{-1}\mathbf r,\qquad
+\mathbb V[a(B)\mid\mathbf r]=k(B,B)-\mathbf k_B^\top(K+\sigma_\varepsilon^2I)^{-1}\mathbf k_B\;}
 $$
 
-**Block kriging is the exact block average of point kriging.** Averaging the kernel first and then solving gives the same
-result as kriging every point and then averaging; the first is just the cheap way to compute it. Adding the block mean
-of the mean field, $\bar\mu(B)=\mathbb P_y(B)^{-1}\int_B\hat\mu\,d\mathbb P_y$, gives
+**The key identity.** In the kernel-bump form, the test point enters only through $k(x_i,\cdot)$, so integrating the map
+integrates each bump:
 
 $$
-\hat m(B_j)=\bar\mu(B_j)+\bar c(B_j)^\top\Sigma_j^{-1}r_j,\qquad
-\hat\theta^{\,\mathrm{BK}}_y=\sum_j w_j\,\hat m(B_j)=\int\tilde m\,d\mathbb P_y ,
+\bar a(B)=\sum_{i=1}^n\alpha_i\,k(B,x_i)=\frac1{\mathbb P_y(B)}\int_B\sum_{i=1}^n\alpha_i\,k(x_i,x)\,d\mathbb P_y(x)
+=\frac1{\mathbb P_y(B)}\int_B\bar a\,d\mathbb P_y .
 $$
 
-where $\tilde m$ is the map in which every $x\in B_j$ uses block $j$'s window and plug-ins. The quadrature error of the map
-is gone:
+**Block kriging is the exact block average of the point predictive mean.** Averaging the kernel first and then solving
+gives the same result as predicting every point and then averaging; the first is just the cheap way to compute it.
+$K$ and $\boldsymbol\alpha$ are unchanged: only the test vector changes. Adding the block mean of the mean field,
+$\hat\mu(B)$, gives
 
 $$
-\hat\theta^{\,\mathrm{BK}}_y-\theta_y=\int(\tilde m-Z)\,d\mathbb P_y \quad\text{exactly.}
+\hat Z(B_j)=\hat\mu(B_j)+\mathbf k_{B_j}^\top(K_j+\sigma_{\varepsilon,j}^2I)^{-1}\mathbf r_j,\qquad
+\hat\theta^{\,\mathrm{BK}}_y=\sum_j w_j\,\hat Z(B_j)=\int\tilde Z\,d\mathbb P_y ,
 $$
+
+where the subscript $j$ marks block $j$'s window and hyperparameters, and $\tilde Z$ is the map in which every $x\in B_j$
+uses them. The quadrature error of the map is gone:
+
+$$
+\hat\theta^{\,\mathrm{BK}}_y-\theta_y=\int(\tilde Z-Z)\,d\mathbb P_y \quad\text{exactly.}
+$$
+
+**The two terms are integrated separately.** By linearity,
+
+$$
+\int\tilde Z\,d\mathbb P_y=\underbrace{\int\tilde\mu\,d\mathbb P_y}_{\text{no kriging}}+\underbrace{\sum_j w_j\,\bar a(B_j)}_{\text{block kriging}} .
+$$
+
+Here $\tilde\mu$ is the mean field with block $j$'s local fit on $B_j$. It involves no kernel and no solve. It is a known function, so it is integrated directly over the
+domain on as fine a grid as we like, independently of the kriging blocks. Evaluating it at the nodes, $\sum_j w_j\hat\mu(x_j)$,
+is the point rule for this term. In the 2020 test it is most of the point rule's error (table below).
+
+::: {.callout-note}
+## In practice: only the test vector changes
+For each block, both rules use the same window data, the same Cholesky factor of $K_j+\sigma_{\varepsilon,j}^2I$, and the same
+$\boldsymbol\alpha_j$. They differ only in where the kernel bumps are read:
+
+| | Point rule | Block rule |
+|---|---|---|
+| Test vector | $\mathbf k_*=[k(x_j,x_i)]_i$ at the node $x_j$ | $\mathbf k_{B_j}\approx\sum_{x'}\omega_{x'}[k(x',x_i)]_i$ over sub-points $x'\in B_j$ |
+| Anomaly | $\mathbf k_*^\top\boldsymbol\alpha_j$ | $\mathbf k_{B_j}^\top\boldsymbol\alpha_j$ |
+| Mean field | $\hat\mu(x_j)$ | $\sum_{x'}\omega_{x'}\hat\mu(x')$ |
+
+The $O(n^3)$ factorization is shared. The block rule adds only kernel evaluations at the sub-points.
+:::
 
 ### What is still numerical
 
 Two integrals of *known, smooth* functions remain.
 
-- $\bar c(B)$: the correlation function averaged over the block. It is computed with sub-points $s\in B$,
-  $\bar c\approx\sum_s\omega_s c(s)$ (we use 1/4$^\circ$ cells $\times$ 4 times per month).
-- $\bar\mu(B)$: the mean field averaged over the block. Since $\hat\mu(x,t)=\sum_k\gamma_k(x)T_k(t)$ is separable, it can be
-  integrated exactly: native cells in space, a fine grid in time for the harmonics and trend. (Planned; the current
-  code uses the same sub-points as $\bar c$. A non-separable covariate term such as $\log\hat q$ stays on the sub-points.)
+- $\mathbf k_B$: the kernel averaged over the block. It is computed with sub-points $x'\in B$ and weights $\omega$,
+  $k(B,x_i)\approx\sum_{x'}\omega_{x'}k(x',x_i)$ (we use 1/4$^\circ$ cells $\times$ 4 times per month).
+- $\int\tilde\mu\,d\mathbb P_y$: the mean field over the domain. Since $\hat\mu(s,t)=\sum_l\gamma_l(s)T_l(t)$ is separable, the time
+  integrals of the harmonics and trend over each month have closed forms, and the space integral is a sum over native
+  cells. (Planned; the current code averages $\hat\mu$ over the same sub-points as $\mathbf k_B$. A non-separable covariate
+  term such as $\log\hat q$ stays on a sub-grid.)
 
 These integrate a smooth, known function, not the eddying field $Z$, so refining the sub-grid drives the error down and
 measures it.
@@ -194,27 +247,27 @@ $$
 \theta_y=\underbrace{\int m\,d\mathbb P_y}_{\text{computed (block kriging)}}+\underbrace{\int e\,d\mathbb P_y}_{\text{estimated from the floats}} .
 $$
 
-We know $m$ everywhere. We know $e$ only at the profiles.
+We know $m$ everywhere. We know $e$ only at the profiles. (Below, $m$ is a cross-fit map $\tilde Z_{-f}$.)
 
 **Campbell's theorem** [@daley2003]. For any point process with intensity $q$ and measurable $f\ge0$,
 
 $$
-\mathbb E\sum_{x\in N}f(x)=\int f\,q\,d\mu .
+\mathbb E\sum_{x\in N}f(x)=\int f\,q\,d\nu .
 $$
 
 It needs no independence between points; profiles along one trajectory may be arbitrarily dependent. Taking
 $f=e/q$:
 
 $$
-\mathbb E\Big[\frac1{\mu(\mathcal X_y)}\sum_{i}\frac{e(x_i)}{q(x_i)}\Big]=\frac1{\mu(\mathcal X_y)}\int e\,d\mu=\int e\,d\mathbb P_y ,
+\mathbb E\Big[\frac1{\nu(\mathcal X_y)}\sum_{i}\frac{e(x_i)}{q(x_i)}\Big]=\frac1{\nu(\mathcal X_y)}\int e\,d\nu=\int e\,d\mathbb P_y ,
 $$
 
-provided $q>0$ $\mu$-a.e. on $\mathcal X_y$ (positivity: every part of the domain can be sampled).
+provided $q>0$ $\nu$-a.e. on $\mathcal X_y$ (positivity: every part of the domain can be sampled).
 
 **The HT difference estimator** [@horvitz1952; @sarndal1992]:
 
 $$
-\hat\theta^{\,\mathrm{HT}}_y=\int m\,d\mathbb P_y+\frac1{\mu(\mathcal X_y)}\sum_i\frac{e(x_i)}{q(x_i)} .
+\hat\theta^{\,\mathrm{HT}}_y=\int m\,d\mathbb P_y+\frac1{\nu(\mathcal X_y)}\sum_i\frac{e(x_i)}{q(x_i)} .
 $$
 
 It is unbiased for **any** map $m$ when $q$ is known.
@@ -229,8 +282,8 @@ model-dependent* [@hansen1983].
 
 ### Hájek normalization (what we use)
 
-Replace the known measure $\mu(\mathcal X_y)$ by its own HT estimate, $\mu(\mathcal X_y)\hat\Delta$ with
-$\hat\Delta=\mu(\mathcal X_y)^{-1}\sum_i 1/q(x_i)$ (whose expectation is 1). The correction becomes a weighted *mean* of the residuals:
+Replace the known measure $\nu(\mathcal X_y)$ by its own HT estimate, $\nu(\mathcal X_y)\hat\Delta$ with
+$\hat\Delta=\nu(\mathcal X_y)^{-1}\sum_i 1/q(x_i)$ (whose expectation is 1). The correction becomes a weighted *mean* of the residuals:
 
 $$
 \hat C=\frac{\sum_i v_i\,e(x_i)}{\sum_i v_i},\qquad v_i=\frac1{q(x_i)} .
@@ -246,29 +299,29 @@ $$
 
 ### Cross-fitting over floats
 
-$\hat m$ is built from the same profiles. A kriging map passes close to its own data, so its residual at a profile it
-has seen is artificially small. Summing those residuals misses the very error we want to correct, and Campbell's
-theorem no longer applies, because the summand depends on $N$.
+$\hat Z$ is built from the same profiles. A GP predictive mean passes close to its own data, so its residual at a
+profile it has seen is artificially small. Summing those residuals misses the very error we want to correct, and
+Campbell's theorem no longer applies, because the summand depends on $N$.
 
-The fix is to split the **floats** (not the profiles) into $K$ folds, stratified by launch cohort. For fold $k$, use the map
-$\hat m_{-k}$ built without fold $k$:
+The fix is to split the **floats** (not the profiles) into $F$ folds, stratified by launch cohort. For fold $f$, use the map
+$\tilde Z_{-f}$ built without fold $f$ (mean field and anomaly both):
 
 $$
-\hat\theta^{\,\mathrm{DR}}_y=\frac1K\sum_{k=1}^K\Big\{\int\tilde m_{-k}\,d\mathbb P_y+\hat C_k\Big\},\qquad
-\hat C_k=\frac{\sum_{i\in I_k}v_i\,e_k(x_i)}{\sum_{i\in I_k}v_i},\quad e_k=Z-\tilde m_{-k}.
+\hat\theta^{\,\mathrm{DR}}_y=\frac1F\sum_{f=1}^F\Big\{\int\tilde Z_{-f}\,d\mathbb P_y+\hat C_f\Big\},\qquad
+\hat C_f=\frac{\sum_{i\in I_f}v_i\,e_f(x_i)}{\sum_{i\in I_f}v_i},\quad e_f=Z-\tilde Z_{-f}.
 $$
 
-- Conditional on everything outside fold $k$ (the $\sigma$-field $\mathcal G_{-k}$), the map is fixed and the fold-$k$ floats are independent draws
-  from the deployment law. So Campbell's theorem applies to fold $k$ alone, with fold intensity $q_{k\mid-k}$.
+- Conditional on everything outside fold $f$ (the $\sigma$-field $\mathcal G_{-f}$), the map is fixed and the fold-$f$ floats are independent draws
+  from the deployment law. So Campbell's theorem applies to fold $f$ alone, with fold intensity $q_{f\mid-f}$.
 - The folds are units of *floats* because a float's profiles are dependent. Leaving out one profile would leave its
   neighbours on the same trajectory in the map.
-- With block kriging, the residual must come from the **same** function that is integrated: $e_k(x_i)$ uses the
-  window and plug-ins of the block containing $x_i$. Then the identity closes exactly.
+- With block kriging, the residual must come from the **same** function that is integrated: $e_f(x_i)$ uses the
+  window and hyperparameters of the block containing $x_i$. Then the identity closes exactly.
 
 ### An estimated intensity: double robustness
 
 $q$ is not known from a design. It is estimated by simulation, $\hat q$, independently of the data. Write
-$\lambda=q/\hat q$ for the intensity error (for fold $k$: $e=e_k$ and $\lambda=q_{k\mid-k}/\hat q_k$, conditional on $\mathcal G_{-k}$).
+$\lambda=q/\hat q$ for the intensity error (for fold $f$: $e=e_f$ and $\lambda=q_{f\mid-f}/\hat q_f$, conditional on $\mathcal G_{-f}$).
 Campbell's theorem now gives, for the HT form,
 
 $$
@@ -293,43 +346,43 @@ This is the *mixed-bias* property that defines double robustness [@rotnitzky2021
 
 ::: {.callout-note}
 ## Intuition
-Floats crowd into cold water, so the map's mean field runs cold where floats are sparse. The correction checks the
+Floats crowd into cold water, so the mean field $\hat\mu$ runs cold where floats are sparse. The correction checks the
 map against held-out floats, weighted so that every region counts by its area. It removes that offset as long as the
 weights know where the floats crowd. They need to know it only where the map is wrong.
 :::
 
 **Variance.** Floats within a cohort are independent given the fold labels, so the correction is a sum of independent
-float totals $a_j=\sum_{i\in j}v_ie_k(x_i)$. Its variance is estimated from those totals (delete-one-float jackknife within
-cohort; for HT, $\sum_c\frac{n_c}{n_c-1}\sum_{j\in c}(a_j-\bar a_c)^2$). Correlation along a trajectory is absorbed into
-$\operatorname{Var}a_j$, so no second-order intensity is needed. Like the survey estimators, this treats the map as fixed. The
-variability of $\int\tilde m_{-k}\,d\mathbb P_y$ across folds is not included, which is the known source of under-coverage.
+float totals $u_j=\sum_{i\in j}v_ie_f(x_i)$. Its variance is estimated from those totals (delete-one-float jackknife within
+cohort; for HT, $\sum_c\frac{n_c}{n_c-1}\sum_{j\in c}(u_j-\bar u_c)^2$). Correlation along a trajectory is absorbed into
+$\operatorname{Var}u_j$, so no second-order intensity is needed. Like the survey estimators, this treats the map as fixed. The
+variability of $\int\tilde Z_{-f}\,d\mathbb P_y$ across folds is not included, which is the known source of under-coverage.
 
 ## 6. Why the point rule leaves a bias floor
 
-With point quadrature, the map term is $Q_y(\hat m_{-k})$ instead of $\int\tilde m_{-k}\,d\mathbb P_y$. Then
+With point quadrature, the map term is $Q_y(\hat Z_{-f})$ instead of $\int\tilde Z_{-f}\,d\mathbb P_y$. Then
 
 $$
-\frac1K\sum_{k=1}^K\mathbb E\big[\hat\theta_k\mid\mathcal G_{-k}\big]-\theta_y
+\frac1F\sum_{f=1}^F\mathbb E\big[\hat\theta_f\mid\mathcal G_{-f}\big]-\theta_y
 =\underbrace{\text{product bias}}_{\text{Section 5}}
-+\underbrace{\tfrac1K\textstyle\sum_k\big[Q_y(\hat m_{-k})-\int\hat m_{-k}\,d\mathbb P_y\big]}_{\text{quadrature error of the maps}} ,
++\underbrace{\tfrac1F\textstyle\sum_f\big[Q_y(\hat Z_{-f})-\int\hat Z_{-f}\,d\mathbb P_y\big]}_{\text{quadrature error of the maps}} ,
 $$
 
-where $\hat\theta_k$ is fold $k$'s estimate.
+where $\hat\theta_f$ is fold $f$'s estimate.
 
-The correction $\hat C_k$ targets $\int(Z-\hat m_{-k})\,d\mathbb P_y$, the error of the map *as a function*. It cannot see how the
+The correction $\hat C_f$ targets $\int(Z-\hat Z_{-f})\,d\mathbb P_y$, the error of the map *as a function*. It cannot see how the
 map was integrated. Block kriging sets the second term to (numerically) zero, so only the product bias remains.
 
 ## 7. Comparison with survey sampling
 
 | Survey difference estimator [@sarndal1992] | This report |
 |---|---|
-| Finite population $U$, total $\sum_U y_k$ | Continuum $\mathcal X_y$, integral $\int Z\,d\mu$ |
+| Finite population $U$, total $\sum_U y_k$ | Continuum $\mathcal X_y$, integral $\int Z\,d\nu$ |
 | Predictions $\hat y_k$ summed over all of $U$ | Map integrated over $\mathcal X_y$ (block kriging) |
-| Inclusion probability $\pi_k$ | Intensity $q(x)$ (expected count per unit $\mu$) |
-| $\sum_s(y_k-\hat y_k)/\pi_k$ | $\sum_i e_k(x_i)/q(x_i)$ |
+| Inclusion probability $\pi_k$ | Intensity $q(x)$ (expected count per unit $\nu$) |
+| $\sum_s(y_k-\hat y_k)/\pi_k$ | $\sum_i e_f(x_i)/q(x_i)$ |
 | $\pi_k$ known from the design | $\hat q$ estimated by simulation |
 | Fixed predictions (difference estimator) or fitted on the sample (GREG) | Cross-fit: fitted without the fold |
-| Hájek / calibration to the known $N$ | Hájek / calibration to the known $\mu(\mathcal X_y)$ |
+| Hájek / calibration to the known $N$ | Hájek / calibration to the known $\nu(\mathcal X_y)$ |
 | Variance via $\pi_{kl}$, or with-replacement PSU form | Float totals as independent clusters |
 
 The closest published form is @cicchitelli2012. They give the continuous-space version with a penalized-spline map
@@ -348,7 +401,7 @@ $$
 
 | AIPW | This report |
 |---|---|
-| Average of $\hat m(X_i)$ over a *sample* of units | Exact integral of $\tilde m$ over the *known* measure $\mathbb P_y$ |
+| Average of $\hat m(X_i)$ over a *sample* of units | Exact integral of $\tilde Z$ over the *known* measure $\mathbb P_y$ |
 | $R_i/\pi(X_i)$: observed units reweighted | Points of $N$ weighted by $1/q$ (Campbell) |
 | Propensity $\pi(X)$ | Intensity $q(x)$ |
 | Propensity fitted to the same data | $\hat q$ from an independent simulator |
@@ -372,12 +425,12 @@ Two features follow from the setting:
 
 | Assumption | Used for |
 |---|---|
-| $\Lambda\ll\mu$, $q$ measurable and positive on $\mathcal X_y$ | HT identity (Campbell) |
+| $\Lambda\ll\nu$, $q$ measurable and positive on $\mathcal X_y$ | HT identity (Campbell) |
 | Folds of floats; floats independent within cohort given the labels | Conditional Campbell per fold; float-cluster variance |
 | $\hat q$ independent of the evaluated data; $\hat q\ge q_0>0$ | Bounded weights; bias formula with $\lambda=q/\hat q$ |
-| Same window and plug-ins for all $x$ in a block | Block kriging equals the exact integral of $\tilde m$ |
-| Sub-grid fine enough for $\bar c$; $\bar\mu$ integrated exactly | Remaining numerical error negligible (checked by refinement) |
-| Kriging covariance model | Efficiency only, not bias |
+| Same window and hyperparameters for all $x$ in a block | Block kriging equals the exact integral of $\tilde Z$ |
+| Sub-grid fine enough for $\mathbf k_B$; $\int\tilde\mu\,d\mathbb P_y$ integrated exactly | Remaining numerical error negligible (checked by refinement) |
+| Kernel $k$ and decomposition $\mu+a+\varepsilon$ | Efficiency only, not bias |
 
 ## References
 
