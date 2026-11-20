@@ -6,7 +6,7 @@ bibliography: ../paper/references.bib
 
 ## Summary
 
-The target is a domain mean $\theta_y=\int Z\,d\mathbb P_y$. The estimator has two parts: a map $\hat Z=\hat\mu+\bar a$ (mean
+The target is a domain mean $\theta_y=\int Z\,d\mathbb P_y$. The estimator has two parts: a map $\hat Z=\hat\mu+\hat a$ (mean
 field plus GP-predicted anomaly), and a correction for the map's error built from the floats.
 
 1. **Block kriging is not a new predictor.** It is the *exact integral* of the ordinary GP predictive mean. Summing
@@ -63,23 +63,23 @@ $D=\operatorname{diag}(\ell_{\mathrm{lon}},\ell_{\mathrm{lat}},\ell_t)$ and hype
 (locally stationary).
 
 **Notation** [@rasmussen2006, Sec. 2.2]. $K=[k(x_i,x_j)]_{i,j=1}^n$ is the training-training covariance, and for a test point
-$x_*$, $\mathbf k_*=[k(x_i,x_*)]_{i=1}^n$ is the training-test covariance.
+$x_*$, $\mathbf k_*=[k(x_i,x_*)]_{i=1}^n$ is the training-test covariance. We write the predictive mean as $\hat a$ (their $\bar f_*$) and reserve bars for averages.
 
 **Predictive mean and variance.** Conditioning the Gaussian vector $(a(x_*),\mathbf r)$ gives
 
 $$
-\boxed{\;\bar a(x_*)=\mathbf k_*^\top(K+\sigma_\varepsilon^2I)^{-1}\mathbf r,\qquad
+\boxed{\;\hat a(x_*)=\mathbf k_*^\top(K+\sigma_\varepsilon^2I)^{-1}\mathbf r,\qquad
 \mathbb V[a(x_*)\mid\mathbf r]=k(x_*,x_*)-\mathbf k_*^\top(K+\sigma_\varepsilon^2I)^{-1}\mathbf k_*\;}
 $$
 
-and the map is $\hat Z(x_*)=\hat\mu(x_*)+\bar a(x_*)$. Without Gaussianity, $\bar a(x_*)$ is still the best *linear* predictor
+and the map is $\hat Z(x_*)=\hat\mu(x_*)+\hat a(x_*)$. Without Gaussianity, $\hat a(x_*)$ is still the best *linear* predictor
 (simple kriging): minimizing $\mathbb E\{a(x_*)-\mathbf w^\top\mathbf r\}^2=k(x_*,x_*)-2\mathbf w^\top\mathbf k_*+\mathbf w^\top(K+\sigma_\varepsilon^2I)\mathbf w$
 gives $\mathbf w=(K+\sigma_\varepsilon^2I)^{-1}\mathbf k_*$, and the variance above is then its MSE.
 
 Two equivalent readings of the predictive mean:
 
 $$
-\bar a(x_*)=\underbrace{\mathbf w^\top\mathbf r}_{\text{weights on the data}}
+\hat a(x_*)=\underbrace{\mathbf w^\top\mathbf r}_{\text{weights on the data}}
 =\underbrace{\sum_{i=1}^n\alpha_i\,k(x_i,x_*)}_{\text{kernel bumps at the data}},\qquad
 \mathbf w=(K+\sigma_\varepsilon^2I)^{-1}\mathbf k_*,\quad
 \boldsymbol\alpha=(K+\sigma_\varepsilon^2I)^{-1}\mathbf r .
@@ -94,7 +94,7 @@ $\alpha_i$ fixed by the data. The test point enters *only* through $k(x_i,x_*)$.
 :::
 
 The nugget does not change the predictor. At any $x_*$ off the data, $\operatorname{Cov}\{\varepsilon(x_*),\mathbf r\}=0$, so the best linear
-predictor of $Z(x_*)-\hat\mu(x_*)$ is also $\bar a(x_*)$.
+predictor of $Z(x_*)-\hat\mu(x_*)$ is also $\hat a(x_*)$.
 
 In practice each prediction uses only the data in a window around it ($\pm10^\circ$, adjacent months) and the
 hyperparameters of its region. This is local GP regression in the sense of @kuusela2018. The model is a *working*
@@ -157,7 +157,7 @@ $$
 With $\mathbf k_B=[k(B,x_i)]_{i=1}^n$ in place of $\mathbf k_*$,
 
 $$
-\boxed{\;\bar a(B)=\mathbf k_B^\top(K+\sigma_\varepsilon^2I)^{-1}\mathbf r,\qquad
+\boxed{\;\hat a(B)=\mathbf k_B^\top(K+\sigma_\varepsilon^2I)^{-1}\mathbf r,\qquad
 \mathbb V[a(B)\mid\mathbf r]=k(B,B)-\mathbf k_B^\top(K+\sigma_\varepsilon^2I)^{-1}\mathbf k_B\;}
 $$
 
@@ -165,8 +165,8 @@ $$
 integrates each bump:
 
 $$
-\bar a(B)=\sum_{i=1}^n\alpha_i\,k(B,x_i)=\frac1{\mathbb P_y(B)}\int_B\sum_{i=1}^n\alpha_i\,k(x_i,x)\,d\mathbb P_y(x)
-=\frac1{\mathbb P_y(B)}\int_B\bar a\,d\mathbb P_y .
+\hat a(B)=\sum_{i=1}^n\alpha_i\,k(B,x_i)=\frac1{\mathbb P_y(B)}\int_B\sum_{i=1}^n\alpha_i\,k(x_i,x)\,d\mathbb P_y(x)
+=\frac1{\mathbb P_y(B)}\int_B\hat a\,d\mathbb P_y .
 $$
 
 **Block kriging is the exact block average of the point predictive mean.** Averaging the kernel first and then solving
@@ -189,7 +189,7 @@ $$
 **The two terms are integrated separately.** By linearity,
 
 $$
-\int\tilde Z\,d\mathbb P_y=\underbrace{\int\tilde\mu\,d\mathbb P_y}_{\text{no kriging}}+\underbrace{\sum_j w_j\,\bar a(B_j)}_{\text{block kriging}} .
+\int\tilde Z\,d\mathbb P_y=\underbrace{\int\tilde\mu\,d\mathbb P_y}_{\text{no kriging}}+\underbrace{\sum_j w_j\,\hat a(B_j)}_{\text{block kriging}} .
 $$
 
 Here $\tilde\mu$ is the mean field with block $j$'s local fit on $B_j$. It involves no kernel and no solve. It is a known function, so it is integrated directly over the
